@@ -38,7 +38,7 @@ function overlayTitle() {
     inset: "0",
     zIndex: "50",
     pointerEvents: "none",
-    background: "linear-gradient(90deg, rgba(7,9,16,0.92) 0%, rgba(7,9,16,0.72) 34%, rgba(7,9,16,0) 62%)",
+    background: "linear-gradient(90deg, rgba(7,9,16,0.96) 0%, rgba(7,9,16,0.9) 40%, rgba(7,9,16,0) 64%)",
     display: "flex",
     flexDirection: "column",
     justifyContent: "flex-end",

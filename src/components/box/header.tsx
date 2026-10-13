@@ -19,10 +19,10 @@ function Counter({ label, value, tone }: { label: string; value: string; tone?: 
 /** The top bar: wordmark home, the SIMULATION tag and its caveat, and the live counters. */
 export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
   return (
-    <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
+    <header className="flex flex-wrap items-center gap-x-4 gap-y-3 max-[1157px]:gap-x-2.5">
       <Link
         href="/"
-        className={`${mono} flex min-h-11 items-center gap-2.5 pr-2 text-[13px] tracking-[0.12em] text-label hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none`}
+        className={`${mono} flex min-h-11 items-center gap-2.5 pr-2 max-[1157px]:-order-2 max-[1157px]:pr-0 text-[13px] tracking-[0.12em] text-label hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none`}
       >
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
           <circle cx="9" cy="9" r="3.2" fill="#ffb54d" />
@@ -32,7 +32,7 @@ export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
         </svg>
         SWARM <span className="text-rule">/</span> <span className="font-semibold text-ink">THE BOX</span>
       </Link>
-      <span className={`${mono} rounded-full border border-escape/50 px-2.5 py-[5px] text-[10px] font-semibold tracking-[0.14em] text-escape-text`}>SIMULATION</span>
+      <span className={`${mono} rounded-full max-[1157px]:-order-2 border border-escape/50 px-2.5 py-[5px] text-[10px] font-semibold tracking-[0.14em] text-escape-text`}>SIMULATION</span>
       <span className="text-sm text-label">Abstract agents and abstract actions. Nothing here is a real technique.</span>
       <div className="grow" />
       <dl className={`${mono} m-0 flex flex-wrap gap-x-7 gap-y-2 text-ink`}>
@@ -41,7 +41,8 @@ export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
         <Counter label="ESCAPED" value={tally.escaped.toLocaleString("en-US")} tone="escape" />
         <Counter label="USEFUL WORK" value={percent(tally.usefulWork)} />
       </dl>
-      <AudioToggle />
+      {/* Below the wide layout the counters wrap, so the toggle joins the wordmark row. */}
+      <AudioToggle className="max-[1157px]:-order-1 max-[1157px]:ml-auto" />
     </header>
   );
 }

@@ -98,6 +98,29 @@ export function createStillBox({ params, enter, paint }: StillBoxOptions): BoxAp
   };
 }
 
+/** Share of each side faded out, so the still's own backdrop melts into the page instead of showing as a box. */
+const FEATHER = 0.03;
+
+/** Fades the drawn rectangle's edges to transparent; the outermost shell sits just inside the margin. */
+function feather(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  g.save();
+  g.globalCompositeOperation = "destination-out";
+  const edges: [number, number, number, number, number, number, number, number][] = [
+    [x, y, x + w * FEATHER, y, x, y, w * FEATHER, h],
+    [x + w, y, x + w * (1 - FEATHER), y, x + w * (1 - FEATHER), y, w * FEATHER, h],
+    [x, y, x, y + h * FEATHER, x, y, w, h * FEATHER],
+    [x, y + h, x, y + h * (1 - FEATHER), x, y + h * (1 - FEATHER), w, h * FEATHER],
+  ];
+  for (const [x0, y0, x1, y1, rx, ry, rw, rh] of edges) {
+    const grad = g.createLinearGradient(x0, y0, x1, y1);
+    grad.addColorStop(0, "rgba(0,0,0,1)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(rx, ry, rw, rh);
+  }
+  g.restore();
+}
+
 /** Loads the still and draws it into whatever scene slot the HUD reports, at device resolution. */
 export async function startBoxStill(canvas: HTMLCanvasElement, { src, params, enter }: { src: string; params: URLSearchParams; enter(): void }): Promise<BoxApp> {
   const image = new Image();
@@ -122,6 +145,7 @@ export async function startBoxStill(canvas: HTMLCanvasElement, { src, params, en
     if (!frame || !loaded) return;
     const r = fitDesign(frame);
     g.drawImage(image, r.x * dpr, r.y * dpr, r.width * dpr, r.height * dpr);
+    feather(g, r.x * dpr, r.y * dpr, r.width * dpr, r.height * dpr);
   };
   const observer = new ResizeObserver(draw);
   observer.observe(canvas);

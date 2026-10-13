@@ -1,4 +1,4 @@
-import { frontierPath, toPlot, type PlotPoint } from "./plot";
+import { frontierPath, frontierVertices, placeLabel, toPlot, type PlotPoint, type Segment } from "./plot";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -15,7 +15,9 @@ export function TrialsPlot({ points, currentKey, running }: { points: readonly P
   const others = points.filter((p) => p !== current);
   const frontier = frontierPath(points);
   const here = current ? toPlot(current.usefulness, current.safety) : null;
-  const flip = here !== null && here.x > 168;
+  const vertices = frontierVertices(points);
+  const segments = vertices.slice(1).map((v, i): Segment => [vertices[i], v]);
+  const label = here ? placeLabel(here, segments, others.map((p) => toPlot(p.usefulness, p.safety))) : null;
   return (
     <section aria-label="Safety against usefulness" className="box-border flex flex-auto flex-col gap-2 rounded-[14px] border border-panel-border bg-panel p-3.5">
       <span className="font-mono text-[10px] tracking-[0.14em] text-label">100 TRIALS PER SETUP</span>
@@ -42,14 +44,15 @@ export function TrialsPlot({ points, currentKey, running }: { points: readonly P
             return <circle key={p.key} cx={x} cy={y} r="4" data-plot-point />;
           })}
         </g>
-        {current && here ? (
+        {current && here && label ? (
           <g>
             <circle cx={here.x} cy={here.y} r="10" fill="none" stroke="#eef2f8" strokeOpacity="0.35" />
             <circle cx={here.x} cy={here.y} r="5.5" fill="#eef2f8" data-plot-point data-current />
-            <text x={here.x + (flip ? -12 : 12)} y={here.y - 7} textAnchor={flip ? "end" : "start"} className="font-mono" fontSize="9.5" fill="#eef2f8">
+            {label.clear ? null : <rect x={label.box.x - 2} y={label.box.y - 1} width={label.box.width + 4} height={label.box.height + 2} rx="3" fill="#0c101c" fillOpacity="0.92" />}
+            <text x={label.x} y={label.y} textAnchor={label.anchor} className="font-mono" fontSize="9.5" fill="#eef2f8">
               this setup
             </text>
-            <text x={here.x + (flip ? -12 : 12)} y={here.y + 5} textAnchor={flip ? "end" : "start"} className="font-mono" fontSize="9" fill="#a7b1c2">
+            <text x={label.x} y={label.y + 12} textAnchor={label.anchor} className="font-mono" fontSize="9" fill="#a7b1c2">
               {pct(current.usefulness)} / {pct(current.safety)}
             </text>
           </g>

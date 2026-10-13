@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, type BoxConfig } from "@/lib/box/types";
-import { addRun, frontierPath, settingsKey, toPlot } from "./plot";
+import { addRun, boxHits, frontierPath, placeLabel, settingsKey, toPlot } from "./plot";
 
 const networkOff: BoxConfig = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
 
@@ -55,5 +55,40 @@ describe("frontierPath", () => {
     const c = toPlot(0.8, 0.9);
     const d = toPlot(1, 0.4);
     expect(frontierPath(pts)).toBe(`M${a.x} ${a.y} L${c.x} ${c.y} L${d.x} ${d.y}`);
+  });
+});
+
+describe("placeLabel", () => {
+  const here = { x: 120, y: 60 };
+
+  it("keeps the label to the right of the point when that side is clear", () => {
+    const p = placeLabel(here, [], []);
+    expect(p).toMatchObject({ anchor: "start", clear: true });
+    expect(p.box.x).toBeGreaterThan(here.x);
+  });
+
+  it("flips to the left when the frontier runs through the right-hand label", () => {
+    // The phone shot: a near-vertical dashed segment just right of the point.
+    const p = placeLabel(here, [[{ x: 140, y: 20 }, { x: 146, y: 130 }]], []);
+    expect(p.clear).toBe(true);
+    expect(p.box.x + p.box.width).toBeLessThan(140);
+  });
+
+  it("moves off another setup's point", () => {
+    const p = placeLabel(here, [], [{ x: 150, y: 60 }]);
+    expect(p.clear).toBe(true);
+    expect(boxHits(p.box, [], [{ x: 150, y: 60 }])).toBe(false);
+  });
+
+  it("starts on the left near the right edge of the plot, and stays inside the plot", () => {
+    const p = placeLabel({ x: 210, y: 60 }, [], []);
+    expect(p.anchor).toBe("end");
+    expect(p.box.x).toBeGreaterThanOrEqual(0);
+  });
+
+  it("reports when no side is clear, so the label gets a backing", () => {
+    const wall: [{ x: number; y: number }, { x: number; y: number }][] = [];
+    for (let y = 0; y <= 200; y += 6) wall.push([{ x: 0, y }, { x: 232, y }]);
+    expect(placeLabel(here, wall, []).clear).toBe(false);
   });
 });

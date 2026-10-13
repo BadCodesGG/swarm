@@ -101,9 +101,9 @@ const enterClass =
 function StillBar({ gate, onEnter }: { gate: "still" | "unsupported"; onEnter(): void }) {
   const copy = STILL_COPY[gate];
   return (
-    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-panel-border bg-panel px-6 py-2.5 text-[13px] leading-snug">
+    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-panel-border bg-panel px-6 py-2.5 text-[13px] leading-snug max-sm:flex-nowrap max-sm:px-4 max-sm:py-2">
       <p className="m-0 text-ink-strong">
-        {copy.lead} <span className="text-muted">{gate === "still" ? "The controls and the trials still work; entering starts the live scene." : copy.detail}</span>
+        {copy.lead} <span className="text-muted max-sm:hidden">{gate === "still" ? "The controls and the trials still work; entering starts the live scene." : copy.detail}</span>
       </p>
       {gate === "still" ? (
         <button type="button" onClick={onEnter} className={`${enterClass} min-h-11 py-1.5`}>

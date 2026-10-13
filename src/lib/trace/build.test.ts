@@ -302,7 +302,7 @@ describe("createTraceBuilder: caps", () => {
       result(4, "S0", { status: "completed", resolvedModel: huge }),
     ];
     const t = traceOf(build({ main }));
-    expect(Math.max(...t.events.map((e) => e.tool?.length ?? 0))).toBeLessThanOrEqual(300);
+    expect(Math.max(...t.events.map((e) => e.tool?.length ?? 0))).toBeLessThanOrEqual(100);
     expect(t.agents[1].agentType.length).toBeLessThanOrEqual(300);
     expect(t.agents[1].modelId.length).toBeLessThanOrEqual(300);
     expect(JSON.stringify(t).length).toBeLessThan(10_000);

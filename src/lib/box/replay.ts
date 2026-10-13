@@ -20,8 +20,10 @@ function escapedBy(config: BoxConfig, seed: number, agentCount: number, agent: n
 /**
  * The switched-off layers that, turned on alone, keep `agent` from escaping by `tick`, innermost
  * first. The crowd size must be the live run's: a different size renumbers the agents. Empty when no
- * single layer would have.
+ * single layer would have, and empty when `config` alone from tick 0 does not reproduce the escape
+ * (a layer switched on mid-run): then no off layer can be credited with stopping it.
  */
 export function stoppingLayers(config: BoxConfig, seed: number, agentCount: number, agent: number, tick: number): LayerId[] {
+  if (!escapedBy(config, seed, agentCount, agent, tick)) return [];
   return LAYER_ORDER.filter((layer) => !config.layers[layer] && !escapedBy({ ...config, layers: { ...config.layers, [layer]: true } }, seed, agentCount, agent, tick));
 }

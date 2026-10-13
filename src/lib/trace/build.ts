@@ -61,6 +61,8 @@ const isObj = (v: unknown): v is Json => typeof v === "object" && v !== null && 
  * without this a few hundred records with megabyte-long names would fill the worker's heap.
  */
 const FIELD_CHARS = 300;
+/** Tool names repeat on every call event (up to the events cap), so they get a tighter cap. */
+const TOOL_CHARS = 100;
 const str = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 ? cutText(v, FIELD_CHARS) : undefined;
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -225,8 +227,9 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
   }
 
   function onToolUse(fs: FileState, b: Json, tMs: number, server: boolean): void {
-    const name = str(b.name);
-    if (!name) return;
+    const full = str(b.name);
+    if (!full) return;
+    const name = cutText(full, TOOL_CHARS);
     const id = str(b.id);
     const isSpawn = !server && (name === "Agent" || name === "Task");
     if (isSpawn) {

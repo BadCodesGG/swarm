@@ -66,4 +66,16 @@ describe("stoppingLayers", () => {
     const { agent, tick } = firstEscape(off("network"), 1812 % 97);
     expect(stoppingLayers(DEFAULT_CONFIG, 1812 % 97, AGENTS, agent, tick)).toEqual([]);
   });
+
+  it("credits no layer when the settings alone do not reproduce the escape (a layer switched on mid-run)", () => {
+    // The escape happened with every layer off; the visitor then switched on a layer that stops it. Replayed
+    // under those final settings the agent never gets out, so every other off layer would "stop" it vacuously.
+    for (const seed of [2, 7]) {
+      const config = allOff(DEFAULT_CONFIG);
+      const { agent, tick } = firstEscape(config, seed);
+      const [first] = stoppingLayers(config, seed, AGENTS, agent, tick);
+      expect(first, `seed ${seed}: some layer stops it`).toBeDefined();
+      expect(stoppingLayers(on(config, first), seed, AGENTS, agent, tick)).toEqual([]);
+    }
+  });
 });

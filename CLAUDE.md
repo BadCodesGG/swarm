@@ -40,5 +40,5 @@ npm run test:smoke     # Boots the built site and drives both acts in Chromium
   fixtures. Sample sessions are generated, and the UI labels them as samples.
 - **Session text is untrusted input.** It renders as text only, never as HTML.
 - **Any route that sets metadata goes through `pageMetadata()` in `src/lib/site.ts`.** `SITE_URL`
-  is the literal production domain. The share image is the static `public/og.jpg`.
+  defaults to the production domain; `NEXT_PUBLIC_SITE_URL` overrides it. The share image is the static `public/og.jpg`.
 - **No em dashes** in copy, comments or docs.

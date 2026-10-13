@@ -367,19 +367,22 @@ with its tests green.
 8. Landing, `/about`, OG, reduced-motion stills, adaptive quality, audio, README; smoke 1 and 6.
    Then plan steps 7 and 8 (Definition of done, deploy, portfolio PR).
 
+## Settled questions
+
+- Idle stretches are compressed. `Timeline` maps trace time to playback time, and the scrubber
+  marks each cut ("12 idle min cut").
+- "Run 100 trials" adds one point per settings, kept across runs, so a frontier builds up.
+- Stations, in ring order: `web`, `plan`, `advisor`, `agents`, `edit`, `mcp`, `files`, `shell`.
+  `mcp` is its own station; `files` (read, search) and `edit` (write, edit) stay apart.
+- A folder with several top-level sessions shows a chooser (first prompt line, size, agent count).
+- Verbatim human prompts are capped at 2,000 characters for display.
+- `NEXT_PUBLIC_SITE_URL` may override `SITE_URL`; the default stays the production domain.
+- The look is the "Deep Field" canvas (https://claude.ai/artifact/L6bPvtCx7s9LtN5CPALRDV): ground
+  `#070910`, text `#eef2f8`, labels `#a7b1c2` / `#8590a3`, models Opus `#ffb54d`, Fable `#a78bff`,
+  Sonnet `#4fd8eb`, Haiku `#7ee2a8`, escape `#ff4d7d`, layers `#dbe6ff` to `#5f7cbb` inside out.
+
 ## Open questions
 
-- Idle stretches (a session left overnight): compress gaps or play real time? Requester.
-  `Timeline` can map trace time to playback time without touching callers.
-- "Run 100 trials": one point per settings, kept across runs so a frontier builds up, or a cloud of
-  100 per-trial points? Requester.
-- The full station list (the plan ends at "Plan..."): is `mcp` its own station; do `files` and
-  `edit` stay apart? Requester, with the design canvas.
-- A folder with several top-level sessions: a chooser, or the `several-session-files` error?
-  Requester.
-- Verbatim human prompts: is a 2,000-char display cap acceptable? Requester.
-- `src/lib/site.ts` lets `NEXT_PUBLIC_SITE_URL` override `SITE_URL`; `CLAUDE.md` says it is the
-  literal production domain. Orchestrator, before slice 8.
 - Does headless Chromium's `setInputFiles` on a `webkitdirectory` input keep the `subagents/`
   prefix in `webkitRelativePath`? Slice 4 confirms before smoke 3 relies on it.
 

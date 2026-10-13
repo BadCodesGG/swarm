@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { categorize, modelFamily } from "./categories";
 import { generateTrace, type SampleSize } from "./generate";
+import { CALIBRATION, collectStats } from "./stats";
 import { buildTimeline } from "./timeline";
 import type { SessionTrace } from "./types";
 import { validateTrace } from "./validate";
@@ -117,5 +118,56 @@ describe("generateTrace shape", () => {
     t.agents.slice(1).forEach((a) => expect(a.returned).toBe(true));
     expect(t.agents[0].returned).toBe(false);
     expect(t.agents[0].returnT).toBe(t.duration);
+  });
+});
+
+describe("generateTrace draws from the calibration", () => {
+  const SEED_RANGE = Array.from({ length: 10 }, (_, i) => i + 1);
+
+  it("defaults to CALIBRATION", () => {
+    for (const size of SIZES) expect(generateTrace(7, size)).toEqual(generateTrace(7, size, CALIBRATION));
+  });
+
+  it("follows the error rate it is given", () => {
+    for (const rate of [0, 1]) {
+      const t = generateTrace(3, "medium", { ...CALIBRATION, errorRate: rate });
+      const results = t.events.filter((e) => e.kind === "result");
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.every((e) => Boolean(e.isError) === (rate === 1))).toBe(true);
+    }
+  });
+
+  it("follows the web share and the search share", () => {
+    const web = (stats: typeof CALIBRATION) =>
+      generateTrace(5, "large", stats).events.filter((e) => e.kind === "call" && e.category === "web");
+    const heavy = web({ ...CALIBRATION, web: { share: 0.5, search: 1 } });
+    expect(heavy.length).toBeGreaterThan(web({ ...CALIBRATION, web: { share: 0, search: 1 } }).length * 10);
+    expect(heavy.every((e) => e.tool === "WebSearch")).toBe(true);
+    expect(web({ ...CALIBRATION, web: { share: 0.5, search: 0 } }).every((e) => e.tool === "WebFetch")).toBe(true);
+  });
+
+  it("follows the model mix by depth, never drawing 'other'", () => {
+    const only = { opus: 0, fable: 0, sonnet: 0, haiku: 1, other: 1 };
+    const stats = { ...CALIBRATION, modelMix: { "1": only, "2": only, "3": only } };
+    const t = generateTrace(2, "large", stats);
+    // The first three subagents are fixed to different models; the rest follow the mix.
+    expect(t.agents.slice(4).every((a) => a.model === "haiku")).toBe(true);
+  });
+
+  it("keeps the bands and stays valid on stats from no data at all", () => {
+    const empty = collectStats([]);
+    for (const size of SIZES) {
+      for (const seed of SEED_RANGE) {
+        const t = generateTrace(seed, size, empty);
+        expect(validateTrace(t), `${size} ${seed}`).toEqual([]);
+        expect(t.events.length, `${size} ${seed}`).toBeGreaterThanOrEqual(BANDS[size].events[0]);
+        expect(t.events.length, `${size} ${seed}`).toBeLessThanOrEqual(BANDS[size].events[1]);
+      }
+    }
+  });
+
+  it("leaves no calibration text in a trace: tool names come from the generic tables", () => {
+    const names = new Set(generateTrace(1, "large").events.flatMap((e) => (e.tool ? [e.tool] : [])));
+    for (const n of names) expect(n).toMatch(/^(Agent|advisor|WebSearch|WebFetch|Bash|PowerShell|Read|Grep|Glob|LS|Edit|Write|MultiEdit|NotebookEdit|TodoWrite|ExitPlanMode|Skill|ToolSearch|mcp__sample__(lookup|query))$/);
   });
 });

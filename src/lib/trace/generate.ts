@@ -1,14 +1,22 @@
-import { fork, pick, type Rng } from "../rng";
-import type { AgentTypeCategory } from "./categories";
+import { fork, pick, sampleQuantiles, type Rng } from "../rng";
 import { HANDBACKS, LABEL_NOUNS, LABEL_VERBS, PROMPTS, TURN_EXCERPTS, WEB_QUERIES } from "./phrases";
-import type { ModelFamily, SessionTrace, ToolCategory, TraceAgent, TraceEvent, Usage } from "./types";
+import {
+  CALIBRATION,
+  CORE_CATEGORIES,
+  DEPTH_KEYS,
+  LIFE_BINS,
+  TYPE_KEYS,
+  type CalibrationStats,
+  type CallCategory,
+  type CoreCategory,
+} from "./stats";
+import type { ModelFamily, SessionTrace, TraceAgent, TraceEvent, Usage } from "./types";
 
 export type SampleSize = "small" | "medium" | "large";
 
 type Range = readonly [number, number];
-/** Every category a plain `call` can carry; subagent launches are `spawn` events. */
-type CallCategory = Exclude<ToolCategory, "agents">;
 
+/** The skeleton a size fixes; `CALIBRATION` supplies what happens inside it. */
 export interface SizePreset {
   agents: Range;
   /** Deepest agent; each level below the orchestrator gets at least one agent. */
@@ -26,97 +34,32 @@ export interface SizePreset {
   forcedIdle: boolean;
 }
 
-/** Everything the generator draws from. A calibrated version replaces `PLACEHOLDER_STATS`. */
-export interface GenStats {
-  sizes: Record<SampleSize, SizePreset>;
-  categoryMix: readonly (readonly [CallCategory, number])[];
-  tools: Record<CallCategory, readonly string[]>;
-  /** Seconds between a call and its result, per category. */
-  latency: Record<CallCategory, Range>;
-  errorRate: number;
-  /** Weights for 0, 1, 2... calls in one assistant turn. */
-  callsPerTurn: readonly number[];
-  parallelCallProb: number;
-  /** Seconds from a turn to its first call. */
-  turnThink: Range;
-  /** Seconds from a result to the next turn. */
-  resultGap: Range;
-  usage: { input: Range; output: Range; cacheRead: Range; cacheWrite: Range };
-  usageScale: Record<ModelFamily, number>;
-  /** Subagent model weights by depth (1, 2, 3). */
-  modelMix: Record<1 | 2 | 3, readonly (readonly [ModelFamily, number])[]>;
-  agentTypeMix: readonly (readonly [AgentTypeCategory, number])[];
-  backgroundProb: number;
-  /** Seconds a human takes between prompts, an idle stretch, and the chance of one. */
-  humanGap: Range;
-  idleGap: Range;
-  idleProb: number;
-  forcedIdleGap: Range;
-}
-
-/** Flat placeholder distributions. The calibrated `CALIBRATION` replaces this in a later slice. */
-export const PLACEHOLDER_STATS: GenStats = {
-  sizes: {
-    small: { agents: [3, 8], depth: 1, events: [150, 400], prompts: [1, 2], rootGroup: null, minRootChildren: 2, maxGroup: 3, forcedIdle: false },
-    medium: { agents: [10, 25], depth: 2, events: [1000, 3000], prompts: [2, 4], rootGroup: null, minRootChildren: 3, maxGroup: 4, forcedIdle: true },
-    large: { agents: [40, 120], depth: 3, events: [8000, 20000], prompts: [3, 6], rootGroup: [6, 8], minRootChildren: 8, maxGroup: 5, forcedIdle: true },
-  },
-  categoryMix: [
-    ["shell", 0.3],
-    ["files", 0.3],
-    ["edit", 0.15],
-    ["web", 0.08],
-    ["mcp", 0.06],
-    ["plan", 0.04],
-    ["other", 0.05],
-    ["advisor", 0.02],
-  ],
-  tools: {
-    web: ["WebSearch", "WebFetch"],
-    shell: ["Bash", "PowerShell"],
-    files: ["Read", "Grep", "Glob", "LS"],
-    edit: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
-    advisor: ["advisor"],
-    plan: ["TodoWrite", "ExitPlanMode"],
-    mcp: ["mcp__sample__lookup", "mcp__sample__query"],
-    other: ["Skill", "ToolSearch"],
-  },
-  latency: {
-    web: [1, 8],
-    shell: [0.3, 12],
-    files: [0.05, 1.5],
-    edit: [0.1, 2],
-    advisor: [4, 25],
-    plan: [0.05, 0.5],
-    mcp: [0.5, 6],
-    other: [0.1, 2],
-  },
-  errorRate: 0.06,
-  callsPerTurn: [0.15, 0.35, 0.3, 0.2],
-  parallelCallProb: 0.3,
-  turnThink: [0.2, 1.5],
-  resultGap: [0.05, 0.4],
-  usage: { input: [200, 8000], output: [50, 2500], cacheRead: [5000, 120000], cacheWrite: [0, 6000] },
-  usageScale: { opus: 1, fable: 1, sonnet: 0.8, haiku: 0.5, other: 0.7 },
-  modelMix: {
-    1: [["fable", 0.3], ["sonnet", 0.35], ["haiku", 0.2], ["opus", 0.15]],
-    2: [["fable", 0.15], ["sonnet", 0.35], ["haiku", 0.4], ["opus", 0.1]],
-    3: [["fable", 0.1], ["sonnet", 0.3], ["haiku", 0.55], ["opus", 0.05]],
-  },
-  agentTypeMix: [
-    ["general", 0.3],
-    ["explore", 0.25],
-    ["plan", 0.1],
-    ["build", 0.15],
-    ["review", 0.1],
-    ["test", 0.1],
-  ],
-  backgroundProb: 0.2,
-  humanGap: [5, 90],
-  idleGap: [130, 1500],
-  idleProb: 0.3,
-  forcedIdleGap: [660, 2400],
+export const PRESETS: Record<SampleSize, SizePreset> = {
+  small: { agents: [3, 8], depth: 1, events: [150, 400], prompts: [1, 2], rootGroup: null, minRootChildren: 2, maxGroup: 3, forcedIdle: false },
+  medium: { agents: [10, 25], depth: 2, events: [1000, 3000], prompts: [2, 4], rootGroup: null, minRootChildren: 3, maxGroup: 4, forcedIdle: true },
+  large: { agents: [40, 120], depth: 3, events: [8000, 20000], prompts: [3, 6], rootGroup: [6, 8], minRootChildren: 8, maxGroup: 5, forcedIdle: true },
 };
+
+/** Generic tool names a sample uses; each categorizes back to its key. Web tools are picked apart. */
+const TOOLS: Record<Exclude<CallCategory, "web">, readonly string[]> = {
+  shell: ["Bash", "PowerShell"],
+  files: ["Read", "Grep", "Glob", "LS"],
+  edit: ["Edit", "Write", "MultiEdit", "NotebookEdit"],
+  advisor: ["advisor"],
+  plan: ["TodoWrite", "ExitPlanMode"],
+  mcp: ["mcp__sample__lookup", "mcp__sample__query"],
+  other: ["Skill", "ToolSearch"],
+};
+
+/** Seconds from a turn to its first call, and between calls issued one after another. */
+const TURN_THINK: Range = [0.05, 0.6];
+const CALL_STEP: Range = [0.05, 0.4];
+/** The idle stretch before the second prompt when a preset forces one. */
+const FORCED_IDLE_GAP: Range = [660, 2400];
+/** Heavy tails are clipped so one draw cannot swallow a session: a wait mid-task, and a human's. */
+const MAX_IDLE_GAP = 240;
+const MAX_HUMAN_GAP = 1800;
+const MIN_HUMAN_GAP = 5;
 
 const SIZE_STREAM: Record<SampleSize, number> = { small: 0, medium: 1000, large: 2000 };
 
@@ -127,15 +70,40 @@ const choose = <T>(xs: readonly T[], r: Rng): T => xs[Math.floor(r() * xs.length
 const pickPair = <T>(pairs: readonly (readonly [T, number])[], r: Rng): T =>
   pairs[pick(pairs.map((p) => p[1]), r)][0];
 
+/** A call an agent must make somewhere in its life, `at` being how far through (0 to 1). */
+interface Must {
+  category: CallCategory;
+  at: number;
+}
+
 interface Plan {
   groups: number[][];
   budget: number;
-  must: CallCategory[];
+  must: Must[];
   prompts: number;
 }
 
+/** What a subagent's drawn size says of it: weight in the event budget, and how fast it works. */
+interface Shape {
+  calls: number;
+  pace: number;
+}
+
+/** A group size from a histogram indexed by count, at least 1 and at most `cap`. */
+function groupOf(weights: readonly number[], cap: number, r: Rng): number {
+  const tail = weights.map((w, i) => (i === 0 ? 0 : w));
+  return tail.some((w) => w > 0) ? Math.min(pick(tail, r), cap) : 1;
+}
+
+const modelPairs = (mix: Record<ModelFamily, number>) =>
+  (Object.entries(mix) as [ModelFamily, number][]).filter(([m]) => m !== "other");
+
 /** The skeleton: who exists, who spawns whom, and in which sibling groups. */
-function buildAgents(preset: SizePreset, stats: GenStats, r: Rng): { agents: TraceAgent[]; groupsOf: number[][][] } {
+function buildAgents(
+  preset: SizePreset,
+  stats: CalibrationStats,
+  r: Rng,
+): { agents: TraceAgent[]; groupsOf: number[][][]; shapes: Shape[] } {
   const total = int(r, preset.agents);
   const n = total - 1;
 
@@ -178,13 +146,16 @@ function buildAgents(preset: SizePreset, stats: GenStats, r: Rng): { agents: Tra
   const forcedModels: ModelFamily[] = ["sonnet", "haiku", "fable"];
   counts.forEach((count, di) => {
     const depth = di + 1;
+    // Only some agents launch subagents of their own; at least one must.
+    const above = byDepth[depth - 1];
+    let spawners = depth === 1 ? above : above.filter(() => r() < stats.childSpawnProb);
+    if (spawners.length === 0) spawners = [above[int(r, [0, above.length - 1])]];
     for (let k = 0; k < count; k++) {
       const id = agents.length;
-      const parents = byDepth[depth - 1];
-      const parent = depth === 1 ? 0 : parents[int(r, [0, parents.length - 1])];
-      const model = forcedModels[id - 1] ?? pickPair(stats.modelMix[depth as 1 | 2 | 3], r);
+      const parent = depth === 1 ? 0 : spawners[int(r, [0, spawners.length - 1])];
+      const model = forcedModels[id - 1] ?? pickPair(modelPairs(stats.modelMix[DEPTH_KEYS[depth - 1]]), r);
       const label = `${choose(LABEL_VERBS, r)} ${choose(LABEL_NOUNS, r)}`;
-      make(id, parent, depth, model, pickPair(stats.agentTypeMix, r), label);
+      make(id, parent, depth, model, pickPair(TYPE_KEYS.map((t) => [t, stats.agentTypeMix[t]] as const), r), label);
     }
   });
 
@@ -194,7 +165,12 @@ function buildAgents(preset: SizePreset, stats: GenStats, r: Rng): { agents: Tra
     const kids = agents.filter((k) => k.parent === a.id).map((k) => k.id);
     for (let i = 0; i < kids.length; ) {
       const first = a.id === 0 && i === 0 ? preset.rootGroup : null;
-      const size = Math.min(first ? int(r, first) : int(r, [1, a.id === 0 ? preset.maxGroup : 3]), kids.length - i);
+      const wanted = first
+        ? int(r, first)
+        : a.id === 0
+          ? groupOf(stats.spawnsPerTurn, preset.maxGroup, r)
+          : groupOf(stats.groupSize, 3, r);
+      const size = Math.min(wanted, kids.length - i);
       groupsOf[a.id].push(kids.slice(i, i + size));
       i += size;
     }
@@ -202,19 +178,28 @@ function buildAgents(preset: SizePreset, stats: GenStats, r: Rng): { agents: Tra
 
   // Background children belong to the orchestrator, which outlives them.
   const rootKids = agents.filter((a) => a.parent === 0);
-  for (const k of rootKids) k.background = r() < stats.backgroundProb;
+  for (const k of rootKids) k.background = r() < stats.backgroundFraction;
   if (!rootKids.some((k) => k.background)) {
     const lastGroup = groupsOf[0][groupsOf[0].length - 1];
     agents[lastGroup[0]].background = true;
   }
-  return { agents, groupsOf };
+
+  // Each subagent's drawn tool calls and duration: its share of the budget, and its pace.
+  const refPace = stats.childDuration.p50 / stats.childToolCalls.p50;
+  const shapes: Shape[] = agents.map((a) => {
+    if (a.id === 0) return { calls: 0, pace: 1 };
+    const calls = sampleQuantiles(stats.childToolCalls, r);
+    const duration = sampleQuantiles(stats.childDuration, r);
+    return { calls, pace: Math.min(2, Math.max(0.5, duration / calls / refPace)) };
+  });
+  return { agents, groupsOf, shapes };
 }
 
-function split(budgets: Plan[], agents: TraceAgent[], target: number, mandatory: number, r: Rng) {
+function split(budgets: Plan[], shapes: Shape[], target: number, mandatory: number) {
   const rest = target - mandatory;
   const mins = budgets.map((p, i) => 4 + 2 * p.must.length + 2 * p.groups.length + (i === 0 ? 4 * p.prompts : 0));
   const extra = Math.max(0, rest - mins.reduce((a, b) => a + b, 0));
-  const weights = agents.map(() => 0.2 + r() ** 2 * 2);
+  const weights = shapes.map((s) => s.calls);
   const others = weights.reduce((a, b) => a + b, 0) - weights[0];
   weights[0] = 0.4 * others;
   const sum = weights.reduce((a, b) => a + b, 0);
@@ -228,7 +213,8 @@ function split(budgets: Plan[], agents: TraceAgent[], target: number, mandatory:
 }
 
 interface Ctx {
-  stats: GenStats;
+  stats: CalibrationStats;
+  shapes: Shape[];
   seed: number;
   streamBase: number;
   agents: TraceAgent[];
@@ -237,16 +223,13 @@ interface Ctx {
   preset: SizePreset;
 }
 
-const CALL_WEIGHTS = (stats: GenStats) => stats.categoryMix.map((m) => m[1]);
-
 function makeUsage(c: Ctx, model: ModelFamily, r: Rng): Usage {
-  const s = c.stats.usageScale[model];
-  const u = c.stats.usage;
+  const u = c.stats.usage[model];
   return {
-    input: Math.round(uni(r, u.input) * s),
-    output: Math.round(uni(r, u.output) * s),
-    cacheRead: Math.round(uni(r, u.cacheRead) * s),
-    cacheWrite: Math.round(uni(r, u.cacheWrite) * s),
+    input: Math.round(sampleQuantiles(u.input, r)),
+    output: Math.round(sampleQuantiles(u.output, r)),
+    cacheRead: Math.round(sampleQuantiles(u.cacheRead, r)),
+    cacheWrite: Math.round(sampleQuantiles(u.cacheWrite, r)),
   };
 }
 
@@ -255,8 +238,8 @@ function runAgent(c: Ctx, id: number, startT: number): number {
   const { stats, events } = c;
   const me = c.agents[id];
   const plan = c.plans[id];
+  const pace = c.shapes[id].pace;
   const r = fork(c.seed, c.streamBase + 100 + id);
-  const callWeights = CALL_WEIGHTS(stats);
   const must = [...plan.must];
   const phases = id === 0 ? plan.prompts : 1;
 
@@ -265,6 +248,9 @@ function runAgent(c: Ctx, id: number, startT: number): number {
   let last = startT;
   let pendingBg = 0;
   let calls = 0;
+  let spent = 0; // budget used so far, over the agent's whole life
+  let burst = true;
+  let prevCore: CoreCategory | undefined;
 
   const emit = (e: TraceEvent): number => {
     events.push(e);
@@ -272,23 +258,43 @@ function runAgent(c: Ctx, id: number, startT: number): number {
     return events.length - 1;
   };
 
+  /** Seconds from the end of one turn's work to the next turn: a burst/idle two-state chain. */
+  const gap = (): number => {
+    const g = stats.gaps;
+    if (r() >= (burst ? g.continueBurst : g.continueIdle)) burst = !burst;
+    const x = sampleQuantiles(burst ? g.burst : g.idle, r);
+    return Math.min(burst ? x * pace : x, MAX_IDLE_GAP);
+  };
+
+  const pickCategory = (life: number): CallCategory => {
+    const due = must.findIndex((m) => life >= m.at);
+    if (due >= 0) return must.splice(due, 1)[0].category;
+    const density = stats.advisor.position[Math.min(LIFE_BINS - 1, Math.floor(life * LIFE_BINS))] * LIFE_BINS;
+    if (r() < Math.min(0.2, stats.advisor.rate * density)) return "advisor";
+    if (r() < stats.web.share) return "web";
+    const row = prevCore ? stats.core.transitions[prevCore] : stats.core.mix;
+    prevCore = CORE_CATEGORIES[pick(CORE_CATEGORIES.map((k) => row[k]), r)];
+    return prevCore;
+  };
+
   const issueCalls = (k: number) => {
     const parallel = k >= 2 && r() < stats.parallelCallProb;
     let latest = cursor;
     for (let j = 0; j < k; j++) {
-      const category = must.length ? must.shift()! : stats.categoryMix[pick(callWeights, r)][0];
-      const tool = choose(stats.tools[category], r);
+      const category = pickCategory(spent / plan.budget);
+      const tool =
+        category === "web" ? (r() < stats.web.search ? "WebSearch" : "WebFetch") : choose(TOOLS[category], r);
       const callT = parallel ? round2(cursor + 0.05 * j) : cursor;
       // A web call carries its query; picked by position, not drawn, so every other draw is unchanged.
       const query = category === "web" ? { excerpt: WEB_QUERIES[events.length % WEB_QUERIES.length] } : {};
       const seq = emit({ t: callT, agent: id, kind: "call", category, tool, ...query });
       calls++;
-      const resT = round2(callT + uni(r, stats.latency[category]));
+      const resT = round2(callT + sampleQuantiles(stats.latency[category], r));
       emit({ t: resT, agent: id, kind: "result", category, tool, call: seq, isError: r() < stats.errorRate });
       if (parallel) latest = Math.max(latest, resT);
-      else cursor = round2(resT + uni(r, stats.resultGap));
+      else cursor = round2(resT + uni(r, CALL_STEP));
     }
-    if (parallel) cursor = round2(latest + uni(r, stats.resultGap));
+    if (parallel) cursor = round2(latest + uni(r, CALL_STEP));
   };
 
   const spawnGroup = (group: number[]) => {
@@ -302,44 +308,46 @@ function runAgent(c: Ctx, id: number, startT: number): number {
       if (c.agents[child].background) pendingBg = Math.max(pendingBg, retT);
       else fgLatest = Math.max(fgLatest, retT);
     });
-    cursor = fgLatest >= 0 ? round2(fgLatest + uni(r, [0.1, 0.6])) : round2(cursor + 0.1 * (group.length + 1) + 0.3);
+    cursor = fgLatest >= 0 ? round2(fgLatest) : round2(cursor + 0.1 * (group.length + 1));
   };
 
   for (let p = 0; p < phases; p++) {
     if (id === 0) {
       if (p > 0) {
-        const idle =
+        const human =
           c.preset.forcedIdle && p === 1
-            ? uni(r, stats.forcedIdleGap)
-            : r() < stats.idleProb
-              ? uni(r, stats.idleGap)
-              : uni(r, stats.humanGap);
-        cursor = round2(Math.max(cursor, pendingBg) + idle);
+            ? uni(r, FORCED_IDLE_GAP)
+            : Math.min(MAX_HUMAN_GAP, Math.max(MIN_HUMAN_GAP, sampleQuantiles(stats.humanGap, r)));
+        cursor = round2(Math.max(cursor, pendingBg) + human);
       }
       emit({ t: cursor, agent: 0, kind: "prompt", excerpt: choose(PROMPTS, r) });
       cursor = round2(cursor + uni(r, [0.3, 1.5]));
     }
-    const phaseBudget = Math.floor(plan.budget / phases) + (p === phases - 1 ? plan.budget % phases : 0);
+    const lastPhase = p === phases - 1;
+    const phaseBudget = Math.floor(plan.budget / phases) + (lastPhase ? plan.budget % phases : 0);
     const groups = plan.groups.filter((_, g) => Math.floor((g * phases) / plan.groups.length) === p);
     let used = 0;
     let gi = 0;
-    while (used < phaseBudget || gi < groups.length) {
+    while (used < phaseBudget || gi < groups.length || (lastPhase && must.length > 0)) {
       const turnT = cursor;
       const usage = makeUsage(c, me.model, r);
       emit({ t: turnT, agent: id, kind: "turn", usage, excerpt: choose(TURN_EXCERPTS, r) });
       for (const key of Object.keys(usage) as (keyof Usage)[]) me.usage[key] += usage[key];
       used++;
-      cursor = round2(turnT + uni(r, stats.turnThink));
+      spent++;
+      cursor = round2(turnT + uni(r, TURN_THINK));
 
       let k = pick(stats.callsPerTurn, r);
       k = Math.min(k, Math.max(0, Math.floor((phaseBudget - used) / 2)));
-      if (must.length && k < 1) k = 1;
+      if (k < 1 && must.some((m) => spent / plan.budget >= m.at)) k = 1;
       issueCalls(k);
       used += 2 * k;
+      spent += 2 * k;
 
       if (gi < groups.length && used >= ((gi + 1) / (groups.length + 1)) * 0.7 * phaseBudget) {
         spawnGroup(groups[gi++]);
       }
+      cursor = round2(cursor + gap());
     }
   }
 
@@ -354,29 +362,34 @@ function runAgent(c: Ctx, id: number, startT: number): number {
 }
 
 /**
- * A seeded sample session. Same seed and size give the same trace; `stats` supplies the
- * distributions (placeholders until calibration lands).
+ * A seeded sample session. Same seed and size give the same trace. The size fixes the skeleton;
+ * `stats` (the committed calibration by default) supplies every distribution inside it.
  */
-export function generateTrace(seed: number, size: SampleSize, stats: GenStats = PLACEHOLDER_STATS): SessionTrace {
-  const preset = stats.sizes[size];
+export function generateTrace(seed: number, size: SampleSize, stats: CalibrationStats = CALIBRATION): SessionTrace {
+  const preset = PRESETS[size];
   const streamBase = SIZE_STREAM[size];
   const rs = fork(seed, streamBase);
-  const { agents, groupsOf } = buildAgents(preset, stats, rs);
+  const { agents, groupsOf, shapes } = buildAgents(preset, stats, rs);
 
   const prompts = int(rs, preset.prompts);
   const plans: Plan[] = agents.map((a, i) => ({
     groups: groupsOf[i],
     budget: 0,
-    must: i === 0 ? ["advisor"] : i === 1 ? ["web"] : [],
+    must:
+      i === 0
+        ? [{ category: "advisor", at: (pick(stats.advisor.position, rs) + rs()) / LIFE_BINS }]
+        : i === 1
+          ? [{ category: "web", at: rs() * 0.5 }]
+          : [],
     prompts: i === 0 ? prompts : 1,
   }));
   const mandatory = 2 * (agents.length - 1) + prompts + 1;
   // Overshoot room: a flushed group turn per group plus forced calls.
   const slack = agents.length + 14;
   const target = int(rs, [preset.events[0] + 5, preset.events[1] - slack]);
-  split(plans, agents, target, mandatory, fork(seed, streamBase + 1));
+  split(plans, shapes, target, mandatory);
 
-  const ctx: Ctx = { stats, seed, streamBase, agents, plans, events: [], preset };
+  const ctx: Ctx = { stats, shapes, seed, streamBase, agents, plans, events: [], preset };
   runAgent(ctx, 0, 0);
 
   // Sort by time, creation order breaking ties, then point links at the sorted positions.

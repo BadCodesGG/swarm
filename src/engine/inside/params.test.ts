@@ -5,7 +5,7 @@ const parse = (q: string) => parseInsideParams(new URLSearchParams(q));
 
 describe("parseInsideParams", () => {
   it("defaults to the hero sample, playing from the hero moment", () => {
-    expect(parse("")).toEqual({ source: "medium", seed: HERO.seed, t: HERO.t, rate: 1, shot: false, select: null });
+    expect(parse("")).toEqual({ source: "medium", seed: HERO.seed, t: HERO.t, rate: 1, shot: false, select: null, hud: true });
   });
 
   it("holds the hero shot at its own rate unless one is given", () => {
@@ -26,8 +26,11 @@ describe("parseInsideParams", () => {
       rate: 1,
       shot: false,
       select: null,
+      hud: true,
     });
     expect(parse("rate=900").rate).toBe(200);
     expect(parse("select=5").select).toBe(5);
+    expect(parse("shot=hero").hud).toBe(true);
+    expect(parse("shot=hero&hud=0").hud).toBe(false);
   });
 });

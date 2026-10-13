@@ -326,3 +326,17 @@ export function featuredAgent(trace: SessionTrace, t: number): number {
   }
   return best;
 }
+
+/** The id of the point nearest (x, y) within `radius` px, or null. Ties go to the lower id. */
+export function nearestWithin(points: readonly { id: number; x: number; y: number }[], x: number, y: number, radius: number): number | null {
+  let best: number | null = null;
+  let bestD = radius * radius;
+  for (const p of points) {
+    const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+    if (d < bestD || (d === bestD && best !== null && p.id < best)) {
+      best = p.id;
+      bestD = d;
+    }
+  }
+  return best;
+}

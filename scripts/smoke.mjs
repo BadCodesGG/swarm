@@ -94,7 +94,161 @@ async function stepLanding(browser) {
   }
 }
 
-const STEPS = [stepLanding];
+/** Agent and event counts a sample of each size must land in (see `generate.test.ts`). */
+const BANDS = {
+  small: { agents: [3, 8], events: [150, 400] },
+  medium: { agents: [10, 25], events: [1000, 3000] },
+  large: { agents: [40, 120], events: [8000, 20000] },
+};
+
+/** The inside debug entry as plain data (JSON drops its functions). */
+const inside = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm.inside)));
+const waitInside = (page, fn, arg, timeout = 30_000) => page.waitForFunction(fn, arg, { timeout });
+const blur = (page) => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+/** The number shown under a counter label, e.g. `TOOL CALLS`. */
+const counter = (page, label) =>
+  page.evaluate((l) => {
+    for (const dt of document.querySelectorAll("dl[aria-label=Counters] dt")) {
+      if (dt.textContent === l) return Number(dt.nextElementSibling.textContent.replace(/[^0-9]/g, ""));
+    }
+    return null;
+  }, label);
+
+async function stepInside(browser) {
+  console.log("-- 2. inside");
+  for (const size of ["small", "medium", "large"]) {
+    const { context, page, problems } = await openPage(browser, `/inside?source=${size}&seed=1`);
+    try {
+      await waitInside(page, () => window.__swarm?.inside?.frame > 5, null, 90_000);
+      const first = await inside(page);
+      const band = BANDS[size];
+      check(`${size}: agent count in band`, first.agents >= band.agents[0] && first.agents <= band.agents[1], `${first.agents} agents`);
+      check(`${size}: event count in band`, first.events >= band.events[0] && first.events <= band.events[1], `${first.events} events`);
+      check(`${size}: label says ${size}`, first.label.startsWith(`Sample ${size}`), first.label);
+
+      const tag = page.locator("[data-sample-tag]");
+      await tag.waitFor({ state: "visible" });
+      check(`${size}: sample tag is visible`, (await tag.textContent()).includes("Sample session: generated to look like a real one"));
+      check(`${size}: source button is pressed`, (await page.locator(`button[aria-pressed=true]:text-is("${size[0].toUpperCase()}${size.slice(1)}")`).count()) === 1);
+
+      // Frames and playback time advance.
+      await page.waitForTimeout(700);
+      const later = await inside(page);
+      check(`${size}: frames advance`, later.frame > first.frame, `${first.frame} to ${later.frame}`);
+      check(`${size}: playback advances at 1x`, later.t > first.t, `${first.t.toFixed(2)} to ${later.t.toFixed(2)}`);
+
+      if (size !== "medium") {
+        check(`${size}: logged no console errors or THREE warnings`, problems.length === 0, problems.join(" | "));
+        continue;
+      }
+
+      // Rate 200 advances much faster, and the counters follow the playhead.
+      await page.getByRole("button", { name: "200x" }).click();
+      await blur(page);
+      const before = await inside(page);
+      await page.waitForTimeout(600);
+      const fast = await inside(page);
+      check("medium: rate 200 is set", fast.rate === 200, String(fast.rate));
+      check("medium: rate 200 advances", fast.t - before.t > 20, `${(fast.t - before.t).toFixed(1)} trace seconds in 0.6 s`);
+
+      // Keyboard: Space pauses, Right / Left scrub, 1 / 2 / 3 set the speed.
+      await page.keyboard.press("Space");
+      await waitInside(page, () => window.__swarm.inside.playing === false);
+      check("medium: Space pauses", true);
+      const paused = await inside(page);
+      await page.keyboard.press("ArrowRight");
+      await waitInside(page, (t) => window.__swarm.inside.t > t, paused.t);
+      const right = await inside(page);
+      await page.keyboard.press("ArrowLeft");
+      await page.keyboard.press("ArrowLeft");
+      await waitInside(page, (t) => window.__swarm.inside.t < t, right.t);
+      check("medium: Right and Left scrub", true);
+      await page.keyboard.press("1");
+      await waitInside(page, () => window.__swarm.inside.rate === 1);
+      await page.keyboard.press("2");
+      await waitInside(page, () => window.__swarm.inside.rate === 20);
+      await page.keyboard.press("3");
+      await waitInside(page, () => window.__swarm.inside.rate === 200);
+      check("medium: 1, 2 and 3 set the speed", true);
+
+      // Seek back by clicking the scrubber: the counters read countersAt at the new time.
+      await page.keyboard.press("3");
+      await page.keyboard.press("Space");
+      await page.waitForTimeout(1200);
+      await page.keyboard.press("Space");
+      await waitInside(page, () => window.__swarm.inside.playing === false);
+      const callsAhead = await counter(page, "TOOL CALLS");
+      const tAhead = (await inside(page)).t;
+      const box = await page.locator("[data-scrubber]").boundingBox();
+      await page.mouse.click(box.x + box.width * 0.02, box.y + box.height / 2);
+      await waitInside(page, (t) => window.__swarm.inside.t < t, tAhead);
+      await page.waitForTimeout(300);
+      const back = await inside(page);
+      const callsBack = await counter(page, "TOOL CALLS");
+      check("medium: seeking back lowers the playhead and the tool-call counter", callsBack < callsAhead, `${callsAhead} to ${callsBack}`);
+      check("medium: the counter reads countersAt at the new time", callsBack === back.counters.toolCalls, `${callsBack} vs ${back.counters.toolCalls}`);
+
+      // Clicking an agent selects it and fills the card.
+      // Paused, so the scene is a pure function of the playhead: find a moment with several agents out.
+      let crowded = false;
+      for (const at of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+        await page.mouse.click(box.x + box.width * at, box.y + box.height / 2);
+        await page.waitForTimeout(250);
+        if ((await inside(page)).agentsAlive >= 3) {
+          crowded = true;
+          break;
+        }
+      }
+      check("medium: found a moment with several live subagents", crowded);
+      const target = await page.evaluate(() => {
+        const { screenOf, agents, selected } = window.__swarm.inside;
+        const pts = [];
+        for (let id = 1; id < agents; id++) {
+          const p = screenOf(id);
+          if (p) pts.push({ id, ...p });
+        }
+        const clear = pts.filter((p) => {
+          const el = document.elementFromPoint(p.x, p.y);
+          return el instanceof HTMLCanvasElement && p.id !== selected;
+        });
+        return clear[0] ?? null;
+      });
+      check("medium: an agent is on screen to click", target !== null);
+      await page.mouse.click(target.x, target.y);
+      await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id);
+      check("medium: clicking an agent selects it", true, `agent ${target.id}`);
+      const card = page.locator("[data-detail-card]");
+      await card.waitFor({ state: "visible" });
+      const title = await card.locator("h2").textContent();
+      check("medium: the card names the agent", title.trim().length > 0, title);
+      check("medium: the card has a brief", (await card.locator("[data-brief]").textContent()).trim().length > 0);
+      check("medium: the card has Follow and Jump to its start", (await card.getByRole("button", { name: "Follow" }).count()) === 1 && (await card.getByRole("button", { name: "Jump to its start" }).count()) === 1);
+      await card.getByRole("button", { name: "Follow" }).click();
+      await waitInside(page, (id) => window.__swarm.inside.following === id, target.id);
+      check("medium: Follow makes the camera follow", true);
+      await card.getByRole("button", { name: "Jump to its start" }).click();
+      await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id);
+      await card.getByRole("button", { name: "Close details" }).click();
+      await waitInside(page, () => window.__swarm.inside.selected === -1);
+      check("medium: closing the card clears the selection", (await card.count()) === 0);
+
+      // The switcher swaps the trace in place and rewrites ?source=.
+      const frame = (await inside(page)).frame;
+      await page.getByRole("button", { name: "Large" }).click();
+      await waitInside(page, () => window.__swarm.inside.label.startsWith("Sample large"));
+      const swapped = await inside(page);
+      check("medium: switching to Large swaps the trace", swapped.agents >= BANDS.large.agents[0], `${swapped.agents} agents`);
+      check("medium: switching keeps the renderer running", swapped.frame > frame);
+      check("medium: switching rewrites ?source=", new URL(page.url()).searchParams.get("source") === "large", page.url());
+      check("medium: the sample tag stays", (await tag.count()) === 1);
+      check("medium: logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
+    } finally {
+      await context.close();
+    }
+  }
+}
+
+const STEPS = [stepLanding, stepInside];
 
 if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
   console.error("FAIL  no production build: run `npm run build` first (the smoke test serves `next start`)");

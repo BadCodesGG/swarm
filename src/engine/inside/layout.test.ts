@@ -10,6 +10,7 @@ import {
   featuredAgent,
   flightPos,
   makeFlight,
+  nearestWithin,
   newPose,
   ORBIT_RADIUS,
   SPAWN_TIME,
@@ -261,5 +262,21 @@ describe("featuredAgent", () => {
     expect(featuredAgent(tree(), 45)).toBe(1);
     expect(featuredAgent(tree(), 55)).toBe(1);
     expect(featuredAgent(tree(), 5)).toBe(-1);
+  });
+});
+
+describe("nearestWithin", () => {
+  const pts = [
+    { id: 1, x: 100, y: 100 },
+    { id: 2, x: 110, y: 100 },
+    { id: 3, x: 300, y: 300 },
+  ];
+  it("picks the nearest point inside the radius", () => {
+    expect(nearestWithin(pts, 108, 101, 30)).toBe(2);
+    expect(nearestWithin(pts, 101, 99, 30)).toBe(1);
+  });
+  it("returns null outside the radius or with no points", () => {
+    expect(nearestWithin(pts, 200, 200, 30)).toBeNull();
+    expect(nearestWithin([], 0, 0, 30)).toBeNull();
   });
 });

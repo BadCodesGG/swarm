@@ -3,7 +3,7 @@
  * emission (start, end, t0, t1, colour) and placed in the vertex stage from the `time` uniform, so
  * a seek is a buffer rewrite and WebGPU and WebGL2 draw the same thing. Nothing is simulated.
  *
- * A streak is a 2.4 px ribbon from a short way behind the head to the head: a white head, a tail
+ * A streak is a 3 px ribbon from a short way behind the head to the head: a white head, a tail
  * fading into the caller's model colour. Its easing matches `flightEase` in `layout.ts`.
  */
 
@@ -59,7 +59,7 @@ export function createParticles(parent: Object3D, u: InsideUniforms, capacity: n
       return {
         at: mix(start.xyz, end.xyz, k),
         tangent: end.xyz.sub(start.xyz),
-        widthPx: select(alive, float(2.4), float(0)),
+        widthPx: select(alive, float(3), float(0)),
       };
     },
     (s, across, half) => {

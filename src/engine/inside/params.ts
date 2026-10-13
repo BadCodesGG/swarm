@@ -1,6 +1,6 @@
 /**
  * `/inside` URL parameters: `source=small|medium|large`, `seed`, `t` (trace seconds), `rate`,
- * `shot=hero` (fixed clock, paused at `t`), `select` (an agent id). Anything unreadable falls back.
+ * `shot=hero` (fixed clock, paused at `t`), `select` (an agent id), `hud=0` (hide the HUD). Anything unreadable falls back.
  */
 
 import type { SampleSize } from "@/lib/trace/generate";
@@ -16,6 +16,8 @@ export interface InsideParams {
   rate: number;
   shot: boolean;
   select: number | null;
+  /** False for `hud=0`: the scene alone. */
+  hud: boolean;
 }
 
 const SOURCES: readonly SampleSize[] = ["small", "medium", "large"];
@@ -38,5 +40,5 @@ export function parseInsideParams(params: URLSearchParams): InsideParams {
   const rate = rateN !== null && rateN > 0 ? clampRate(rateN) : shot ? HERO.rate : 1;
   const selN = num(params.get("select"));
   const select = selN !== null && Number.isInteger(selN) && selN > 0 ? selN : null;
-  return { source, seed, t, rate, shot, select };
+  return { source, seed, t, rate, shot, select, hud: params.get("hud") !== "0" };
 }

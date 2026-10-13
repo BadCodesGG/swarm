@@ -2,13 +2,19 @@
 
 import Experience, { type StartOptions } from "@/components/experience";
 import type { InsideApp } from "@/engine/inside/app";
+import { Hud } from "./hud";
 import { InsideLabels } from "./labels";
 
 /** The engine (and three) loads only here, on the client, after the capability probe. */
 const start = (canvas: HTMLCanvasElement, opts: StartOptions): Promise<InsideApp> =>
   import("@/engine/inside/app").then(({ startInside }) => startInside(canvas, opts));
 
-const overlay = (app: InsideApp) => <InsideLabels app={app} />;
+const overlay = (app: InsideApp) => (
+  <>
+    <InsideLabels app={app} />
+    {app.params.hud ? <Hud app={app} /> : null}
+  </>
+);
 
 export default function InsideExperience() {
   return (

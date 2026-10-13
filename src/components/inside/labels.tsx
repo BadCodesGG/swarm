@@ -11,6 +11,9 @@ export function probeVerb(tool: string): string {
   return tool.toLowerCase();
 }
 
+/** Below this viewport width the labels thin out (the HUD's phone layout starts here too). */
+const NARROW = 640;
+
 const shorten = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}...` : s);
 
 /**
@@ -35,21 +38,28 @@ export function InsideLabels({ app }: { app: InsideApp }) {
     return () => cancelAnimationFrame(raf);
   }, [app]);
 
+  // On a phone the scene is small: only the lit stations keep a label, and the probes and boundary
+  // text give way, so nothing clips at the edge.
+  const narrow = o.width > 0 && o.width < NARROW;
+  const stations = narrow ? o.stations.filter((s) => s.active) : o.stations;
+
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden font-mono text-[11px] leading-none tracking-[0.08em]" aria-hidden>
+      {narrow ? null : (
+        <span
+          className="absolute text-[10px] tracking-[0.2em] text-faint"
+          style={{ left: o.boundary.x, top: o.boundary.y, transform: "translate(-100%, -100%)" }}
+        >
+          BOUNDARY
+        </span>
+      )}
       <span
-        className="absolute text-[10px] tracking-[0.2em] text-faint"
-        style={{ left: o.boundary.x, top: o.boundary.y, transform: "translate(-100%, -100%)" }}
-      >
-        BOUNDARY
-      </span>
-      <span
-        className="absolute text-[10px] tracking-[0.2em] text-faint"
-        style={{ left: o.core.x, top: o.core.y + 56 * o.scale, transform: "translate(-50%, 0)" }}
+        className="absolute text-[10px] font-semibold tracking-[0.2em] text-[#ffd59a]"
+        style={{ left: o.core.x, top: o.core.y + 36 * o.scale, transform: "translate(-50%, 0)", textShadow: "0 0 3px #070910, 0 1px 6px #070910, 0 0 12px rgba(7, 9, 16, 0.9)" }}
       >
         ORCHESTRATOR
       </span>
-      {o.stations.map((s) => (
+      {stations.map((s) => (
         <span
           key={s.key}
           className="absolute whitespace-nowrap"
@@ -57,10 +67,10 @@ export function InsideLabels({ app }: { app: InsideApp }) {
           data-station={s.key}
         >
           <span className={s.active ? "text-body" : "text-label"}>{s.key.toUpperCase()}</span>
-          <span className="ml-1.5 text-faint">{s.count}</span>
+          {narrow ? null : <span className="ml-1.5 text-faint">{s.count}</span>}
         </span>
       ))}
-      {o.probes.map((p) => (
+      {(narrow ? [] : o.probes).map((p) => (
         <span
           key={p.id}
           className="absolute overflow-hidden text-ellipsis whitespace-nowrap"

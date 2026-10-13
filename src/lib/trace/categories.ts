@@ -48,8 +48,8 @@ const EXACT: Readonly<Record<string, ToolCategory>> = {
 const WEB_SERVER = /browser|chrome|playwright|puppeteer|fetch|web/i;
 
 export function categorize(toolName: string): ToolCategory {
-  const exact = EXACT[toolName];
-  if (exact) return exact;
+  // Own keys only: a tool named "constructor" must not reach Object.prototype.
+  if (Object.hasOwn(EXACT, toolName)) return EXACT[toolName];
   if (toolName.startsWith("mcp__")) {
     const server = toolName.split("__")[1] ?? "";
     return WEB_SERVER.test(server) ? "web" : "mcp";

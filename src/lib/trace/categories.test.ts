@@ -29,6 +29,9 @@ describe("categorize", () => {
     ["ToolSearch", "other"],
     ["Skill", "other"],
     ["", "other"],
+    ["constructor", "other"],
+    ["toString", "other"],
+    ["__proto__", "other"],
   ])("%s -> %s", (name, cat) => {
     expect(categorize(name)).toBe(cat);
   });

@@ -1,6 +1,6 @@
 import { fork, pick, type Rng } from "../rng";
 import type { AgentTypeCategory } from "./categories";
-import { HANDBACKS, LABEL_NOUNS, LABEL_VERBS, PROMPTS, TURN_EXCERPTS } from "./phrases";
+import { HANDBACKS, LABEL_NOUNS, LABEL_VERBS, PROMPTS, TURN_EXCERPTS, WEB_QUERIES } from "./phrases";
 import type { ModelFamily, SessionTrace, ToolCategory, TraceAgent, TraceEvent, Usage } from "./types";
 
 export type SampleSize = "small" | "medium" | "large";
@@ -279,7 +279,9 @@ function runAgent(c: Ctx, id: number, startT: number): number {
       const category = must.length ? must.shift()! : stats.categoryMix[pick(callWeights, r)][0];
       const tool = choose(stats.tools[category], r);
       const callT = parallel ? round2(cursor + 0.05 * j) : cursor;
-      const seq = emit({ t: callT, agent: id, kind: "call", category, tool });
+      // A web call carries its query; picked by position, not drawn, so every other draw is unchanged.
+      const query = category === "web" ? { excerpt: WEB_QUERIES[events.length % WEB_QUERIES.length] } : {};
+      const seq = emit({ t: callT, agent: id, kind: "call", category, tool, ...query });
       calls++;
       const resT = round2(callT + uni(r, stats.latency[category]));
       emit({ t: resT, agent: id, kind: "result", category, tool, call: seq, isError: r() < stats.errorRate });

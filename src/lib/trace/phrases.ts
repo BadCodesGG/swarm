@@ -91,3 +91,19 @@ export const LABEL_NOUNS: readonly string[] = [
   "the navigation",
   "the migration script",
 ];
+
+/** What a sample's web call looks up: generic topics, no real sites or people. */
+export const WEB_QUERIES: readonly string[] = [
+  "streak counting across time zones",
+  "daylight saving date bugs",
+  "http cache control headers",
+  "accessible form error messages",
+  "keyboard focus order in dialogs",
+  "paginating a long list",
+  "safe data migration dry run",
+  "debounce search input",
+  "profiling a slow file import",
+  "dark mode preference storage",
+  "export data as csv",
+  "splitting a large module",
+];

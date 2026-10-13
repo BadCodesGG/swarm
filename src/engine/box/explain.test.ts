@@ -1,21 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluate } from "@/lib/box/layers";
-import { createState, STATUS, step } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, type Attempt, type BoxConfig, type CatchReport, type LayerId, type Verdict } from "@/lib/box/types";
-import {
-  agentId,
-  catchLine,
-  catchMarker,
-  clock,
-  describePlan,
-  escapeLine,
-  escapeSteps,
-  firstOffLayer,
-  flagMarker,
-  ringLabel,
-  trailLabels,
-} from "./explain";
-import { runToEscape, simRng } from "./params";
+import { agentId, catchLine, catchMarker, clock, describePlan, escapeLine, escapeSteps, flagMarker, offStepText, ringLabel, trailLabels } from "./explain";
 
 const networkOff: BoxConfig = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
 
@@ -74,7 +60,7 @@ describe("describePlan", () => {
 
 describe("escapeSteps", () => {
   it("walks the five layers for an escape through an off network layer", () => {
-    const steps = escapeSteps(escapeTrace(networkOff, 0.5), networkOff, "open-connection");
+    const steps = escapeSteps(escapeTrace(networkOff, 0.5), networkOff, "open-connection", ["network"]);
     expect(steps.map((s) => s.title)).toEqual(["01 SANDBOX", "02 PERMISSIONS", "03 NETWORK", "04 MONITOR", "05 AUDIT"]);
     expect(steps.map((s) => s.off)).toEqual([false, false, true, false, false]);
     expect(steps[0].text).toBe("Passed: stayed in its folder");
@@ -106,10 +92,6 @@ describe("escapeSteps", () => {
     expect(trailLabels(escapeTrace(networkOff, 0.99))).toEqual({ monitor: "0.75", audit: "cleared" });
   });
 
-  it("finds the first layer that was off", () => {
-    expect(firstOffLayer(escapeTrace(networkOff, 0.5), ["open-connection"], networkOff)).toBe("network");
-    expect(firstOffLayer(escapeTrace(DEFAULT_CONFIG, 0.5), ["open-connection"], DEFAULT_CONFIG)).toBeNull();
-  });
 });
 
 describe("log lines and markers", () => {
@@ -151,53 +133,22 @@ describe("log lines and markers", () => {
   });
 });
 
-describe("the layer to turn on", () => {
+describe("what an off layer's card says", () => {
   const off = (...layers: LayerId[]): BoxConfig => ({ ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, ...Object.fromEntries(layers.map((l) => [l, false])) } });
+  const sandboxAndNetwork = off("sandbox", "network");
 
-  it("names only a layer whose rule applies to some step of the plan", () => {
-    const sandboxAndNetwork = off("sandbox", "network");
-    const trace = escapeTrace(sandboxAndNetwork, 0.5);
-    // No step writes outside or copies itself: the sandbox could not have stopped it; the network could.
-    expect(firstOffLayer(trace, ["split-steps", "split-steps", "ask-permission", "open-connection"], sandboxAndNetwork)).toBe("network");
-    expect(firstOffLayer(trace, ["write-outside", "ask-permission", "open-connection"], sandboxAndNetwork)).toBe("sandbox");
+  it("claims nothing until the replay has shown which off layers would have stopped it", () => {
+    const steps = escapeSteps(escapeTrace(sandboxAndNetwork, 0.5), sandboxAndNetwork, "open-connection");
+    expect(steps[0]).toMatchObject({ layer: "sandbox", off: true, text: "Off" });
+    expect(steps[2]).toMatchObject({ layer: "network", off: true, text: "Off" });
+    expect(offStepText("network", null)).toBe("Off");
   });
 
-  it("names the audit only while the monitor is on to flag for it, and nothing when no off layer applies", () => {
-    const auditOff = off("audit");
-    expect(firstOffLayer(escapeTrace(auditOff, 0.5), ["split-steps", "open-connection"], auditOff)).toBe("audit");
-    const both = off("monitor", "audit");
-    expect(firstOffLayer(escapeTrace(both, 0.5), ["split-steps", "open-connection"], both)).toBe("monitor");
-    const sandboxOff = off("sandbox");
-    expect(firstOffLayer(escapeTrace(sandboxOff, 0.5), ["split-steps", "ask-permission", "open-connection"], sandboxOff)).toBeNull();
-  });
-
-  it("marks an off layer that could not have applied differently from one that let it through", () => {
-    const sandboxAndNetwork = off("sandbox", "network");
-    const steps = escapeSteps(escapeTrace(sandboxAndNetwork, 0.5), sandboxAndNetwork, "open-connection", ["split-steps", "ask-permission", "open-connection"]);
-    expect(steps[0]).toMatchObject({ layer: "sandbox", off: true, text: "Off: no step was its to stop" });
+  it("tells an off layer the replay proved would have stopped it from one that would have let it through", () => {
+    const steps = escapeSteps(escapeTrace(sandboxAndNetwork, 0.5), sandboxAndNetwork, "open-connection", ["network"]);
+    expect(steps[0]).toMatchObject({ layer: "sandbox", off: true, text: "Off: would not have stopped it" });
     expect(steps[2]).toMatchObject({ layer: "network", off: true, text: "Off: nothing to stop it" });
-  });
-
-  it("changes that agent's outcome when the named layer is turned on and the run is replayed", () => {
-    const config = off("sandbox", "network");
-    let named = 0;
-    for (const seed of [2, 4, 7, 11, 12]) {
-      const state = createState(config, seed, 300);
-      const tick = runToEscape(state, simRng(seed), 20_000, (r) => {
-        if (r.escapes.length === 0 || named > 99) return;
-        const [e] = r.escapes;
-        const plan = state.plans[e.agent]!;
-        const layer = firstOffLayer(e.trace, plan, config);
-        expect(layer, `seed ${seed}`).not.toBeNull();
-        const on: BoxConfig = { ...config, layers: { ...config.layers, [layer!]: true } };
-        const rerun = createState(on, seed, 300);
-        const r2 = simRng(seed);
-        while (rerun.tick < r.tick) step(rerun, r2);
-        expect(rerun.status[e.agent], `seed ${seed}: ${layer} on`).not.toBe(STATUS.escaped);
-        named++;
-      });
-      expect(tick, `seed ${seed} escapes`).toBeGreaterThan(0);
-    }
-    expect(named).toBe(5);
+    expect(steps.filter((s) => !s.off).map((s) => s.text)).toEqual(["Passed: it had a yes on file", "Passed: 0.60, under 0.62", "Passed: not in the 2% checked"]);
+    expect(offStepText("sandbox", [])).toBe("Off: would not have stopped it");
   });
 });

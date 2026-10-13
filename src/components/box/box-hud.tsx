@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { runTrialsOffThread } from "@/lib/box/trials-client";
+import { runTrialsOffThread, stoppingLayersOffThread } from "@/lib/box/trials-client";
 import { DEFAULT_CONFIG, type BoxConfig, type LayerId } from "@/lib/box/types";
 import type { BoxApp } from "@/engine/box/app";
+import type { EscapeRecord } from "@/engine/box/tally";
 import { useMedia } from "@/components/inside/use-engine";
 import { countsLine, nextAnnouncement, trialsLine, type Said } from "./announce";
 import { EscapeExplainer } from "./escape-explainer";
@@ -58,6 +59,11 @@ function CountsStatus({ caught, escaped }: { caught: number; escaped: number }) 
 
 /** A different trial seed for each repeat run of the same settings, so pooled runs add information. */
 const runSeed = (seed: number, runs: number) => (seed + Math.imul(runs, 7919)) >>> 0;
+
+const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
+
+/** One escape, as the replay sees it: the same seed, crowd, settings, agent and tick give the same answer. */
+const escapeKey = (seed: number, agents: number, e: EscapeRecord) => `${seed}|${agents}|${settingsKey(e.config)}|${e.agent}|${e.tick}`;
 
 /**
  * Everything over the Box canvas: the header, the controls, the scene slot the engine draws into
@@ -116,7 +122,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
           app.bus.emit("trials", summary);
         })
         .catch((err: unknown) => {
-          if (!(err instanceof DOMException && err.name === "AbortError")) console.warn("Trials failed:", err);
+          if (!isAbort(err)) console.warn("Trials failed:", err);
         })
         .finally(() => {
           if (abort.current === ctrl) setRunning(false);
@@ -157,6 +163,22 @@ export function BoxHud({ app }: { app: BoxApp }) {
   const runsSoFar = points.find((p) => p.key === key)?.runs ?? 0;
   const escape = tally.lastEscape;
 
+  // Which off layer would have kept the latest escapee in: replayed in the worker, once per escape.
+  // A reset clears the escape and so aborts a replay still running; so does leaving the page.
+  const [stopsByEscape, setStopsByEscape] = useState<Record<string, LayerId[]>>({});
+  const stopsKey = escape ? escapeKey(snap.seed, tally.agents, escape) : null;
+  useEffect(() => {
+    if (!escape || stopsKey === null || stopsKey in stopsByEscape) return;
+    const ctrl = new AbortController();
+    stoppingLayersOffThread(escape.config, snap.seed, tally.agents, escape.agent, escape.tick, ctrl.signal)
+      .then((layers) => setStopsByEscape((m) => ({ ...m, [stopsKey]: layers })))
+      .catch((err: unknown) => {
+        if (!isAbort(err)) console.warn("Replay failed:", err);
+      });
+    return () => ctrl.abort();
+  }, [escape, stopsKey, stopsByEscape, snap.seed, tally.agents]);
+  const stops = stopsKey === null ? null : (stopsByEscape[stopsKey] ?? null);
+
   return (
     <div className="absolute inset-0 overflow-x-hidden overflow-y-auto text-ink" data-plot-ready={plotReady ? "true" : "false"}>
       <div className="box-border flex min-h-full flex-col gap-4 px-6 py-5 min-[1158px]:h-full min-[1158px]:min-h-[720px]">
@@ -186,7 +208,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
                 onRunTrials={() => runTrials(config, runsSoFar)}
               />
             ) : null}
-            {escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} onReplay={() => app.replayEscape()} onRerun={rerunWith} /> : null}
+            {escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={rerunWith} /> : null}
           </div>
           <div className="flex max-w-full min-w-0 flex-[1_1_260px] flex-col gap-3">
             <OutsidePanel escaped={tally.escaped} />

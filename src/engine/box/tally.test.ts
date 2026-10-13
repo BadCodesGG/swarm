@@ -73,7 +73,9 @@ describe("tally", () => {
     record(t, report({ tick: 2380, escapes: [{ agent: 733, trace }], escapedTotal: 1 }), ctx);
     expect(t.escaped).toBe(1);
     const e = t.lastEscape!;
-    expect(e).toMatchObject({ agent: 733, tick: 2380, offLayer: "network", plan });
+    // The settings it ran under go with it, for the replay that finds the layer to turn on.
+    expect(e).toMatchObject({ agent: 733, tick: 2380, config: ctx.config, plan });
+    expect(e.steps[2].text).toBe("Off");
     expect(e.steps[3].text).toBe("Passed: 0.44, under 0.62");
     expect(e.trail).toEqual({ monitor: "0.44", audit: "not sampled" });
     // The run out starts at the agent's distance from the centre, on its heading toward OUTSIDE.

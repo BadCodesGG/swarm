@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { filesFromDirectory, filesFromDrop, filesFromInput, mergePicked } from "./pick-files";
+import { selectSession } from "./session-files";
 
 const file = (name: string) => new File(["x"], name);
 
@@ -117,5 +118,37 @@ describe("mergePicked", () => {
     const a = { path: ["abc", "subagents", "agent-a.jsonl"].join(String.fromCharCode(92)), file: file("agent-a.jsonl") };
     const b = { path: "abc/subagents/agent-a.jsonl", file: file("agent-a.jsonl") };
     expect(mergePicked([a], [b])).toHaveLength(1);
+  });
+
+  describe("a session loaded alone, then its folder", () => {
+    const alone = [{ path: "abc.jsonl", file: file("abc.jsonl") }];
+    const folder = (prefix: string) => [
+      { path: `${prefix}abc/subagents/agent-a.jsonl`, file: file("agent-a.jsonl") },
+      { path: `${prefix}abc/subagents/agent-b.jsonl`, file: file("agent-b.jsonl") },
+    ];
+
+    it("the session folder gives one session with both subagent files", () => {
+      const sel = selectSession(mergePicked(alone, folder("")));
+      expect(sel.kind).toBe("ok");
+      if (sel.kind !== "ok") return;
+      expect(sel.session.path).toBe("abc.jsonl");
+      expect(sel.related.map((f) => f.path)).toEqual(["abc/subagents/agent-a.jsonl", "abc/subagents/agent-b.jsonl"]);
+    });
+
+    it("the project folder, holding the same session again, gives the same, with the folder's own copy of the session", () => {
+      const again = { path: "proj/abc.jsonl", file: file("abc.jsonl") };
+      const merged = mergePicked(alone, [again, ...folder("proj/")]);
+      expect(merged).toHaveLength(3);
+      const sel = selectSession(merged);
+      expect(sel.kind).toBe("ok");
+      if (sel.kind !== "ok") return;
+      expect(sel.session.file).toBe(again.file);
+      expect(sel.related.map((f) => f.path)).toEqual(["proj/abc/subagents/agent-a.jsonl", "proj/abc/subagents/agent-b.jsonl"]);
+    });
+
+    it("keeps two different sessions apart whatever their folders", () => {
+      const merged = mergePicked(alone, [{ path: "proj/def.jsonl", file: file("def.jsonl") }]);
+      expect(merged.map((f) => f.path)).toEqual(["abc.jsonl", "proj/def.jsonl"]);
+    });
   });
 });

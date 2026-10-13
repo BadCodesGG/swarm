@@ -1,22 +1,29 @@
 import type { LayerId } from "@/lib/box/types";
-import { agentId, clock, describePlan, LAYER_NOUN } from "@/engine/box/explain";
+import { agentId, clock, describePlan, LAYER_NOUN, offStepText } from "@/engine/box/explain";
 import type { EscapeRecord } from "@/engine/box/tally";
 
 const COUNT = ["No agent", "One agent", "Two agents", "Three agents", "Four agents", "Five agents", "Six agents"];
 
-/** "What just happened": the latest escape, how it passed each layer, and two ways to look again. */
+/**
+ * "What just happened": the latest escape, how it passed each layer, and two ways to look again.
+ * `stops` is the replay's answer, the off layers that would have kept this agent in (innermost
+ * first), or null while it is still running: the rerun button waits for it.
+ */
 export function EscapeExplainer({
   escape,
   escaped,
+  stops,
   onReplay,
   onRerun,
 }: {
   escape: EscapeRecord;
   escaped: number;
+  stops: readonly LayerId[] | null;
   onReplay(): void;
   onRerun(layer: LayerId): void;
 }) {
   const who = COUNT[escaped] ?? `${escaped} agents`;
+  const rerun = stops?.[0] ?? null;
   return (
     <section
       aria-label="What just happened"
@@ -33,7 +40,7 @@ export function EscapeExplainer({
         {escape.steps.map((s) => (
           <li key={s.layer} className={`flex flex-col gap-0.5 rounded-lg px-2.5 py-2 ${s.off ? "bg-escape/10" : "bg-white/[0.04]"}`}>
             <span className={`font-mono text-[10px] ${s.off ? "text-escape-text" : "text-faint"}`}>{s.title}</span>
-            <span className={s.off ? "text-[#ffd0dc]" : "text-body"}>{s.text}</span>
+            <span className={s.off ? "text-[#ffd0dc]" : "text-body"}>{s.off ? offStepText(s.layer, stops) : s.text}</span>
           </li>
         ))}
       </ol>
@@ -45,14 +52,14 @@ export function EscapeExplainer({
         >
           Replay the escape
         </button>
-        {escape.offLayer ? (
+        {rerun ? (
           <button
             type="button"
-            onClick={() => onRerun(escape.offLayer!)}
+            onClick={() => onRerun(rerun)}
             className="min-h-11 rounded-[10px] border border-[rgba(150,172,214,0.22)] bg-transparent px-4 text-sm text-body hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
-            data-rerun={escape.offLayer}
+            data-rerun={rerun}
           >
-            Turn the {LAYER_NOUN[escape.offLayer]} layer on and rerun
+            Turn the {LAYER_NOUN[rerun]} layer on and rerun
           </button>
         ) : null}
       </div>

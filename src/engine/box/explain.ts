@@ -83,36 +83,25 @@ export interface EscapeStep {
 const verdictOf = (trace: readonly Verdict[], layer: LayerId) => trace.find((v) => v.layer === layer);
 
 /**
- * Whether a layer's rule could stop some step of `plan`, had it been on: the sandbox stops writing
- * outside and copying itself, the allowlist stops connections, permissions stop privileged steps, the
- * monitor scores every step, and the audit only reviews what the monitor flags.
+ * What an off layer's card says. `stops` is the replay's answer (`lib/box/replay`): the off layers
+ * that, turned on, would have kept this agent in. Until it arrives the card claims nothing.
  */
-export function layerApplies(layer: LayerId, plan: readonly ActionId[], config: BoxConfig): boolean {
-  switch (layer) {
-    case "sandbox":
-      return plan.some((a) => a === "write-outside" || a === "copy-self");
-    case "network":
-      return plan.includes("open-connection");
-    case "permissions":
-      return plan.some((a) => ACTIONS[a].privileged);
-    case "monitor":
-      return plan.length > 0;
-    case "audit":
-      return config.layers.monitor && plan.length > 0;
-  }
+export function offStepText(layer: LayerId, stops: readonly LayerId[] | null): string {
+  if (stops === null) return "Off";
+  return stops.includes(layer) ? "Off: nothing to stop it" : "Off: would not have stopped it";
 }
 
 /**
- * How the escaping step passed each layer, innermost first. `action` is that step's action; `plan`
- * the whole escape, which decides whether an off layer could have stopped any of it.
+ * How the escaping step passed each layer, innermost first. `action` is that step's action; `stops`
+ * the replay's answer for the off layers, when it is in.
  */
-export function escapeSteps(trace: readonly Verdict[], config: BoxConfig, action: ActionId, plan: readonly ActionId[] = [action]): EscapeStep[] {
+export function escapeSteps(trace: readonly Verdict[], config: BoxConfig, action: ActionId, stops: readonly LayerId[] | null = null): EscapeStep[] {
   const monitor = verdictOf(trace, "monitor");
   const flagged = monitor?.flagged === true;
   return LAYER_ORDER.map((layer) => {
     const v = verdictOf(trace, layer);
     const title = `${layerNumber(layer)} ${SHORT[layer]}`;
-    if (!v || !v.active) return { layer, title, off: true, text: layerApplies(layer, plan, config) ? "Off: nothing to stop it" : "Off: no step was its to stop" };
+    if (!v || !v.active) return { layer, title, off: true, text: offStepText(layer, stops) };
     let text: string;
     switch (layer) {
       case "sandbox":
@@ -143,11 +132,6 @@ export function trailLabels(trace: readonly Verdict[]): Partial<Record<LayerId, 
   const audit = verdictOf(trace, "audit");
   if (audit?.active) out.audit = !monitor?.flagged ? "not sampled" : audit.auditSpent ? "cleared" : "budget spent";
   return out;
-}
-
-/** The innermost switched-off layer that could have stopped some step of the plan, or null when none could. */
-export function firstOffLayer(trace: readonly Verdict[], plan: readonly ActionId[], config: BoxConfig): LayerId | null {
-  return trace.find((v) => !v.active && layerApplies(v.layer, plan, config))?.layer ?? null;
 }
 
 export function catchLine(c: CatchReport): string {

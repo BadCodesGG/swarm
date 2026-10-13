@@ -120,7 +120,8 @@ counter, so any `t` costs O(log n). Parsed and generated traces go through the s
 | `layers.ts` | `LAYERS: Record<LayerId, LayerRule>`, `LayerRule = (a: Attempt, ctx: LayerContext) => Verdict`; `evaluate(a, ctx, config)` runs enabled layers innermost first, first catch wins, else a `pass` with summed cost | each rule; rolls arrive in `Attempt`, so a rule is a pure function of its arguments |
 | `sim.ts` | `createState(config, seed, agentCount)`, `step(state, r): StepReport` (one decision tick) | agent arrays (role, plan step, suspicion history, status, shell reached, work done), audit budget, escape detection |
 | `trials.ts` | `runTrial(config, seed)`, `runTrials(config, n, seed): TrialSummary` (safety = 1 minus escape rate; usefulness = honest work over the all-off baseline on the same seeds) | fixed `TRIAL_AGENTS`/`TRIAL_TICKS` |
-| `trials.worker.ts` + `trials-client.ts` | `runTrialsOffThread(config, n, seed, signal)` | the worker |
+| `replay.ts` | `stoppingLayers(config, seed, agentCount, agent, tick): LayerId[]`: the off layers that, turned on alone, keep that agent in by that tick, innermost first, proved by replaying the run (same seed and crowd size) rather than ranked by rule | the replays |
+| `trials.worker.ts` + `trials-client.ts` | `runTrialsOffThread(config, n, seed, signal)`, `stoppingLayersOffThread(config, seed, agentCount, agent, tick, signal)` | the worker |
 
 The live crowd size is a `createState` argument taken from the quality tier; trials always use
 `TRIAL_AGENTS`, so `BoxConfig` carries no size and the plot never depends on the device.

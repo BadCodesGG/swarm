@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { stoppingLayers } from "@/lib/box/replay";
 import { createState } from "@/lib/box/sim";
 import { fork } from "@/lib/rng";
 import { DEFAULT_CONFIG } from "@/lib/box/types";
@@ -42,7 +43,9 @@ describe("runToEscape", () => {
     expect(tick).toBeLessThan(400);
     expect(state.tick).toBe(tick);
     expect(tally.escaped).toBe(1);
-    expect(tally.lastEscape).toMatchObject({ tick, offLayer: "network" });
+    expect(tally.lastEscape).toMatchObject({ tick, config });
+    // The replay names the network allowlist as the layer that would have kept it in.
+    expect(stoppingLayers(config, seed, agents, tally.lastEscape!.agent, tick)).toEqual(["network"]);
     expect(tally.lastEscape!.plan).toContain("split-steps");
     expect(tally.lastEscape!.steps[4].text).toBe("Passed: not in the 2% checked");
     expect(tally.caughtTotal).toBeGreaterThan(5);

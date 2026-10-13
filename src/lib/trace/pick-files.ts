@@ -1,4 +1,4 @@
-import { normalizePath, type PickedFile } from "./session-files";
+import { classifyFile, normalizePath, type PickedFile } from "./session-files";
 
 export type { PickedFile };
 
@@ -68,9 +68,23 @@ export async function filesFromDirectory(handle: FileSystemDirectoryHandle): Pro
   return out;
 }
 
-/** What was loaded plus a later pick (the subagents folder, say), one file per path; the later pick wins. */
+/**
+ * A file's path relative to its session, whatever folder it was picked from: `<id>.jsonl` for the
+ * session, `<id>/subagents/<name>` for its subagent and meta files. So `abc.jsonl` picked alone and
+ * `proj/abc.jsonl` picked with its project folder are the same file.
+ */
+function sessionRelativePath(path: string): string {
+  const normalized = normalizePath(path);
+  const { role, group } = classifyFile(normalized);
+  if (role === "other") return normalized;
+  const id = group.slice(group.lastIndexOf("/") + 1);
+  if (role === "session") return `${id}.jsonl`;
+  return `${id}/subagents/${normalized.slice(normalized.lastIndexOf("/") + 1)}`;
+}
+
+/** What was loaded plus a later pick (the session's or project's folder, say), one file per session-relative path; the later pick wins. */
 export function mergePicked(loaded: readonly PickedFile[], picked: readonly PickedFile[]): PickedFile[] {
   const byPath = new Map<string, PickedFile>();
-  for (const f of [...loaded, ...picked]) byPath.set(normalizePath(f.path), f);
+  for (const f of [...loaded, ...picked]) byPath.set(sessionRelativePath(f.path), f);
   return [...byPath.values()];
 }

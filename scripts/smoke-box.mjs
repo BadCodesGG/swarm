@@ -5,8 +5,9 @@
  *   const STEPS = [stepLanding, ...boxSteps({ check, openPage, software: SOFTWARE })];
  *
  *   4. `/box?seed=1`: each layer switch changes `__swarm.box.config`; with every layer off an agent
- *      escapes within ESCAPE_TIMEOUT_MS and the "What just happened" explainer appears; "Run 100
- *      trials" adds a plotted point within TRIALS_TIMEOUT_MS.
+ *      escapes within ESCAPE_TIMEOUT_MS and the "What just happened" explainer appears, then names a
+ *      layer to turn on once the worker's replay has proved it; "Run 100 trials" adds a plotted
+ *      point within TRIALS_TIMEOUT_MS.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
@@ -19,6 +20,8 @@ const READY_TIMEOUT_MS = 60_000;
 /** All layers off: rogues act about every 2 s and need three to five steps. */
 const ESCAPE_TIMEOUT_MS = 90_000;
 const TRIALS_TIMEOUT_MS = 90_000;
+/** The replay runs the escape's ticks again, once per off layer, in the worker. */
+const RERUN_TIMEOUT_MS = 30_000;
 
 const box = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm?.box ?? null)));
 
@@ -58,6 +61,13 @@ export function boxSteps({ check, openPage, software = false }) {
       check("all layers off lets an agent escape", escaped.stats.escaped > 0, `${escaped.stats.escaped} out by tick ${escaped.stats.tick}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
       await page.locator('section[aria-label="What just happened"]').waitFor({ timeout: 5_000 });
       check("the escape explainer appears", true);
+      // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
+      const rerun = page.locator("[data-rerun]");
+      await rerun.waitFor({ timeout: RERUN_TIMEOUT_MS });
+      const named = await rerun.getAttribute("data-rerun");
+      check("the explainer names a layer to turn on and rerun", LAYERS.includes(named), named);
+      const card = await page.locator('section[aria-label="What just happened"] li', { hasText: named.toUpperCase() }).innerText();
+      check("that layer's card agrees", card.includes("nothing to stop it"), card.replace(/\s+/g, " "));
 
       const plotted = () => page.locator("svg[data-plot-points]").getAttribute("data-plot-points").then(Number);
       const pointsBefore = await plotted();

@@ -78,7 +78,7 @@ describe("layoutLabels", () => {
     plan: [],
     steps: [],
     trail: { monitor: "0.55", audit: "not sampled" },
-    offLayer: "network",
+    config: SHOT,
     path: escapePath({ x: startX, y: 0 }, heading),
   });
 

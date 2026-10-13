@@ -1,24 +1,32 @@
+import { stoppingLayers } from "./replay";
 import { runTrials } from "./trials";
-import type { BoxConfig, TrialSummary } from "./types";
+import type { BoxConfig, LayerId, TrialSummary } from "./types";
 
-export interface TrialsRequest {
-  config: BoxConfig;
-  n: number;
-  seed: number;
-}
+/** The jobs the worker runs: a batch of trials, or the replay that finds the layer an escape needed. */
+export type WorkerRequest =
+  | { kind: "trials"; config: BoxConfig; n: number; seed: number }
+  | { kind: "stops"; config: BoxConfig; seed: number; agentCount: number; agent: number; tick: number };
 
-export type TrialsResponse = { ok: true; summary: TrialSummary } | { ok: false; error: string };
+export type WorkerResponse = { ok: true; result: TrialSummary | LayerId[] } | { ok: false; error: string };
 
 const scope = self as unknown as {
-  onmessage: ((e: { data: TrialsRequest }) => void) | null;
-  postMessage(message: TrialsResponse): void;
+  onmessage: ((e: { data: WorkerRequest }) => void) | null;
+  postMessage(message: WorkerResponse): void;
 };
+
+function run(req: WorkerRequest): TrialSummary | LayerId[] {
+  switch (req.kind) {
+    case "trials":
+      return runTrials(req.config, req.n, req.seed);
+    case "stops":
+      return stoppingLayers(req.config, req.seed, req.agentCount, req.agent, req.tick);
+  }
+}
 
 scope.onmessage = (e) => {
   try {
-    const { config, n, seed } = e.data;
-    scope.postMessage({ ok: true, summary: runTrials(config, n, seed) });
+    scope.postMessage({ ok: true, result: run(e.data) });
   } catch (err) {
-    scope.postMessage({ ok: false, error: err instanceof Error ? err.message : "trials failed" });
+    scope.postMessage({ ok: false, error: err instanceof Error ? err.message : `${e.data.kind} failed` });
   }
 };

@@ -5,7 +5,7 @@
 
 import { LAYER_ORDER, type ActionId, type BoxConfig, type LayerId, type StepReport } from "@/lib/box/types";
 import { escapeHeading, escapePath, ringPoint, type EscapePath, type Point } from "./layout";
-import { catchLine, catchMarker, escapeLine, escapeSteps, firstOffLayer, flagMarker, trailLabels, type EscapeStep } from "./explain";
+import { catchLine, catchMarker, escapeLine, escapeSteps, flagMarker, trailLabels, type EscapeStep } from "./explain";
 
 export const LOG_CAP = 60;
 /** Decision ticks a catch marker stays on its ring. */
@@ -34,9 +34,11 @@ export interface EscapeRecord {
   agent: number;
   tick: number;
   plan: readonly ActionId[];
+  /** The off layers' cards claim nothing; the HUD's replay (`lib/box/replay`) says which would have stopped it. */
   steps: EscapeStep[];
   trail: Partial<Record<LayerId, string>>;
-  offLayer: LayerId | null;
+  /** The settings the run escaped under: what the replay turns one more layer on top of. */
+  config: BoxConfig;
   path: EscapePath;
 }
 
@@ -128,9 +130,9 @@ export function record(t: Tally, r: StepReport, ctx: TallyContext): void {
       agent: e.agent,
       tick: r.tick,
       plan,
-      steps: escapeSteps(e.trace, ctx.config, last, plan),
+      steps: escapeSteps(e.trace, ctx.config, last),
       trail: trailLabels(e.trace),
-      offLayer: firstOffLayer(e.trace, plan, ctx.config),
+      config: ctx.config,
       path: escapeRun(ctx.home(e.agent), escapeHeading(e.agent)),
     };
     log(t, "escaped", escapeLine(e.agent, plan));

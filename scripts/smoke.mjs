@@ -17,6 +17,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
+import { boxSteps } from "./smoke-box.mjs";
+import { stepImport } from "./smoke-import.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -248,7 +250,7 @@ async function stepInside(browser) {
   }
 }
 
-const STEPS = [stepLanding, stepInside];
+const STEPS = [stepLanding, stepInside, ...boxSteps({ check, openPage, software: SOFTWARE }), (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside })];
 
 if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
   console.error("FAIL  no production build: run `npm run build` first (the smoke test serves `next start`)");

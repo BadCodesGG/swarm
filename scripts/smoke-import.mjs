@@ -14,7 +14,7 @@
  * back to the medium sample with a notice, and a non-session file shows the not-a-session error.
  */
 
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,10 +34,12 @@ function record(page) {
   return log;
 }
 
-/** A request an import may make: a GET for this site's own static chunk, font or route. */
+/**
+ * A request an import may make: a body-less GET to this site (its chunks, fonts, favicon, and the router's
+ * link prefetches). Anything cross-origin or carrying a body would be the session leaving the tab.
+ */
 function allowed(req, base) {
-  const url = new URL(req.url);
-  return url.origin === new URL(base).origin && req.method === "GET" && req.body === null && (url.pathname.startsWith("/_next/") || url.pathname.startsWith("/inside"));
+  return new URL(req.url).origin === new URL(base).origin && req.method === "GET" && req.body === null;
 }
 
 const arrived = (page, h) => h.waitInside(page, () => window.__swarm?.inside?.frame > 5 && window.__swarm.inside.traceSource === "upload", null, 90_000);
@@ -51,7 +53,9 @@ export async function stepImport(browser, h) {
     const two = path.join(scratch, "two");
     mkdirSync(path.join(two, "session", "subagents"), { recursive: true });
     copyFileSync(path.join(FIXTURES, "session.jsonl"), path.join(two, "session.jsonl"));
-    copyFileSync(path.join(FIXTURES, "session.jsonl"), path.join(two, "other.jsonl"));
+    // The fixture's hostile prompt is not its first human line, so a second session opens with it.
+    const hostileLine = readFileSync(path.join(FIXTURES, "session.jsonl"), "utf8").split(/\r?\n/).find((l) => l.includes("onerror=alert(1)"));
+    writeFileSync(path.join(two, "other.jsonl"), `${hostileLine}\n`);
     for (const name of ["agent-a0000000000000002.jsonl", "agent-a0000000000000002.meta.json"]) {
       copyFileSync(path.join(FIXTURES, "session", "subagents", name), path.join(two, "session", "subagents", name));
     }
@@ -74,7 +78,8 @@ export async function stepImport(browser, h) {
         await page.locator("[data-state=ready]").waitFor({ timeout: 60_000 });
         const report = await page.locator("[data-state=ready] [data-report]").textContent();
         check("load: the parse report counts what was skipped", /skipped/.test(report ?? "") && /unknown/.test(report ?? ""), report ?? "");
-        check("load: a complete folder shows no missing-subagents notice", (await page.locator("[data-notice=child-missing]").count()) === 0);
+        // The fixture keeps one spawn whose transcript is absent on purpose.
+        check("load: a spawn without its file shows the missing-subagents notice and a folder input", (await page.locator("[data-notice=child-missing] [data-input=missing-folder]").count()) === 1);
 
         await page.getByRole("button", { name: "Play this session" }).click();
         await page.waitForURL(/\/inside\?source=upload/);
@@ -85,7 +90,7 @@ export async function stepImport(browser, h) {
         check("import: playback runs", (await h.inside(page)).playing === true);
         check("import: no sample tag", (await page.locator("[data-sample-tag]").count()) === 0);
         check("import: the switcher shows Your session active", (await page.locator('button[aria-pressed=true]:text-is("Your session")').count()) === 1);
-        check("import: no sample button is pressed", (await page.locator('[role=group] button[aria-pressed=true]:not(:text-is("Your session"))').count()) === 0);
+        check("import: no sample button is pressed", (await page.locator('[aria-label="Session source"] button[aria-pressed=true]:not(:text-is("Your session"))').count()) === 0);
         check("import: no hostile element or dialog", (await page.locator('img[src="x"]').count()) === 0 && log.dialogs.length === 0, log.dialogs.join(" | "));
 
         const stray = log.requests.filter((r) => !allowed(r, h.BASE));
@@ -123,6 +128,8 @@ export async function stepImport(browser, h) {
         check("choose: the hostile prompt is literal text", rows.some((t) => t.includes(HOSTILE)), JSON.stringify(rows));
         check("choose: it made no element and opened no dialog", (await page.locator('img[src="x"]').count()) === 0 && log.dialogs.length === 0);
         check("choose: the first session is selected", (await page.locator("input[type=radio]:checked").count()) === 1);
+        // The hostile file has no conversation; choose the real session (the one with a subagent).
+        await page.locator("label", { hasText: "1 agent" }).locator("input[type=radio]").check();
         await page.getByRole("button", { name: "Play this session" }).click();
         // The chosen session has a malformed line, so it stops at the ready view first.
         await page.waitForFunction(() => location.pathname === "/inside" || document.querySelector("[data-state=ready]"), null, { timeout: 60_000 });

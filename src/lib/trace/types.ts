@@ -72,3 +72,23 @@ export const TRACE_LIMITS = {
   prompt: 2_000,
   excerptBytes: 8 * 1024 * 1024,
 } as const;
+
+/** One top-level session in a folder that holds several, for the chooser. */
+export interface SessionCandidate {
+  /** The picked path, to hand back to `loadSession` as `session`. */
+  path: string;
+  size: number;
+  /** First line of the first human prompt, at most 120 chars; empty when none was found. */
+  firstPrompt: string;
+  subagentFiles: number;
+}
+
+/**
+ * `loadSession` found several top-level sessions and none was chosen. It is a failed `ParseResult`
+ * (`several-session-files`) that also lists the candidates, so code that only knows `ParseResult`
+ * still shows an error; the chooser checks `"choose" in result`.
+ */
+export type ChooseResult = Extract<ParseResult, { ok: false }> & {
+  error: "several-session-files";
+  choose: SessionCandidate[];
+};

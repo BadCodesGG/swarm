@@ -1,7 +1,7 @@
 /**
  * Takes a reproducible screenshot of the Act 1 hero frame from the production build.
  *
- *   npm run build && node scripts/shot.mjs [--seed=13] [--t=268.5] [--source=medium] [--rate=4]
+ *   npm run build && node scripts/shot.mjs [--seed=50] [--t=927.5] [--source=medium] [--rate=4]
  *     [--webgl] [--mobile] [--name=hero] [--port=3127] [--query=select=5]
  *
  * Starts `next start`, opens `/inside?shot=hero&source=..&seed=..&t=..` in Playwright Chromium at

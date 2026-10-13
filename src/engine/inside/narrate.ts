@@ -10,8 +10,9 @@ import { MODEL_NAMES } from "./format";
 
 /** An agent counts as "using" a tool for this many trace seconds after its call. */
 const RECENT = 30;
-/** Up to this many live helpers are named one by one; more are a crowd, counted first. */
+/** Up to this many live helpers are all named; up to `CROWD`, the two busiest groups are; more are counted first. */
 const SMALL = 3;
+const CROWD = 6;
 const MODEL_ORDER: readonly ModelFamily[] = ["opus", "fable", "sonnet", "haiku", "other"];
 
 type Activity = ToolCategory | "thinking";
@@ -72,10 +73,14 @@ function named(group: TraceAgent[]): string {
   return join(byModel(group).map(([m, k]) => (k === 1 ? aHelper(m) : `${count(k)} ${helper(m)}s`)));
 }
 
-/** In a crowd a group is named only when it is one agent or shares one model; else it is a count. */
-function counted(group: TraceAgent[]): string {
+/**
+ * A group named by model when it is one agent or shares one model; else a count, bare (`three`)
+ * after a head count has said what they are, or `three helpers` without one.
+ */
+function counted(group: TraceAgent[], bare: boolean): string {
   const models = byModel(group);
-  if (group.length === 1 || models.length > 1) return group.length === 1 ? aHelper(group[0].model) : count(group.length);
+  if (group.length === 1) return aHelper(group[0].model);
+  if (models.length > 1) return bare ? count(group.length) : `${count(group.length)} helpers`;
   return `${count(group.length)} ${helper(models[0][0])}s`;
 }
 
@@ -108,9 +113,16 @@ export function narrate(tl: Timeline, t: number): string {
   const idle = (a: Activity) => Number(a === "thinking");
   const ranked = [...groups.entries()].sort((a, b) => idle(a[0]) - idle(b[0]) || b[1].length - a[1].length);
 
-  if (live.length > SMALL) {
-    const busiest = ranked.slice(0, 2).map(([activity, g]) => clause(counted(g), g.length, activity));
+  if (live.length > CROWD) {
+    const busiest = ranked.slice(0, 2).map(([activity, g]) => clause(counted(g, true), g.length, activity));
     return `${upper(count(live.length))} helpers are at work. ${upper(join(busiest))}.`;
+  }
+  if (live.length > SMALL) {
+    // As the design's NOW panel: the two busiest activities, one sentence each; the rest go unsaid.
+    return ranked
+      .slice(0, 2)
+      .map(([activity, g]) => `${upper(clause(g.length <= 2 ? named(g) : counted(g, false), g.length, activity))}.`)
+      .join(" ");
   }
   const [[activity, group], ...rest] = ranked;
   const first = `${upper(clause(named(group), group.length, activity))}.`;

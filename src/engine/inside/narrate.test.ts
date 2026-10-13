@@ -88,29 +88,61 @@ describe("narrate", () => {
   });
 });
 
-describe("narrate a crowd", () => {
-  it("counts a crowd, then names its two busiest activities", () => {
-    const agents = [agent(0, -1, 0, "opus", 0, 100)];
-    const events: TraceEvent[] = [];
-    const models = ["opus", "sonnet", "sonnet", "haiku", "sonnet"] as const;
-    const cats = ["web", "web", "web", "edit", "plan"] as const;
-    models.forEach((m, i) => {
-      agents.push(agent(i + 1, 0, 1, m, 1, 90));
-      events.push(call(5 + i, i + 1, cats[i], "Tool"));
-    });
-    const s = narrate(buildTimeline(trace(agents, events)), 20);
-    expect(s).toBe("Five helpers are at work. Three are searching the web and a Haiku helper is editing files.");
+/** A trace of helpers under the orchestrator, each making one call: `[model, category, parent]`. */
+function helpers(spec: readonly (readonly [TraceAgent["model"], TraceEvent["category"] | null, number])[]): SessionTrace {
+  const agents = [agent(0, -1, 0, "opus", 0, 100)];
+  const events: TraceEvent[] = [];
+  spec.forEach(([m, cat, parent], i) => {
+    agents.push(agent(i + 1, parent, parent === 0 ? 1 : 2, m, 1, 90));
+    if (cat) events.push(call(5 + i, i + 1, cat, "Tool"));
+  });
+  return trace(agents, events);
+}
+
+describe("narrate a few", () => {
+  it("names the two busiest activities' agents, as the design's NOW panel does, and leaves the rest", () => {
+    const tr = helpers([
+      ["fable", "web", 0],
+      ["sonnet", "web", 1],
+      ["opus", "edit", 0],
+      ["haiku", "plan", 0],
+      ["sonnet", null, 0],
+    ]);
+    expect(narrate(buildTimeline(tr), 20)).toBe("A Fable helper and its Sonnet helper are searching the web. An Opus helper is editing files.");
   });
 
-  it("names a crowd group by model when it shares one", () => {
-    const agents = [agent(0, -1, 0, "opus", 0, 100)];
-    const events: TraceEvent[] = [];
-    (["sonnet", "sonnet", "haiku", "haiku"] as const).forEach((m, i) => {
-      agents.push(agent(i + 1, 0, 1, m, 1, 90));
-      events.push(call(5 + i, i + 1, m === "sonnet" ? "shell" : "files", "Tool"));
-    });
-    expect(narrate(buildTimeline(trace(agents, events)), 20)).toBe(
-      "Four helpers are at work. Two Sonnet helpers are running commands and two Haiku helpers are reading files.",
-    );
+  it("names a group by model when it shares one", () => {
+    const tr = helpers([
+      ["sonnet", "shell", 0],
+      ["sonnet", "shell", 0],
+      ["haiku", "files", 0],
+      ["haiku", "files", 0],
+    ]);
+    expect(narrate(buildTimeline(tr), 20)).toBe("Two Sonnet helpers are running commands. Two Haiku helpers are reading files.");
+  });
+
+  it("counts a mixed group of three or more instead of naming each", () => {
+    const tr = helpers([
+      ["opus", "web", 0],
+      ["sonnet", "web", 0],
+      ["haiku", "web", 0],
+      ["haiku", "edit", 0],
+    ]);
+    expect(narrate(buildTimeline(tr), 20)).toBe("Three helpers are searching the web. A Haiku helper is editing files.");
+  });
+});
+
+describe("narrate a crowd", () => {
+  it("counts a crowd of more than six, then its two busiest activities", () => {
+    const tr = helpers([
+      ["opus", "web", 0],
+      ["sonnet", "web", 0],
+      ["sonnet", "web", 0],
+      ["haiku", "edit", 0],
+      ["sonnet", "plan", 0],
+      ["haiku", "shell", 0],
+      ["haiku", "shell", 0],
+    ]);
+    expect(narrate(buildTimeline(tr), 20)).toBe("Seven helpers are at work. Three are searching the web and two Haiku helpers are running commands.");
   });
 });

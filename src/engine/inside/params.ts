@@ -6,8 +6,12 @@
 import type { SampleSize } from "@/lib/trace/generate";
 import { clampRate } from "./playback";
 
-/** The hero frame: a medium sample in a burst with five live subagents and two web probes out. */
-export const HERO = { source: "medium" as SampleSize, seed: 13, t: 268.5, rate: 4 };
+/**
+ * The hero frame: a medium sample (18 subagents) in a burst, six live (Fable, Sonnet and Haiku
+ * around the Opus core, two levels deep), a Fable helper and a Sonnet helper searching the web
+ * with a probe out past the boundary, and idle cuts ahead on the scrubber.
+ */
+export const HERO = { source: "medium" as SampleSize, seed: 50, t: 927.5, rate: 4 };
 
 export interface InsideParams {
   source: SampleSize;

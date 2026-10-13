@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { narrate } from "@/engine/inside/narrate";
-import { SampleTag, TruncatedNote } from "./sample-tag";
+import { SampleTag, TruncatedNote, UploadMissingNote } from "./sample-tag";
 import { useEngineSnapshot, useTimeline } from "./use-engine";
 
 const same = (a: string, b: string) => a === b;
@@ -11,6 +11,8 @@ const same = (a: string, b: string) => a === b;
 /** The plain-English NOW panel: what the live agents are doing at the playhead. */
 export function NowPanel({ app, narrow }: { app: InsideApp; narrow: boolean }) {
   const tl = useTimeline(app);
+  // The trace this panel opened on: the note goes once the visitor switches to another.
+  const [first] = useState(tl.trace);
   const read = useCallback(() => narrate(app.timeline(), app.time()), [app]);
   const text = useEngineSnapshot(read, same, 250);
 
@@ -30,6 +32,7 @@ export function NowPanel({ app, narrow }: { app: InsideApp; narrow: boolean }) {
       </p>
       <SampleTag trace={tl.trace} />
       <TruncatedNote trace={tl.trace} />
+      <UploadMissingNote show={app.uploadMissing && tl.trace === first} />
     </section>
   );
 }

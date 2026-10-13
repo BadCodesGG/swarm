@@ -35,6 +35,7 @@ import {
   type StationCategory,
   type WebProbe,
 } from "./layout";
+import { getImported } from "./imported";
 import { parseInsideParams, type InsideParams } from "./params";
 import { createPlayback } from "./playback";
 import { createAgents } from "./scene/agents";
@@ -103,6 +104,8 @@ export interface InsideApp extends ExperienceApp {
   playing(): boolean;
   /** The parameters the page was opened with. */
   params: InsideParams;
+  /** The page asked for `source=upload` but nothing was in memory (a reload), so a sample plays instead. */
+  uploadMissing: boolean;
   /** The agent nearest a point of the canvas (CSS px) within a finger's reach, or null. */
   pick(x: number, y: number): number | null;
   /** The selected agent id, or -1. */
@@ -247,7 +250,10 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     bus.emit("select", { agent: -1 });
   };
 
-  setTrace(generateTrace(params.seed, params.source), params.t);
+  // `source=upload` plays the session the import screen left in memory; after a reload there is none.
+  const imported = params.upload ? getImported() : null;
+  const uploadMissing = params.upload && !imported;
+  setTrace(imported ?? generateTrace(params.seed, params.source), params.upload ? 0 : params.t);
   if (params.shot) {
     selected = params.select ?? featuredAgent(trace, playback.time());
   } else {
@@ -373,7 +379,9 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     settled: false,
     isWebGPU,
     tier: plan.level.tier,
-    source: params.source,
+    source: imported ? "upload" : params.source,
+    traceSource: "",
+    uploadMissing,
     seed: params.seed,
     shot: params.shot,
     t: 0,
@@ -451,6 +459,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     debug.agentsAlive = counters.agentsActive - 1;
     debug.counters = counters;
     debug.label = trace.label;
+    debug.traceSource = trace.source;
     debug.agents = trace.agents.length;
     debug.events = trace.events.length;
     debug.duration = trace.duration;
@@ -467,6 +476,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     timeline: () => timeline,
     setTrace: (next) => setTrace(next, 0),
     params,
+    uploadMissing,
     play: () => playback.play(),
     pause: () => playback.pause(),
     seek: (t) => playback.seek(t),

@@ -1,5 +1,5 @@
 /**
- * `/inside` URL parameters: `source=small|medium|large`, `seed`, `t` (trace seconds), `rate`,
+ * `/inside` URL parameters: `source=small|medium|large` (or `upload`, the visitor's own session held in memory), `seed`, `t` (trace seconds), `rate`,
  * `shot=hero` (fixed clock, paused at `t`), `select` (an agent id), `hud=0` (hide the HUD). Anything unreadable falls back.
  */
 
@@ -11,6 +11,8 @@ export const HERO = { source: "medium" as SampleSize, seed: 13, t: 268.5, rate: 
 
 export interface InsideParams {
   source: SampleSize;
+  /** `source=upload`: play the session held in memory; `source` stays the sample to fall back to. */
+  upload: boolean;
   seed: number;
   t: number;
   rate: number;
@@ -40,5 +42,5 @@ export function parseInsideParams(params: URLSearchParams): InsideParams {
   const rate = rateN !== null && rateN > 0 ? clampRate(rateN) : shot ? HERO.rate : 1;
   const selN = num(params.get("select"));
   const select = selN !== null && Number.isInteger(selN) && selN > 0 ? selN : null;
-  return { source, seed, t, rate, shot, select, hud: params.get("hud") !== "0" };
+  return { source, upload: params.get("source") === "upload", seed, t, rate, shot, select, hud: params.get("hud") !== "0" };
 }

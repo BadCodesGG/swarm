@@ -40,9 +40,13 @@ export function boxSteps({ check, openPage, software = false }) {
       for (const layer of LAYERS) {
         const before = (await box(page)).config.layers[layer];
         await page.locator(`input[data-layer="${layer}"]`).setChecked(!before, { force: true });
+        await page
+          .waitForFunction(([l, b]) => window.__swarm.box.config.layers[l] !== b, [layer, before], { timeout: 5_000 })
+          .catch(() => {});
         const after = (await box(page)).config.layers[layer];
         check(`switching ${layer} changes __swarm.box.config`, after === !before, `${before} -> ${after}`);
         await page.locator(`input[data-layer="${layer}"]`).setChecked(before, { force: true });
+        await page.waitForFunction(([l, b]) => window.__swarm.box.config.layers[l] === b, [layer, before], { timeout: 5_000 });
       }
 
       for (const layer of LAYERS) await page.locator(`input[data-layer="${layer}"]`).setChecked(false, { force: true });

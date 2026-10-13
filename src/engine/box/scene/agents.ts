@@ -6,7 +6,7 @@
  */
 
 import { Mesh, MeshBasicNodeMaterial, type InstancedBufferAttribute, type Scene } from "three/webgpu";
-import { attribute, exp, float, instanceIndex, length, max, positionLocal, storage, varying, vec3, vec4 } from "three/tsl";
+import { attribute, exp, float, instanceIndex, length, max, storage, varying, vec3, vec4 } from "three/tsl";
 import type { PositionsSource } from "../crowd";
 import { STRIDE } from "../crowd/integrate";
 import { disc, dynamicAttribute, premultiplied, quadGeometry, type BoxUniforms } from "./common";
@@ -42,15 +42,21 @@ export function createAgents(scene: Scene, u: BoxUniforms, count: number, source
   }
 
   const style = attribute("aStyle", "vec4");
-  const rPx = max(float(dotRadius(count)).mul(u.unitPx), 0.7);
+  const trueRPx = float(dotRadius(count)).mul(u.unitPx);
+  const rPx = max(trueRPx, 0.7);
+  // Below the 0.7 px floor a dot is drawn larger than it is, so its light is scaled back to keep the
+  // crowd's total brightness the same; otherwise a phone-sized crowd blows out to a white disc.
+  const thin = trueRPx.div(rPx).pow(2);
   const halfUnits = rPx.mul(4).div(u.unitPx);
-  const corner = positionLocal.xy;
+  // The raw quad corner: once `positionNode` is set, `positionLocal` reads the moved position.
+  const corner = attribute("position", "vec3").xy;
   const material = new MeshBasicNodeMaterial();
   material.positionNode = vec3(centre.add(corner.mul(halfUnits)), 0);
   const distPx = length(varying(corner.mul(rPx.mul(4))));
   const core = disc(distPx, rPx);
-  const glow = exp(distPx.div(rPx.mul(2.4)).pow(2).negate()).mul(0.3);
-  material.colorNode = vec4(style.rgb.mul(core.add(glow)).mul(style.a), core.mul(style.a).mul(0.85));
+  const glow = exp(distPx.div(rPx.mul(2.4)).pow(2).negate()).mul(0.2);
+  const a = style.a.mul(thin);
+  material.colorNode = vec4(style.rgb.mul(core.add(glow)).mul(a), core.mul(a).mul(0.85));
   premultiplied(material);
 
   const mesh = new Mesh(geometry, material);

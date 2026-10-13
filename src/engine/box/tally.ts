@@ -80,6 +80,15 @@ export function createTally(agents: number, rogues: number): Tally {
 
 const angleOf = (p: Point) => Math.atan2(p.y, p.x);
 
+/**
+ * The escapee leaves from the crowd's OUTSIDE-facing side: from its own distance out, on its
+ * heading, so the trail never cuts back across the crowd.
+ */
+function escapeRun(home: Point, heading: number): EscapePath {
+  const r = Math.hypot(home.x, home.y);
+  return escapePath({ x: Math.cos(heading) * r, y: Math.sin(heading) * r }, heading);
+}
+
 function log(t: Tally, kind: LogEntry["kind"], text: string): void {
   t.log.unshift({ id: t.seq++, tick: t.tick, kind, text });
   if (t.log.length > LOG_CAP) t.log.length = LOG_CAP;
@@ -122,7 +131,7 @@ export function record(t: Tally, r: StepReport, ctx: TallyContext): void {
       steps: escapeSteps(e.trace, ctx.config, last),
       trail: trailLabels(e.trace),
       offLayer: firstOffLayer(e.trace),
-      path: escapePath(ctx.home(e.agent), escapeHeading(e.agent)),
+      path: escapeRun(ctx.home(e.agent), escapeHeading(e.agent)),
     };
     log(t, "escaped", escapeLine(e.agent, plan));
   }

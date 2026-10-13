@@ -42,6 +42,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
   const [points, setPoints] = useState<PlotPoint[]>([]);
   const [running, setRunning] = useState(false);
   const [plotReady, setPlotReady] = useState(!snap.shot);
+  const [textScale, setTextScale] = useState(1);
   const slot = useRef<HTMLDivElement>(null);
   const abort = useRef<AbortController | null>(null);
   const { tally } = snap;
@@ -58,6 +59,9 @@ export function BoxHud({ app }: { app: BoxApp }) {
         if (key !== last) {
           last = key;
           app.setFrame({ x: r.left, y: r.top, width: r.width, height: r.height });
+          // Labels keep at least ~8 px on screen: the design's 10.5 px at a scale of 0.75 and up.
+          const unit = Math.min(r.width / 760, r.height / 560);
+          setTextScale(Math.round(Math.min(2, Math.max(1, 0.75 / Math.max(unit, 0.01))) * 20) / 20);
         }
       }
       raf = requestAnimationFrame(report);
@@ -138,7 +142,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
           />
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-3 max-[914px]:order-first">
             <div ref={slot} className="relative min-h-[300px] max-[1157px]:aspect-[760/560] min-[1158px]:flex-auto" data-scene-slot>
-              <SceneLabels config={config} markers={tally.markers} escape={escape} stage={snap.escapeStage} />
+              <SceneLabels config={config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />
             </div>
             {escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} onReplay={() => app.replayEscape()} onRerun={rerunWith} /> : null}
           </div>

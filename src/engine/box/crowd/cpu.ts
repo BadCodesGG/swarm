@@ -22,6 +22,10 @@ export class CpuCrowd {
   private readonly worker: Worker;
   private pendingDt = 0;
   private busy = false;
+  /** Replies are in send order: the snap is answered once `received` reaches `snapReply`. */
+  private sent = 0;
+  private received = 0;
+  private snapReply = 0;
   private targets: Float32Array;
 
   constructor(private readonly count: number) {
@@ -30,6 +34,7 @@ export class CpuCrowd {
     this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (e: MessageEvent<CrowdOut>) => {
       this.busy = false;
+      this.received++;
       this.source.state = e.data.state;
       this.source.version++;
     };
@@ -46,6 +51,7 @@ export class CpuCrowd {
     this.pendingDt += dt;
     if (this.busy || this.pendingDt <= 0) return;
     this.busy = true;
+    this.sent++;
     this.post({ type: "step", dt: this.pendingDt });
     this.pendingDt = 0;
   }
@@ -58,12 +64,13 @@ export class CpuCrowd {
     this.source.version++;
     this.pendingDt = 0;
     this.busy = true;
+    this.snapReply = ++this.sent;
     this.post({ type: "snap" });
   }
 
-  /** True while no reply is outstanding. */
+  /** True once the worker has answered the latest snap, so what is drawn is the snapped crowd. */
   idle(): boolean {
-    return !this.busy;
+    return this.received >= this.snapReply;
   }
 
   dispose(): void {

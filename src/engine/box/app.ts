@@ -239,7 +239,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     home = homes(count, seed);
     caughtAt.fill(0);
     caughtLayer.fill(0);
-    for (let i = 0; i < count; i++) baseAlpha[i] = 0.55 + ((Math.imul(i + 1, 2654435761) >>> 0) / 4294967296) * 0.35;
+    for (let i = 0; i < count; i++) baseAlpha[i] = 0.45 + ((Math.imul(i + 1, 2654435761) >>> 0) / 4294967296) * 0.35;
     accumulator = 0;
     escapeStart = -Infinity;
     escapeTick = -1;
@@ -369,9 +369,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       shells.setLayers(next.layers);
       bus.emit("config", next);
       touch();
+      syncDebug();
     },
     reset(nextSeed) {
       reset(nextSeed);
+      syncDebug();
       bus.emit("reset", { seed: nextSeed });
     },
     stats: () => snapshot,

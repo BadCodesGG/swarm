@@ -5,7 +5,7 @@
  */
 
 import { Mesh, MeshBasicNodeMaterial, type Scene } from "three/webgpu";
-import { attribute, color, length, min, mix, positionLocal, varying, vec2, vec3, vec4 } from "three/tsl";
+import { attribute, color, length, min, mix, varying, vec2, vec3, vec4 } from "three/tsl";
 import type { Marker } from "../tally";
 import { disc, dynamicAttribute, premultiplied, quadGeometry, segmentDistance, stroke, type BoxUniforms } from "./common";
 
@@ -25,7 +25,8 @@ export function createMarkers(scene: Scene, u: BoxUniforms): Markers {
   geometry.instanceCount = 0;
 
   const m = attribute("aMark", "vec4");
-  const corner = positionLocal.xy;
+  // The raw quad corner: once `positionNode` is set, `positionLocal` reads the moved position.
+  const corner = attribute("position", "vec3").xy;
   const material = new MeshBasicNodeMaterial();
   material.positionNode = vec3(m.xy.add(corner.mul(HALF)), 0);
   const q = varying(corner.mul(HALF));

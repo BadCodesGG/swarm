@@ -29,7 +29,7 @@ export interface Crowd {
   step(dt: number): void;
   /** Puts every agent on its last target at rest (the scripted shot). */
   snap(): void;
-  /** False while the CPU worker still owes a reply; always true on the GPU. */
+  /** False until the CPU worker has answered the latest snap; always true on the GPU. */
   idle(): boolean;
   positions: PositionsSource;
   dispose(): void;

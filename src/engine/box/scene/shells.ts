@@ -13,7 +13,7 @@
 import { Mesh, MeshBasicNodeMaterial, type Scene } from "three/webgpu";
 import { atan, color, cos, exp, float, fract, length, max, min, mix, positionLocal, sin, step, uniform, varying, vec2, vec4 } from "three/tsl";
 import { LAYER_ORDER, type LayerId } from "@/lib/box/types";
-import { CROWD_RADIUS, RING_RADIUS } from "../layout";
+import { RING_RADIUS } from "../layout";
 import { over, premultiplied, quadGeometry, segmentDistance, stroke, type BoxUniforms, type Vec4Node } from "./common";
 
 const EXTENT = 300;
@@ -70,9 +70,6 @@ export function createShells(scene: Scene, u: BoxUniforms): Shells {
   const fill = RING_RADIUS.sandbox;
   const fillCov = float(fill).sub(d).mul(px).add(0.5).clamp(0, 1);
   col = over(vec4(color(0x0d1428).mul(fillCov), fillCov), col);
-  // The crowd's own faint pool of light.
-  const pool = max(float(1).sub(d.div(CROWD_RADIUS + 6)), 0).mul(0.08);
-  col = col.add(vec4(color(0x9fb8ff).mul(pool), 0));
 
   LAYER_ORDER.forEach((layer, i) => {
     const r = RING_RADIUS[layer];
@@ -80,7 +77,7 @@ export function createShells(scene: Scene, u: BoxUniforms): Shells {
     const ringCol = mix(color(OFF_HEX), color(RING_HEX[layer]), live);
     // A shell's inside rim: light gathering toward its edge.
     const inside = step(d, float(r));
-    const rim = exp(d.sub(r).div(16)).mul(inside).mul(0.035).mul(live);
+    const rim = exp(d.sub(r).div(16)).mul(inside).mul(0.025).mul(live);
     col = col.add(vec4(color(RING_HEX[layer]).mul(rim), 0));
 
     const across = d.sub(r).abs().mul(px);

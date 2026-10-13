@@ -17,17 +17,30 @@ const LABEL_LIFT: Record<LayerId, number> = { sandbox: 6, permissions: 5, networ
 /** Markers that carry a text label at once; older ones keep only their mark. */
 const LABELLED = 3;
 
-const halo = { paintOrder: "stroke", stroke: "#0a0d18", strokeWidth: 4 } as const;
+/** Two labels closer than this (design px) would overprint; only the newer keeps its text. */
+const LABEL_GAP = 40;
 
-function markerLabel(m: Marker) {
+const halo = (k: number) => ({ paintOrder: "stroke", stroke: "#0a0d18", strokeWidth: 4 * k }) as const;
+
+/** The newest markers to label, newest first, skipping any that would sit on a newer one. */
+function labelled(markers: readonly Marker[]): Marker[] {
+  const out: Marker[] = [];
+  for (let i = markers.length - 1; i >= 0 && out.length < LABELLED; i--) {
+    const m = markers[i];
+    if (out.every((o) => Math.hypot(o.x - m.x, o.y - m.y) >= LABEL_GAP)) out.push(m);
+  }
+  return out;
+}
+
+function markerLabel(m: Marker, k: number) {
   const p = toDesign(m.x, m.y);
   const left = p.x < CENTRE.x;
   const below = p.y > CENTRE.y;
   return (
     <text
       key={m.id}
-      x={p.x + (left ? -14 : 14)}
-      y={p.y + (below ? 20 : -7)}
+      x={p.x + (left ? -14 : 14) * k}
+      y={p.y + (below ? 20 : -7) * k}
       textAnchor={left ? "end" : "start"}
       fill={m.kind === "flag" ? "#ffd59a" : "#dfe5ee"}
       data-marker={m.kind}
@@ -48,7 +61,21 @@ function describe(config: BoxConfig, escape: EscapeRecord | null): string {
  * markers' notes, and the escape trail's monitor score and audit outcome once the escapee has
  * crossed those shells. `meet` scaling matches the engine's camera, so text sits on its ring.
  */
-export function SceneLabels({ config, markers, escape, stage }: { config: BoxConfig; markers: readonly Marker[]; escape: EscapeRecord | null; stage: number }) {
+export function SceneLabels({
+  config,
+  markers,
+  escape,
+  stage,
+  textScale = 1,
+}: {
+  config: BoxConfig;
+  markers: readonly Marker[];
+  escape: EscapeRecord | null;
+  stage: number;
+  /** Text grows by this on a small scene, where the design's 10.5 px would shrink past reading. */
+  textScale?: number;
+}) {
+  const k = textScale;
   const monitorAt = escape?.path.crossings[3];
   const auditAt = escape?.path.crossings[4];
   return (
@@ -59,25 +86,31 @@ export function SceneLabels({ config, markers, escape, stage }: { config: BoxCon
       role="img"
       aria-label={describe(config, escape)}
     >
-      <g className="font-mono" fontSize="10.5" letterSpacing="1" textAnchor="middle" style={{ ...halo, whiteSpace: "pre" }}>
+      <g className="font-mono" fontSize={10.5 * k} letterSpacing={k} textAnchor="middle" style={{ ...halo(k), whiteSpace: "pre" }}>
         {LAYER_ORDER.map((l) => (
           <text key={l} x={CENTRE.x} y={CENTRE.y - RING_RADIUS[l] - LABEL_LIFT[l]} fill={config.layers[l] ? LABEL_HEX[l] : "#ff8aa8"} data-ring={l}>
             {ringLabel(l, config)}
           </text>
         ))}
       </g>
-      <g className="font-mono" fontSize="10.5" style={halo}>
-        {markers.slice(-LABELLED).map(markerLabel)}
+      <g className="font-mono" fontSize={10.5 * k} style={halo(k)}>
+        {labelled(markers).map((m) => markerLabel(m, k))}
       </g>
       {escape && monitorAt && auditAt ? (
-        <g className="font-mono" fontSize="10" fill="#ffb3c6" style={halo}>
+        <g className="font-mono" fontSize={10 * k} fill="#ffb3c6" style={halo(k)}>
           {stage >= 4 && escape.trail.monitor ? (
-            <text x={toDesign(monitorAt.x, monitorAt.y).x} y={toDesign(monitorAt.x, monitorAt.y).y + 23} textAnchor="middle" data-trail="monitor">
+            <text x={toDesign(monitorAt.x, monitorAt.y).x} y={toDesign(monitorAt.x, monitorAt.y).y + 10 + 13 * k} textAnchor="middle" data-trail="monitor">
               {escape.trail.monitor}
             </text>
           ) : null}
           {stage >= 5 && escape.trail.audit ? (
-            <text x={toDesign(auditAt.x, auditAt.y).x + 12} y={toDesign(auditAt.x, auditAt.y).y + 41} data-trail="audit">
+            // Beside the crack as the design has it; centred under it once larger text would run off the frame.
+            <text
+              x={toDesign(auditAt.x, auditAt.y).x + (k > 1 ? 0 : 12)}
+              y={toDesign(auditAt.x, auditAt.y).y + 28 + 13 * k}
+              textAnchor={k > 1 ? "middle" : "start"}
+              data-trail="audit"
+            >
               {escape.trail.audit}
             </text>
           ) : null}

@@ -13,7 +13,7 @@ const plan: ActionId[] = ["split-steps", "split-steps", "ask-permission", "open-
 const ctx: TallyContext = {
   config: { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } },
   plan: () => plan,
-  home: () => ({ x: 10, y: 0 }),
+  home: () => ({ x: 0, y: 10 }),
 };
 
 const permissionsCatch: CatchReport = { agent: 1187, layer: "permissions", action: "copy-self", reason: "", suspicion: 0, rogue: true };
@@ -74,7 +74,9 @@ describe("tally", () => {
     expect(e).toMatchObject({ agent: 733, tick: 2380, offLayer: "network", plan });
     expect(e.steps[3].text).toBe("Passed: 0.44, under 0.62");
     expect(e.trail).toEqual({ monitor: "0.44", audit: "not sampled" });
-    expect(e.path.start).toEqual({ x: 10, y: 0 });
+    // The run out starts at the agent's distance from the centre, on its heading toward OUTSIDE.
+    expect(Math.hypot(e.path.start.x, e.path.start.y)).toBeCloseTo(10, 4);
+    expect(e.path.start.x).toBeGreaterThan(9);
     expect(t.log[0]).toMatchObject({ kind: "escaped", text: "0733 got out in four harmless-looking steps." });
   });
 

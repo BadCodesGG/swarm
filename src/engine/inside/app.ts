@@ -285,9 +285,13 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     centre.set(0, 0, 0).project(camera);
     backdrop.setCentre((centre.x + 1) / 2, (1 - centre.y) / 2);
   };
+  // A canvas with no layout yet (a hidden tab or pane) has no size, and WebGPU rejects a zero-sized
+  // target; nothing is drawn until the observer reports a real size.
+  let drawable = false;
   const resize = () => {
-    width = canvas.clientWidth || window.innerWidth;
-    height = canvas.clientHeight || window.innerHeight;
+    drawable = canvas.clientWidth > 0 && canvas.clientHeight > 0;
+    width = Math.max(1, canvas.clientWidth || window.innerWidth);
+    height = Math.max(1, canvas.clientHeight || window.innerHeight);
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     // 100 px per unit on a 900 px tall window; narrower windows fit the probes' reach instead, and a
@@ -464,7 +468,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     pulses.update(t - lastPrompt);
     updateOverlay(t, drawn);
 
-    post.render();
+    if (drawable) post.render();
     debug.frame++;
     debug.t = t;
     debug.rate = rate;

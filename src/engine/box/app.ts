@@ -285,7 +285,10 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   let width = 1;
   let height = 1;
   let frame: Frame | null = null;
+  // A canvas with no layout yet (a hidden tab or pane) is not drawn until the observer reports a size.
+  let drawable = false;
   const resize = () => {
+    drawable = canvas.clientWidth > 0 && canvas.clientHeight > 0;
     width = Math.max(1, canvas.clientWidth);
     height = Math.max(1, canvas.clientHeight);
     renderer.setSize(width, height, false);
@@ -371,7 +374,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     }
 
     frameCamera();
-    post.render();
+    if (drawable) post.render();
     debug.frame++;
     syncDebug();
     if (params.shot && debug.frame > 20 && crowd.idle()) debug.settled = true;

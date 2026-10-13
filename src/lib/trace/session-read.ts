@@ -15,6 +15,8 @@ export interface ReadOptions {
 
 const PROMPT_LINE = 120;
 const PROMPT_SCAN_LINES = 5_000;
+/** A real `agent-*.meta.json` is a few hundred bytes. */
+const META_BYTES = 64 * 1024;
 
 function abortError(signal?: AbortSignal): unknown {
   return signal?.reason ?? new DOMException("Aborted", "AbortError");
@@ -129,7 +131,8 @@ export async function readSession(files: readonly PickedFile[], opts: ReadOption
     for (const f of queue) {
       if (opts.signal?.aborted) throw abortError(opts.signal);
       if (f.path.endsWith(".meta.json")) {
-        builder.meta(f.path, await f.file.text());
+        // An oversized meta file is not read; the builder counts the empty text as malformed.
+        builder.meta(f.path, f.file.size > META_BYTES ? "" : await f.file.text());
         bump(f.file.size);
       } else {
         await streamLines(f.file, (line) => void builder.line(f.path, line), limits.lineBytes, bump, opts.signal);

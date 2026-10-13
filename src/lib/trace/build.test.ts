@@ -292,6 +292,22 @@ describe("createTraceBuilder: caps", () => {
     expect(validateTrace(traceOf(big))).toEqual([]);
   });
 
+  it("caps the length of names, types and models, so a long field cannot fill memory", () => {
+    const huge = "x".repeat(1_000_000);
+    const main = [
+      human(0),
+      assistant(1, "m0", [toolUse("T0", huge)]),
+      assistant(2, "m1", [toolUse("S0", "Agent", { subagent_type: huge, model: huge, description: huge })]),
+      result(3, "T0"),
+      result(4, "S0", { status: "completed", resolvedModel: huge }),
+    ];
+    const t = traceOf(build({ main }));
+    expect(Math.max(...t.events.map((e) => e.tool?.length ?? 0))).toBeLessThanOrEqual(300);
+    expect(t.agents[1].agentType.length).toBeLessThanOrEqual(300);
+    expect(t.agents[1].modelId.length).toBeLessThanOrEqual(300);
+    expect(JSON.stringify(t).length).toBeLessThan(10_000);
+  });
+
   it("caps agents, dropping the spawns past the limit", () => {
     const main = [human(0), ...Array.from({ length: 6 }, (_, i) => assistant(i + 1, `m${i}`, [toolUse(`S${i}`, "Agent")])), ...Array.from({ length: 6 }, (_, i) => result(20 + i, `S${i}`, { status: "completed" }))];
     const r = build({ main }, { agents: 3 });

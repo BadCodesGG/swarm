@@ -56,7 +56,13 @@ const IGNORED_TYPES = new Set([
 type Json = Record<string, unknown>;
 
 const isObj = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
-const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+/**
+ * Longest kept field (ids, names, models, a description, a handback). The caps bound counts, so
+ * without this a few hundred records with megabyte-long names would fill the worker's heap.
+ */
+const FIELD_CHARS = 300;
+const str = (v: unknown): string | undefined =>
+  typeof v === "string" && v.length > 0 ? cutText(v, FIELD_CHARS) : undefined;
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const nat = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 

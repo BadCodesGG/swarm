@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Tally } from "@/engine/box/tally";
 import { percent } from "@/engine/box/explain";
+import AudioToggle from "@/components/audio-toggle";
 
 const mono = "font-mono";
 
@@ -40,6 +41,7 @@ export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
         <Counter label="ESCAPED" value={tally.escaped.toLocaleString("en-US")} tone="escape" />
         <Counter label="USEFUL WORK" value={percent(tally.usefulWork)} />
       </dl>
+      <AudioToggle />
     </header>
   );
 }

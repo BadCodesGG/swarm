@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
+import AudioToggle from "@/components/audio-toggle";
 import { Counters } from "./counters";
 import { AgentBar, DetailCard } from "./detail-card";
 import { KeyPanel } from "./key-panel";
 import { NowPanel } from "./now-panel";
-import { RATES, Timeline } from "./scrubber";
+import { RATES } from "./rates";
+import { Timeline } from "./scrubber";
 import { SourceSwitcher } from "./source-switcher";
 import { useNarrow, useSelection } from "./use-engine";
 
@@ -98,6 +100,7 @@ export function Hud({ app }: { app: InsideApp }) {
             {LOGO}
             <span className="font-semibold text-ink">INSIDE</span>
           </Link>
+          <AudioToggle className="ml-auto" />
           <Link
             href="/inside/load"
             className={`pointer-events-auto flex min-h-11 items-center gap-1.5 rounded-xl border border-opus/45 bg-opus/8 px-3.5 text-sm font-semibold text-warn ${linkRing}`}
@@ -108,9 +111,11 @@ export function Hud({ app }: { app: InsideApp }) {
         </header>
         <SourceSwitcher app={app} narrow />
         <Counters app={app} compact />
-        <div ref={slot} className="min-h-[200px] grow" aria-hidden="true" />
+        {/* The design's 300 px scene band; it gives way first on a short screen, and spare height goes under the cards. */}
+        <div ref={slot} className="min-h-[200px] flex-[0_1_300px]" aria-hidden="true" />
         <NowPanel app={app} narrow />
         {selected > 0 ? <AgentBar app={app} id={selected} expanded={sheetOpen} onToggle={() => setSheetOpen((o) => !o)} /> : null}
+        <div className="grow" aria-hidden="true" />
         <Timeline app={app} narrow />
         {selected > 0 && sheetOpen ? (
           <div
@@ -144,6 +149,7 @@ export function Hud({ app }: { app: InsideApp }) {
         </Link>
         <div className="grow" />
         <Counters app={app} />
+        <AudioToggle />
       </header>
 
       <div className="flex min-h-0 flex-wrap items-stretch justify-between gap-4">

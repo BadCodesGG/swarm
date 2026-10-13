@@ -135,6 +135,47 @@ export class FrameBudget {
   }
 }
 
+/** The live tier of a running act, and the policy that lowers it. */
+export interface AdaptiveQuality {
+  readonly level: QualityLevel;
+  /**
+   * Feed one wall-clock frame interval, ms. Returns the new level on the frame the tier steps down,
+   * else null. A plan that is not adaptive, a round within budget, or the bottom tier ends the watch.
+   */
+  frame(ms: number): QualityLevel | null;
+}
+
+/** Steps a plan's tier down one rung each time a fresh round of frames runs over budget. */
+export function adaptQuality(plan: QualityPlan, options: BudgetOptions = {}): AdaptiveQuality {
+  let level = plan.level;
+  let budget: FrameBudget | null = plan.adaptive ? new FrameBudget(options) : null;
+  return {
+    get level() {
+      return level;
+    },
+    frame(ms) {
+      if (!budget) return null;
+      const verdict = budget.push(ms);
+      if (verdict === "ok" || verdict === "done") budget = null;
+      if (verdict !== "slow") return null;
+      const next = stepDown(level);
+      if (!next) {
+        budget = null;
+        return null;
+      }
+      level = next;
+      budget?.reset();
+      return next;
+    },
+  };
+}
+
+/** `?budgetMs=` lowers the frame budget, so a fast machine can exercise the step-down. */
+export function budgetOptions(params: URLSearchParams): BudgetOptions {
+  const ms = Number(params.get("budgetMs"));
+  return Number.isFinite(ms) && ms > 0 ? { budgetMs: ms } : {};
+}
+
 /** Highest device pixel ratio worth rendering at: fragment cost grows with its square. */
 export function maxPixelRatio(level: QualityLevel, coarsePointer: boolean): number {
   const ratio = TIERS[level.tier].pixelRatio;

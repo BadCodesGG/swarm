@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FrameBudget, TIERS, maxPixelRatio, resolveQuality, stepDown, type QualityInputs } from "./quality";
+import { FrameBudget, TIERS, adaptQuality, budgetOptions, maxPixelRatio, resolveQuality, stepDown, type QualityInputs } from "./quality";
 
 const desktop: QualityInputs = { pref: "auto", isWebGPU: true, coarsePointer: false, viewportWidth: 1600 };
 
@@ -122,5 +122,53 @@ describe("maxPixelRatio", () => {
     expect(maxPixelRatio({ tier: "hi" }, true)).toBe(1.5);
     expect(maxPixelRatio({ tier: "lite" }, false)).toBe(TIERS.lite.pixelRatio);
     expect(maxPixelRatio({ tier: "lite" }, true)).toBe(TIERS.lite.pixelRatio);
+  });
+});
+
+describe("adaptQuality", () => {
+  const fast = { warmup: 2, samples: 4, budgetMs: 20 };
+  // Slow means missed vsyncs: some frames at the refresh period, the rest well past it (see FrameBudget).
+  const SLOW = [16, 64];
+  const feed = (a: ReturnType<typeof adaptQuality>, ms: number | number[], n: number) => {
+    const pattern = typeof ms === "number" ? [ms] : ms;
+    const stepped: (string | null)[] = [];
+    for (let i = 0; i < n; i++) stepped.push(a.frame(pattern[i % pattern.length])?.tier ?? null);
+    return stepped.filter((s) => s !== null);
+  };
+
+  it("steps hi to mid to lite while frames stay slow, then stops at the bottom", () => {
+    const a = adaptQuality({ level: { tier: "hi" }, adaptive: true }, fast);
+    expect(feed(a, SLOW, 6)).toEqual(["mid"]);
+    expect(a.level).toEqual({ tier: "mid" });
+    expect(feed(a, SLOW, 6)).toEqual(["lite"]);
+    expect(feed(a, SLOW, 60)).toEqual([]);
+    expect(a.level).toEqual({ tier: "lite" });
+  });
+
+  it("needs a fresh warm-up and round after each step", () => {
+    const a = adaptQuality({ level: { tier: "hi" }, adaptive: true }, fast);
+    expect(feed(a, SLOW, 6)).toEqual(["mid"]);
+    expect(feed(a, SLOW, 5)).toEqual([]);
+    expect(feed(a, SLOW, 1)).toEqual(["lite"]);
+  });
+
+  it("stops watching once a round is within budget", () => {
+    const a = adaptQuality({ level: { tier: "hi" }, adaptive: true }, fast);
+    expect(feed(a, 16, 6)).toEqual([]);
+    expect(feed(a, SLOW, 60)).toEqual([]);
+    expect(a.level).toEqual({ tier: "hi" });
+  });
+
+  it("never steps a pinned or scripted plan", () => {
+    const a = adaptQuality({ level: { tier: "hi" }, adaptive: false }, fast);
+    expect(feed(a, SLOW, 60)).toEqual([]);
+    expect(a.level).toEqual({ tier: "hi" });
+  });
+
+  it("reads a lowered budget from ?budgetMs=, and ignores anything that is not a positive number", () => {
+    expect(budgetOptions(new URLSearchParams("budgetMs=4"))).toEqual({ budgetMs: 4 });
+    expect(budgetOptions(new URLSearchParams("budgetMs=-1"))).toEqual({});
+    expect(budgetOptions(new URLSearchParams("budgetMs=x"))).toEqual({});
+    expect(budgetOptions(new URLSearchParams(""))).toEqual({});
   });
 });

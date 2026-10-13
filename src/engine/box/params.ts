@@ -8,8 +8,12 @@ import { fork, type Rng } from "@/lib/rng";
 import { step, type BoxState } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, type BoxConfig, type StepReport } from "@/lib/box/types";
 
-/** Seed 29 with the network layer off: eleven catches, then one agent splits its way out at tick 148. */
-export const SHOT_ESCAPE = { seed: 29, agents: 2000 } as const;
+/**
+ * Seed 1812 with the network layer off: seven catches, then one agent splits its way out at tick 85,
+ * under the monitor's line and unsampled by the audit, while the permissions, sandbox and audit
+ * catch markers are still on the rings (found by searching seeds 0 to 2399 for that frame).
+ */
+export const SHOT_ESCAPE = { seed: 1812, agents: 2000 } as const;
 
 export interface BoxParams {
   seed: number;

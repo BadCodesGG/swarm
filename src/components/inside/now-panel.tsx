@@ -27,7 +27,7 @@ export function NowPanel({ app, narrow }: { app: InsideApp; narrow: boolean }) {
         <span className="size-1.5 rounded-full bg-opus shadow-[0_0_8px_var(--opus)]" />
         NOW
       </span>
-      <p data-narration className={`m-0 text-body [text-wrap:pretty] ${narrow ? "line-clamp-4 text-sm leading-[1.45]" : "text-[15px] leading-normal"}`}>
+      <p data-narration className={`m-0 text-body [text-wrap:pretty] ${narrow ? "text-sm leading-[1.45]" : "text-[15px] leading-normal"}`}>
         {text}
       </p>
       <SampleTag trace={tl.trace} />

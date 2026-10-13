@@ -26,6 +26,15 @@ export interface StillImage {
   alt: string;
 }
 
+/** What an act's still-mode start function receives: no renderer, no three. */
+export interface StillOptions {
+  /** The still frame's URL. */
+  src: string;
+  params: URLSearchParams;
+  /** Leaves the still for the live scene, as "Enter anyway" does. */
+  enter(): void;
+}
+
 interface LoadState {
   fraction: number;
   label: string;
@@ -74,19 +83,57 @@ function Still({ still, title, children }: { still: StillImage; title: string; c
   );
 }
 
+const STILL_COPY: Record<"still" | "unsupported", { lead: string; detail: string }> = {
+  still: {
+    lead: "Your device asks for reduced motion, so the scene is paused on a still.",
+    detail: "Entering starts the live scene.",
+  },
+  unsupported: {
+    lead: "This browser can draw neither WebGPU nor WebGL 2, so the live scene cannot start.",
+    detail: "Try a recent Chrome, Edge, Firefox or Safari on a device with a graphics chip. The picture is a frame from the live scene.",
+  },
+};
+
+const enterClass =
+  "rounded-[4px] border border-layer-2/50 bg-layer-2/10 px-4 py-2 text-[13px] tracking-wide text-ink-strong transition-colors hover:bg-layer-2/20 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none";
+
+/** The slim bar over a still-mode HUD: why the scene is still, and the way into the live one. */
+function StillBar({ gate, onEnter }: { gate: "still" | "unsupported"; onEnter(): void }) {
+  const copy = STILL_COPY[gate];
+  return (
+    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-panel-border bg-panel px-6 py-2.5 text-[13px] leading-snug">
+      <p className="m-0 text-ink-strong">
+        {copy.lead} <span className="text-muted">{gate === "still" ? "The controls and the trials still work; entering starts the live scene." : copy.detail}</span>
+      </p>
+      {gate === "still" ? (
+        <button type="button" onClick={onEnter} className={`${enterClass} min-h-11 py-1.5`}>
+          Enter anyway
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Full-viewport canvas shared by both acts. The engine (and three) is imported by `start` on the
  * client only, after mount and after a capability probe at idle, so the server-rendered page is
  * just the dark frame and the loader.
+ *
+ * Under reduced motion (or with nothing to draw with) an act shows a still frame instead. With
+ * `stillStart`, the act keeps its HUD there: the still app draws the frame into the canvas with no
+ * three, and the overlay works as it does live (the Box's trials, for one). Without it, the still
+ * fills the screen.
  */
 export default function Experience<A extends ExperienceApp>({
   start,
+  stillStart,
   still,
   title,
   label,
   overlay,
 }: {
   start: (canvas: HTMLCanvasElement, opts: StartOptions) => Promise<A>;
+  stillStart?: (canvas: HTMLCanvasElement, opts: StillOptions) => Promise<A>;
   still: StillImage;
   title: string;
   /** The canvas's accessible name. */
@@ -115,21 +162,32 @@ export default function Experience<A extends ExperienceApp>({
     setGate("run");
   }, []);
 
+  // A still app (the Box's HUD over a still frame) runs where the gate is still or unsupported.
+  const stillGate = gate === "still" || gate === "unsupported" ? gate : null;
+  const withStillApp = stillGate !== null && !!stillStart;
+  const stillSrc = still.src;
+
   useEffect(() => {
-    if (gate !== "run" || !canvas) return;
+    // The canvas is remounted when the gate changes; the old one is still in state for one render.
+    if (!canvas?.isConnected || (gate !== "run" && !withStillApp)) return;
     let disposed = false;
     let dispose: (() => void) | null = null;
     const params = new URLSearchParams(window.location.search);
 
-    start(canvas, {
-      shot: params.get("shot"),
-      forceWebGL: params.get("webgl") === "1",
-      quality: readPrefs().quality,
-      params,
-      onProgress: (fraction, text) => {
-        if (!disposed) setLoad({ fraction, label: text });
-      },
-    })
+    const starting =
+      gate === "run"
+        ? start(canvas, {
+            shot: params.get("shot"),
+            forceWebGL: params.get("webgl") === "1",
+            quality: readPrefs().quality,
+            params,
+            onProgress: (fraction, text) => {
+              if (!disposed) setLoad({ fraction, label: text });
+            },
+          })
+        : stillStart!(canvas, { src: stillSrc, params, enter: enterAnyway });
+
+    starting
       .then((started) => {
         if (disposed) {
           started.dispose();
@@ -147,36 +205,33 @@ export default function Experience<A extends ExperienceApp>({
       dispose?.();
       setApp(null);
     };
-  }, [gate, canvas, start]);
+  }, [gate, canvas, start, stillStart, withStillApp, stillSrc, enterAnyway]);
 
   const running = gate === "run";
   const showLoader = gate === "probing" || (running && !app);
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-ground text-body select-none">
-      <canvas ref={setCanvas} className={`h-full w-full outline-none ${running ? "block" : "hidden"}`} aria-label={label} />
+      {/* Remounted between live and still: a canvas that has given out a 2D context cannot give a WebGPU one. */}
+      <canvas
+        key={running ? "live" : "still"}
+        ref={setCanvas}
+        className={`h-full w-full outline-none ${running || withStillApp ? "block" : "hidden"}`}
+        aria-label={label}
+      />
 
-      {gate === "still" ? (
+      {stillGate && !withStillApp ? (
         <Still still={still} title={title}>
-          <p className="mt-3 text-[15px] leading-snug text-ink-strong">Your device asks for reduced motion, so the scene is paused on a still.</p>
-          <p className="mt-1.5 text-[13px] leading-snug text-muted">Entering starts the live scene.</p>
-          <button
-            type="button"
-            onClick={enterAnyway}
-            className="mt-4 rounded-[4px] border border-layer-2/50 bg-layer-2/10 px-4 py-2 text-[13px] tracking-wide text-ink-strong transition-colors hover:bg-layer-2/20 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none"
-          >
-            Enter anyway
-          </button>
-          <p className="mt-2 text-xs text-muted">Remembered on this device.</p>
-        </Still>
-      ) : null}
-
-      {gate === "unsupported" ? (
-        <Still still={still} title={title}>
-          <p className="mt-3 text-[15px] leading-snug text-ink-strong">This browser can draw neither WebGPU nor WebGL 2, so the live scene cannot start.</p>
-          <p className="mt-1.5 text-[13px] leading-snug text-muted">
-            Try a recent Chrome, Edge, Firefox or Safari on a device with a graphics chip. The picture is a frame from the live scene.
-          </p>
+          <p className="mt-3 text-[15px] leading-snug text-ink-strong">{STILL_COPY[stillGate].lead}</p>
+          <p className="mt-1.5 text-[13px] leading-snug text-muted">{STILL_COPY[stillGate].detail}</p>
+          {stillGate === "still" ? (
+            <>
+              <button type="button" onClick={enterAnyway} className={`mt-4 ${enterClass}`}>
+                Enter anyway
+              </button>
+              <p className="mt-2 text-xs text-muted">Remembered on this device.</p>
+            </>
+          ) : null}
         </Still>
       ) : null}
 
@@ -195,7 +250,13 @@ export default function Experience<A extends ExperienceApp>({
         </div>
       </div>
 
-      {app && overlay ? overlay(app) : null}
+      {app && overlay && stillGate && withStillApp ? (
+        <div className="absolute inset-0 flex flex-col">
+          <StillBar gate={stillGate} onEnter={enterAnyway} />
+          <div className="relative min-h-0 flex-1">{overlay(app)}</div>
+        </div>
+      ) : null}
+      {app && overlay && running ? overlay(app) : null}
     </main>
   );
 }

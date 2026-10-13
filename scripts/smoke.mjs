@@ -11,7 +11,10 @@
  * absent, so assertions that need a real WebGPU adapter are skipped.
  *
  * Steps (later slices append to STEPS):
- *   1. landing: `/` is 200, loads no WebGPURenderer, and links to /inside and /box.
+ *   1. landing: `/` is 200, loads no WebGPURenderer, has its two doors to /inside and /box and a link to
+ *      /about, and has no sideways scroll at 390 px.
+ *   6. about: `/about` is 200, says Act 2 is a simulation and uploads stay in the browser, cites each
+ *      source by title and link, has no sideways scroll at 390 px, and its og:image is a 1200x630 JPEG.
  */
 
 import { existsSync } from "node:fs";
@@ -90,10 +93,86 @@ async function stepLanding(browser) {
     const hrefs = await page.$$eval("a[href]", (as) => as.map((a) => a.getAttribute("href")));
     check("/ links to /inside", hrefs.includes("/inside"));
     check("/ links to /box", hrefs.includes("/box"));
+    check("/ links to /about", hrefs.includes("/about"));
+    const doors = await page.$$eval('nav[aria-label="Acts"] a', (as) => as.map((a) => a.getAttribute("href")));
+    check("/ has the two doors, Inside then The Box", doors.join(",") === "/inside,/box", doors.join(","));
+    check("/ says sound is off by default", (await page.textContent("body")).includes("Sound off by default"));
     check("/ logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
   } finally {
     await context.close();
   }
+  await checkPhone(browser, "/");
+}
+
+/** At a 390 px phone width the route renders, nothing scrolls sideways, and it logs no problems. */
+async function checkPhone(browser, route) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  try {
+    const page = await context.newPage();
+    const problems = watch(page);
+    const response = await page.goto(`${BASE}${route}`, { waitUntil: "load" });
+    check(`${route} at 390 px is 200`, response?.status() === 200, String(response?.status()));
+    const { scroll, client } = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    check(`${route} at 390 px has no sideways scroll`, scroll <= client, `scrollWidth ${scroll}, clientWidth ${client}`);
+    check(`${route} at 390 px logged no console errors`, problems.length === 0, problems.join(" | "));
+  } finally {
+    await context.close();
+  }
+}
+
+/** Width and height from a JPEG's first start-of-frame marker, or null when it is not a JPEG. */
+function jpegSize(buf) {
+  if (buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  let i = 2;
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const marker = buf[i + 1];
+    const len = buf.readUInt16BE(i + 2);
+    // SOF0 to SOF15, except DHT (C4), JPG (C8) and DAC (CC).
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+/** Sources the about page must cite, each by title and link. */
+const CITATIONS = [
+  ["AI Control: Improving Safety Despite Intentional Subversion", "https://arxiv.org/abs/2312.06942"],
+  ["Ctrl-Z: Controlling AI Agents via Resampling", "https://arxiv.org/abs/2504.10374"],
+  ["SHADE-Arena: Evaluating Sabotage and Monitoring in LLM Agents", "https://arxiv.org/abs/2506.15740"],
+  ["Making Claude Code more secure and autonomous with sandboxing", "https://www.anthropic.com/engineering/claude-code-sandboxing"],
+];
+
+async function stepAbout(browser) {
+  console.log("-- 6. about");
+  const { res, html, scripts } = await routeSources("/about");
+  check("GET /about is 200", res.status === 200, String(res.status));
+  check("/about carries no WebGPURenderer", ![html, ...scripts].some((t) => t.includes("WebGPURenderer")), `${scripts.length} scripts`);
+
+  const { context, page, problems, response } = await openPage(browser, "/about");
+  try {
+    check("/about loads with status 200 in the browser", response?.status() === 200, String(response?.status()));
+    const text = await page.textContent("main");
+    check("/about says Act 2 is a simulation", /The Box is a simulation/.test(text));
+    check("/about says uploads are parsed in the browser and never sent", /parsed in a Web Worker on your device/.test(text) && /never uploaded/.test(text));
+    const links = await page.$$eval("a[href]", (as) => as.map((a) => ({ href: a.getAttribute("href"), text: a.textContent?.trim() ?? "" })));
+    for (const [title, href] of CITATIONS) {
+      check(`/about cites "${title}"`, links.some((l) => l.href === href && l.text === title), href);
+    }
+    const og = await page.$$eval('meta[property^="og:image"]', (ms) => Object.fromEntries(ms.map((m) => [m.getAttribute("property"), m.getAttribute("content")])));
+    check("/about og:image is 1200x630", og["og:image:width"] === "1200" && og["og:image:height"] === "630", JSON.stringify(og));
+    const image = await fetch(new URL(new URL(og["og:image"]).pathname, BASE));
+    const buf = Buffer.from(await image.arrayBuffer());
+    const size = jpegSize(buf);
+    check("/about og:image is a JPEG", image.status === 200 && image.headers.get("content-type") === "image/jpeg" && size !== null, `${image.status} ${image.headers.get("content-type")}`);
+    check("og.jpg is 1200x630 and under 300 KB", size?.width === 1200 && size?.height === 630 && buf.length < 300 * 1024, `${size?.width}x${size?.height}, ${buf.length} bytes`);
+    check("/about logged no console errors", problems.length === 0, problems.join(" | "));
+  } finally {
+    await context.close();
+  }
+  await checkPhone(browser, "/about");
 }
 
 /** Agent and event counts a sample of each size must land in (see `generate.test.ts`). */
@@ -250,7 +329,13 @@ async function stepInside(browser) {
   }
 }
 
-const STEPS = [stepLanding, stepInside, ...boxSteps({ check, openPage, software: SOFTWARE }), (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside })];
+const STEPS = [
+  stepLanding,
+  stepInside,
+  ...boxSteps({ check, openPage, software: SOFTWARE }),
+  (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside }),
+  stepAbout,
+];
 
 if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
   console.error("FAIL  no production build: run `npm run build` first (the smoke test serves `next start`)");

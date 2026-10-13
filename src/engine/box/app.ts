@@ -21,7 +21,8 @@ import { createClock, isScripted } from "../shared/clock";
 import { registerDebug } from "../shared/debug";
 import { EventBus } from "../shared/events";
 import { createPost } from "../shared/post";
-import { maxPixelRatio, resolveQuality, TIERS } from "../shared/quality";
+import { adaptQuality, budgetOptions, maxPixelRatio, resolveQuality, TIERS } from "../shared/quality";
+import { startBoxAudio } from "../audio/box";
 import { createRenderer } from "../shared/renderer";
 import { createCrowd } from "./crowd";
 import { TARGET_STRIDE } from "./crowd/integrate";
@@ -120,6 +121,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   const post = createPost(renderer, scene, camera, { bloom: { strength: 0.55, radius: 0.35, threshold: 0.85 }, vignette: 1, grain: 0.018 });
   const bus = new EventBus<BoxEvents>();
   const clock = createClock({ fixed: scripted });
+  const audio = startBoxAudio(bus);
+  // On "auto" the tier steps down while frames run slow. Only the pixel ratio follows it: the crowd
+  // size is fixed for the run, since changing it would restart the simulation in front of the visitor.
+  const quality = adaptQuality(plan, budgetOptions(opts.params));
+  let lastFrameAt = -1;
 
   // --- simulation state ---
   let config: BoxConfig = params.config;
@@ -320,6 +326,13 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   let disposed = false;
   const loop = () => {
     if (disposed) return;
+    const now = performance.now();
+    const stepped = lastFrameAt < 0 ? null : quality.frame(now - lastFrameAt);
+    lastFrameAt = now;
+    if (stepped) {
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio(stepped, coarse)));
+      debug.tier = stepped.tier;
+    }
     const dt = clock.tick();
     elapsed += dt;
     u.time.value = elapsed;
@@ -398,6 +411,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       observer.disconnect();
       void renderer.setAnimationLoop(null);
       unregister();
+      audio.dispose();
       bus.clear();
       post.dispose();
       crowd.dispose();

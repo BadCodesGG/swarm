@@ -1,13 +1,13 @@
 /**
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
- *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=29] [--name=box]
+ *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
  *     [--port=3128] [--query=sim=cpu]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
- * (unless --webgl) and zero console errors or `THREE.` warnings, and writes `.shots/<name>-<n>.png`
+ * (unless --webgl), zero console errors or `THREE.` warnings and no two scene labels overlapping, and writes `.shots/<name>-<n>.png`
  * with the next free n. On --mobile it also scrolls the page and writes `<name>-<n>-panels.png`,
  * since the panels stack under the scene there. Launch strategies are tried in order, as in shot.mjs.
  */
@@ -91,6 +91,17 @@ async function attempt(strategy) {
       markers: [...document.querySelectorAll("[data-marker]")].map((e) => e.textContent),
       trail: [...document.querySelectorAll("[data-trail]")].map((e) => e.textContent),
       points: document.querySelector("svg[data-plot-points]")?.getAttribute("data-plot-points"),
+      // Scene labels whose drawn boxes touch, as Chromium lays the text out (not the placer's estimate).
+      clashes: (() => {
+        const boxes = [...document.querySelectorAll("[data-ring], [data-marker], [data-trail]")].map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
+        const out = [];
+        boxes.forEach((a, i) => {
+          for (const b of boxes.slice(i + 1)) {
+            if (a.r.left < b.r.right && b.r.left < a.r.right && a.r.top < b.r.bottom && b.r.top < a.r.bottom) out.push(`"${a.text}" / "${b.text}"`);
+          }
+        });
+        return out;
+      })(),
     }));
     if (!wantWebGL && !info.isWebGPU) return { ok: false, info, errors, threeWarnings, reason: "fell back to WebGL2" };
     const base = await nextShotBase();
@@ -141,9 +152,13 @@ try {
   console.log(`  markers: ${info.labels.markers.join(" | ") || "(none)"}`);
   console.log(`  trail: ${info.labels.trail.join(" | ") || "(none)"}; plotted ${info.labels.points}`);
   for (const out of result.outs) console.log(`  saved ${path.relative(ROOT, out)}`);
-  const problems = [...result.errors, ...result.threeWarnings.map((w) => `THREE warning: ${w}`)];
+  const problems = [
+    ...result.errors,
+    ...result.threeWarnings.map((w) => `THREE warning: ${w}`),
+    ...info.labels.clashes.map((c) => `scene labels overlap: ${c}`),
+  ];
   if (problems.length) {
-    console.error(`Console errors or warnings (${problems.length}):`);
+    console.error(`Console errors, warnings or label overlaps (${problems.length}):`);
     for (const e of problems) console.error(`  ${e}`);
   } else {
     exitCode = 0;

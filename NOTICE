@@ -1,0 +1,16 @@
+This project's code is licensed under the MIT licence in LICENSE. The
+following are not covered by it.
+
+The typefaces, Schibsted Grotesk and JetBrains Mono, are not part of this
+repository. next/font downloads them at build time and the site serves them;
+both are licensed under the SIL Open Font License 1.1 by their authors.
+
+The papers and the article cited on the about page (src/app/about/sources.ts)
+belong to their authors and publishers. The site links to them and quotes
+only their titles.
+
+"Claude", "Claude Code" and "Anthropic" are trademarks of Anthropic.
+
+The BadCodes name, logo and wordmark are not licensed under the MIT
+licence. A fork keeps the copyright notice in LICENSE but should not
+present itself as BadCodes or use the logo as its own brand.

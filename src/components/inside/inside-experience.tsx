@@ -20,7 +20,7 @@ export default function InsideExperience() {
   return (
     <Experience
       start={start}
-      still={{ src: "/stills/inside.png", alt: "A frame of Act 1: an orchestrator core with subagents, tool stations and web probes" }}
+      still={{ src: "/stills/inside.jpg", alt: "A frame of Act 1: an orchestrator core with subagents, tool stations and web probes" }}
       title="Act 1, Inside"
       label="Act 1, Inside: a replay of an AI coding session as a swarm"
       overlay={overlay}

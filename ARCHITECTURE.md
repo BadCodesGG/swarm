@@ -166,8 +166,9 @@ units (px of the design's 760x560 frame) onto the HUD's scene slot (`setFrame`),
 over it share the same viewBox.
 - Pure: `layout.ts` (ring radii, crowd homes, wander, escape path and crossings), `explain.ts` (every
   sentence: escape steps, plan, log lines, marker and ring labels), `tally.ts` (folds `StepReport`s
-  into counters, log, markers and the latest escape), `params.ts` (`seed`, `sim=cpu`,
-  `shot=escape`: network off, seed 29, run to its first escape).
+  into counters, log, markers and the latest escape), `labels.ts` (where the scene text goes: no
+  label on another, on the trail, or adrift from its mark), `params.ts` (`seed`, `sim=cpu`,
+  `shot=escape`: network off, seed 1812, run to its first escape).
 - `crowd/index.ts`: `createCrowd({ renderer, isWebGPU, count, forceCpu })` -> `Crowd { mode:
   "gpu" | "cpu"; setTargets(targets, status); step(dt); snap(); idle(); positions: PositionsSource;
   dispose() }`, the shape of cubic-mm's `Simulation` and `SpikeTimesSource`.

@@ -5,9 +5,8 @@ import type { InsideApp } from "@/engine/inside/app";
 import { clock, idleCutLabel, MODEL_VARS } from "@/engine/inside/format";
 import { axisTicks, barHeight, buildLanes, LANE_BINS, type Lanes } from "@/engine/inside/lanes";
 import type { IdleCut, Timeline } from "@/lib/trace/timeline";
+import { nextRate, RATES, shownRate } from "./rates";
 import { useClock, useTimeline } from "./use-engine";
-
-export const RATES = [1, 20, 200] as const;
 
 /** Pause bars while playing, a triangle while paused; the design's 48 px round control. */
 export function PlayButton({ app, playing, size }: { app: InsideApp; playing: boolean; size: 44 | 48 }) {
@@ -179,7 +178,7 @@ export function Timeline({ app, narrow }: { app: InsideApp; narrow: boolean }) {
   const { t, rate, playing } = useClock(app);
 
   if (narrow) {
-    const next = RATES[(RATES.indexOf(rate as (typeof RATES)[number]) + 1) % RATES.length];
+    const shown = shownRate(rate);
     return (
       <section aria-label="Timeline" className="pointer-events-auto flex flex-col gap-2.5 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 py-3">
         <Scrubber app={app} only="tools" />
@@ -190,11 +189,11 @@ export function Timeline({ app, narrow }: { app: InsideApp; narrow: boolean }) {
           </span>
           <button
             type="button"
-            aria-label={`Playback speed, ${rate} times`}
-            onClick={() => app.setRate(next)}
+            aria-label={`Playback speed, ${shown} times`}
+            onClick={() => app.setRate(nextRate(rate))}
             className="min-h-11 min-w-14 rounded-[10px] border border-[rgba(150,172,214,0.22)] bg-transparent font-mono text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-layer-1"
           >
-            {rate}x
+            {shown}x
           </button>
         </div>
       </section>

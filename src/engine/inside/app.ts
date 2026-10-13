@@ -17,7 +17,8 @@ import { createClock } from "../shared/clock";
 import { registerDebug } from "../shared/debug";
 import { EventBus } from "../shared/events";
 import { createPost } from "../shared/post";
-import { maxPixelRatio, resolveQuality, TIERS } from "../shared/quality";
+import { adaptQuality, budgetOptions, maxPixelRatio, resolveQuality, TIERS } from "../shared/quality";
+import { startInsideAudio } from "../audio/inside";
 import { createRenderer } from "../shared/renderer";
 import {
   BOUNDARY_RADIUS,
@@ -123,6 +124,8 @@ export interface InsideApp extends ExperienceApp {
 const FOV = 36;
 /** Design framing: 100 px per world unit on a 900 px tall window, the core 20 px above centre. */
 const DESIGN_HEIGHT_UNITS = 9;
+/** The phone board's band: the boundary ring (7.5 units across) nearly fills it, and probes run past its edge. */
+const FRAME_HEIGHT_UNITS = 8;
 const CORE_LIFT = 0.2;
 /** The swarm plane tips back a little, so it reads as 3D without hiding the ring. */
 const TILT_X = -0.3;
@@ -166,7 +169,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   const boundary = createBoundary(scene, swarm, u);
   const stations = createStations(swarm, u);
   const tethers = createTethers(swarm, u, 64);
-  const particles = createParticles(swarm, u, tier.particleCap);
+  let particles = createParticles(swarm, u, tier.particleCap);
   const core = createCore(swarm);
   const agents = createAgents(swarm, 64);
   const pulses = createPulses(scene, u);
@@ -178,6 +181,10 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
 
   const bus = new EventBus<InsideEvents>();
   const clock = createClock({ fixed: params.shot });
+  const audio = startInsideAudio(bus);
+  // On "auto" the tier steps down while frames run slow: a smaller particle ring and pixel ratio.
+  const quality = adaptQuality(plan, budgetOptions(opts.params));
+  let lastFrameAt = -1;
 
   let trace!: SessionTrace;
   let timeline!: Timeline;
@@ -284,7 +291,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     camera.aspect = width / height;
     // 100 px per unit on a 900 px tall window; narrower windows fit the probes' reach instead, and a
     // framed scene (the phone layout) fits its own slot.
-    const pxPerUnit = Math.min((frame ? frame.height : height) / DESIGN_HEIGHT_UNITS, width / 9.4);
+    const pxPerUnit = Math.min(frame ? frame.height / FRAME_HEIGHT_UNITS : height / DESIGN_HEIGHT_UNITS, width / 9.4);
     const pixelScale = height / (2 * Math.tan((FOV * Math.PI) / 360));
     distance = pixelScale / pxPerUnit;
     if (frame) camera.setViewOffset(width, height, 0, height / 2 - (frame.top + frame.height / 2), width, height);
@@ -405,6 +412,16 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   let disposed = false;
   const loop = () => {
     if (disposed) return;
+    const now = performance.now();
+    const stepped = lastFrameAt < 0 ? null : quality.frame(now - lastFrameAt);
+    lastFrameAt = now;
+    if (stepped) {
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio(stepped, coarse)));
+      particles.dispose();
+      particles = createParticles(swarm, u, TIERS[stepped.tier].particleCap);
+      lastT = -1;
+      debug.tier = stepped.tier;
+    }
     const dt = clock.tick();
     playback.advance(dt);
     const t = playback.time();
@@ -504,6 +521,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       canvas.removeEventListener("pointerup", onUp);
       void renderer.setAnimationLoop(null);
       unregister();
+      audio.dispose();
       bus.clear();
       post.dispose();
       for (const m of [pulses, agents, core, particles, tethers, stations, boundary, backdrop]) m.dispose();

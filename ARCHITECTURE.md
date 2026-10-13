@@ -159,15 +159,23 @@ setTrace(trace), play(), pause(), seek(t), setRate(r), time(), rate(), pick(x, y
 
 ### `src/engine/box/` (Act 2)
 `startBox(canvas, opts): Promise<BoxApp>`, `BoxApp = { bus, isWebGPU, configure(config),
-reset(seed), stats(), dispose() }`. It owns the live `lib/box` state and calls `step` on a fixed
-10 Hz accumulator.
+reset(seed), stats(), play(), pause(), replayEscape(), setFrame(rect), dispose() }`. It owns the
+live `lib/box` state and calls `step` on a fixed 10 Hz accumulator; `stats()` is a versioned
+`BoxSnapshot` the HUD polls. The scene is flat and face on: an orthographic camera maps scene
+units (px of the design's 760x560 frame) onto the HUD's scene slot (`setFrame`), so the SVG labels
+over it share the same viewBox.
+- Pure: `layout.ts` (ring radii, crowd homes, wander, escape path and crossings), `explain.ts` (every
+  sentence: escape steps, plan, log lines, marker and ring labels), `tally.ts` (folds `StepReport`s
+  into counters, log, markers and the latest escape), `params.ts` (`seed`, `sim=cpu`,
+  `shot=escape`: network off, seed 29, run to its first escape).
 - `crowd/index.ts`: `createCrowd({ renderer, isWebGPU, count, forceCpu })` -> `Crowd { mode:
-  "gpu" | "cpu"; setTargets(targets, status); step(dt); positions: PositionsSource; dispose() }`,
-  the shape of cubic-mm's `Simulation` and `SpikeTimesSource`.
-- `crowd/integrate.ts` (pure steering toward targets); `crowd/gpu.ts` (its TSL compute twin on
-  `instancedArray`); `crowd/cpu.ts` + `crowd/worker.ts` (one message in flight, positions
+  "gpu" | "cpu"; setTargets(targets, status); step(dt); snap(); idle(); positions: PositionsSource;
+  dispose() }`, the shape of cubic-mm's `Simulation` and `SpikeTimesSource`.
+- `crowd/integrate.ts` (pure steering toward targets); `crowd/gpu.ts` (its TSL compute twin on a
+  storage buffer); `crowd/cpu.ts` + `crowd/worker.ts` (one message in flight, positions
   transferred back, as `cubic-mm/src/engine/sim/cpu.ts`).
-- `scene/shells.ts` (one shell per layer, `crack` uniform), `scene/agents.ts`, `scene/internet.ts`.
+- `scene/shells.ts` (one shell per layer, `crack` uniform), `scene/agents.ts`, `scene/internet.ts`
+  (the latest escape's trail and escapee), `scene/markers.ts`, `scene/backdrop.ts`.
 
 ### `src/engine/audio/`
 cubic-mm's `engine.ts`, `handle.ts`, `limiter.ts`, `pool.ts`, `pref.ts`. Subscribes to the act's

@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { runTrialsOffThread } from "@/lib/box/trials-client";
 import { DEFAULT_CONFIG, type BoxConfig, type LayerId } from "@/lib/box/types";
 import type { BoxApp } from "@/engine/box/app";
+import { useMedia } from "@/components/inside/use-engine";
+import { countsLine, nextAnnouncement, trialsLine, type Said } from "./announce";
 import { EscapeExplainer } from "./escape-explainer";
 import { EventLog } from "./event-log";
 import { BoxHeader } from "./header";
 import { OutsidePanel } from "./outside-panel";
-import { Panel } from "./panel";
+import { Panel, RunControls } from "./panel";
 import { addRun, settingsKey, type PlotPoint } from "./plot";
 import { SceneLabels } from "./scene-labels";
 import { TrialsPlot } from "./trials-plot";
@@ -28,6 +30,32 @@ const SHOT_PRIORS: BoxConfig[] = [
   withLayers(DEFAULT_CONFIG, { sandbox: false, permissions: false, network: false, monitor: false, audit: false }),
 ];
 
+/** Ms between two spoken changes of the caught count; an escape or a reset is spoken at once. */
+const COUNTS_GAP = 5000;
+
+/** A screen reader hears the caught and escaped counts when they change, at most every few seconds. */
+function CountsStatus({ caught, escaped }: { caught: number; escaped: number }) {
+  const said = useRef<Said>({ caught, escaped, at: 0 });
+  const [line, setLine] = useState("");
+  useEffect(() => {
+    const last = said.current;
+    if (caught === last.caught && escaped === last.escaped) return;
+    const now = performance.now();
+    // Said now, or once the gap is up (a held change is said even if nothing else changes by then).
+    const wait = nextAnnouncement(last, { caught, escaped }, now, COUNTS_GAP) ? 0 : Math.max(0, last.at + COUNTS_GAP - now);
+    const id = window.setTimeout(() => {
+      said.current = { caught, escaped, at: performance.now() };
+      setLine(countsLine(caught, escaped));
+    }, wait);
+    return () => window.clearTimeout(id);
+  }, [caught, escaped]);
+  return (
+    <p role="status" className="sr-only" data-status="counts">
+      {line}
+    </p>
+  );
+}
+
 /** A different trial seed for each repeat run of the same settings, so pooled runs add information. */
 const runSeed = (seed: number, runs: number) => (seed + Math.imul(runs, 7919)) >>> 0;
 
@@ -43,6 +71,9 @@ export function BoxHud({ app }: { app: BoxApp }) {
   const [running, setRunning] = useState(false);
   const [plotReady, setPlotReady] = useState(!snap.shot);
   const [textScale, setTextScale] = useState(1);
+  const [trialsSaid, setTrialsSaid] = useState("");
+  /** Phone and tablet: the scene comes first, so the run row sits under it rather than at the panel's foot. */
+  const stacked = useMedia("(max-width: 914px)");
   const slot = useRef<HTMLDivElement>(null);
   const abort = useRef<AbortController | null>(null);
   const { tally } = snap;
@@ -81,6 +112,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
       runTrialsOffThread(c, TRIALS, runSeed(snap.seed, runs), ctrl.signal)
         .then((summary) => {
           setPoints((pts) => addRun(pts, c, summary));
+          setTrialsSaid(trialsLine(summary));
           app.bus.emit("trials", summary);
         })
         .catch((err: unknown) => {
@@ -139,11 +171,21 @@ export function BoxHud({ app }: { app: BoxApp }) {
             onPlay={(play) => (play ? app.play() : app.pause())}
             onReset={() => app.reset(snap.seed)}
             onRunTrials={() => runTrials(config, runsSoFar)}
+            withRun={!stacked}
           />
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-3 max-[914px]:order-first">
             <div ref={slot} className="relative min-h-[300px] max-[1157px]:aspect-[760/560] min-[1158px]:flex-auto" data-scene-slot>
               <SceneLabels config={config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />
             </div>
+            {stacked ? (
+              <RunControls
+                playing={snap.playing}
+                running={running}
+                onPlay={(play) => (play ? app.play() : app.pause())}
+                onReset={() => app.reset(snap.seed)}
+                onRunTrials={() => runTrials(config, runsSoFar)}
+              />
+            ) : null}
             {escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} onReplay={() => app.replayEscape()} onRerun={rerunWith} /> : null}
           </div>
           <div className="flex max-w-full min-w-0 flex-[1_1_260px] flex-col gap-3">
@@ -153,6 +195,10 @@ export function BoxHud({ app }: { app: BoxApp }) {
           </div>
         </div>
       </div>
+      <CountsStatus caught={tally.caughtTotal} escaped={tally.escaped} />
+      <p role="status" className="sr-only" data-status="trials">
+        {trialsSaid}
+      </p>
     </div>
   );
 }

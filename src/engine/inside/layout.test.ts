@@ -7,6 +7,7 @@ import {
   agentPose,
   BOUNDARY_RADIUS,
   FOLD_TIME,
+  cycleAgent,
   featuredAgent,
   flightPos,
   makeFlight,
@@ -19,6 +20,7 @@ import {
   stationActivity,
   stationCounts,
   stationIndex,
+  sceneFraming,
   stationPos,
   webProbes,
 } from "./layout";
@@ -278,5 +280,60 @@ describe("nearestWithin", () => {
   it("returns null outside the radius or with no points", () => {
     expect(nearestWithin(pts, 200, 200, 30)).toBeNull();
     expect(nearestWithin([], 0, 0, 30)).toBeNull();
+  });
+});
+
+describe("cycleAgent", () => {
+  it("starts at the orchestrator and steps through the agents on screen in id order, wrapping", () => {
+    // At 30 s agents 1, 2 and 3 are all out.
+    expect(cycleAgent(tree(), 30, -1, 1)).toBe(0);
+    expect(cycleAgent(tree(), 30, 0, 1)).toBe(1);
+    expect(cycleAgent(tree(), 30, 1, 1)).toBe(2);
+    expect(cycleAgent(tree(), 30, 3, 1)).toBe(0);
+  });
+
+  it("steps backwards, wrapping from the orchestrator to the last agent", () => {
+    expect(cycleAgent(tree(), 30, 0, -1)).toBe(3);
+    expect(cycleAgent(tree(), 30, 2, -1)).toBe(1);
+    expect(cycleAgent(tree(), 30, -1, -1)).toBe(3);
+  });
+
+  it("skips agents not yet spawned or folded away, and carries on from where a gone one was", () => {
+    // At 55 s only agent 1 is still out; 2 returned at 50 and 3 at 40.
+    expect(cycleAgent(tree(), 55, 0, 1)).toBe(1);
+    expect(cycleAgent(tree(), 55, 1, 1)).toBe(0);
+    expect(cycleAgent(tree(), 55, 2, 1)).toBe(0);
+    expect(cycleAgent(tree(), 55, 2, -1)).toBe(1);
+  });
+
+  it("offers only the orchestrator before any subagent starts", () => {
+    expect(cycleAgent(tree(), 5, -1, 1)).toBe(0);
+    expect(cycleAgent(tree(), 5, 0, 1)).toBe(0);
+  });
+});
+
+describe("sceneFraming", () => {
+  it("frames the whole window at the board's 100 px per unit on a 1440x900 screen", () => {
+    expect(sceneFraming({ width: 1440, height: 900 }, null)).toEqual({ pxPerUnit: 100, offsetX: 0, offsetY: 0 });
+  });
+
+  it("fits the phone's band to 8 units, centred on the band", () => {
+    const f = sceneFraming({ width: 390, height: 844 }, { top: 160, height: 300 });
+    expect(f.pxPerUnit).toBeCloseTo(37.5);
+    expect(f.offsetX).toBe(0);
+    expect(f.offsetY).toBe(112);
+  });
+
+  it("fits the station ring and its labels inside a desktop frame, centred on it", () => {
+    const f = sceneFraming({ width: 1440, height: 900 }, { top: 90, height: 652, left: 340, width: 740, fit: "stations" });
+    // The width binds: 740 px over the ring's 7.9 units with its side labels.
+    expect(f.pxPerUnit).toBeCloseTo(740 / 7.9);
+    expect(f.offsetX).toBe(10);
+    expect(f.offsetY).toBe(450 - 416);
+  });
+
+  it("never zooms a desktop frame past the board's scale", () => {
+    const f = sceneFraming({ width: 2560, height: 900 }, { top: 0, height: 900, left: 0, width: 2560, fit: "stations" });
+    expect(f.pxPerUnit).toBe(100);
   });
 });

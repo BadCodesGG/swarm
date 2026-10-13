@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type CSSProperties } from "react";
+import { useCallback, type CSSProperties, type Ref } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { agentInfo, type AgentInfo } from "@/engine/inside/agent-info";
 import { CATEGORY_LABELS, clock, compact, MODEL_NAMES, MODEL_VARS, runClock } from "@/engine/inside/format";
@@ -25,12 +25,13 @@ function useAgentInfo(app: InsideApp, id: number): AgentInfo | null {
 }
 
 /** The selected agent as a one-line collapsed bar (the phone's bottom sheet handle). */
-export function AgentBar({ app, id, expanded, onToggle }: { app: InsideApp; id: number; expanded: boolean; onToggle: () => void }) {
+export function AgentBar({ app, id, expanded, onToggle, ref }: { app: InsideApp; id: number; expanded: boolean; onToggle: () => void; ref?: Ref<HTMLButtonElement> }) {
   const info = useAgentInfo(app, id);
   if (!info) return null;
   const m = MODEL_VARS[info.model];
   return (
     <button
+      ref={ref}
       type="button"
       aria-expanded={expanded}
       aria-label={`Selected agent: ${info.label}`}
@@ -91,6 +92,7 @@ export function DetailCard({
   const total = info.mix.reduce((n, x) => n + x.count, 0);
   const top = info.mix.slice(0, 3);
   const parent = tl.trace.agents[id]?.parent ?? 0;
+  const orchestrator = parent < 0;
   const frame: CSSProperties = sheet
     ? {}
     : { borderColor: `color-mix(in srgb, ${m} 40%, transparent)`, boxShadow: `0 0 0 1px color-mix(in srgb, ${m} 8%, transparent), 0 18px 48px rgba(0, 0, 0, 0.45)` };
@@ -150,9 +152,9 @@ export function DetailCard({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className={sectionLabel}>{parent === 0 ? "BRIEF FROM THE ORCHESTRATOR" : "BRIEF FROM ITS PARENT"}</span>
+        <span className={sectionLabel}>{orchestrator ? "ITS ROLE" : parent === 0 ? "BRIEF FROM THE ORCHESTRATOR" : "BRIEF FROM ITS PARENT"}</span>
         <p className="m-0 text-sm leading-normal text-body [overflow-wrap:anywhere]" data-brief>
-          {info.brief}
+          {orchestrator ? "The one voice that plans: it reads the prompt, does some work itself and hands the rest to subagents." : info.brief}
         </p>
       </div>
 

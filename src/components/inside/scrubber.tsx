@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useMemo, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { clock, idleCutLabel, MODEL_VARS } from "@/engine/inside/format";
 import { axisTicks, barHeight, buildLanes, LANE_BINS, type Lanes } from "@/engine/inside/lanes";
@@ -172,8 +172,21 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
   );
 }
 
-/** The bottom panel: play, time, speed, the scrubber and the key hints; compact on a phone. */
-export function Timeline({ app, narrow }: { app: InsideApp; narrow: boolean }) {
+/**
+ * The bottom panel: play, time, speed, the scrubber and the key hints; compact on a phone. The last
+ * hint is a button: it selects the next agent, as the A key does.
+ */
+export function Timeline({
+  app,
+  narrow,
+  onNextAgent,
+  nextAgentRef,
+}: {
+  app: InsideApp;
+  narrow: boolean;
+  onNextAgent?: () => void;
+  nextAgentRef?: Ref<HTMLButtonElement>;
+}) {
   const tl = useTimeline(app);
   const { t, rate, playing } = useClock(app);
 
@@ -244,6 +257,19 @@ export function Timeline({ app, narrow }: { app: InsideApp; narrow: boolean }) {
         <span>
           <span className="text-muted">Click</span> any agent
         </span>
+        {onNextAgent ? (
+          <button
+            ref={nextAgentRef}
+            type="button"
+            aria-keyshortcuts="A"
+            aria-label="A next agent: select the next live agent"
+            onClick={onNextAgent}
+            className="-mx-1 -my-1 flex min-h-6 items-center self-start rounded-md border-0 bg-transparent px-1 text-left font-mono text-[11px] text-faint outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
+            data-next-agent
+          >
+            <span className="mr-[1ch] text-muted">A</span>next agent
+          </button>
+        ) : null}
       </div>
     </section>
   );

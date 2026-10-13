@@ -154,7 +154,12 @@ export async function stepImport(browser, h) {
         const err = page.locator("[data-notice=no-session-file]");
         await err.waitFor({ timeout: 30_000 });
         check("error: a non-session file shows the not-a-session error", (await err.textContent()).includes("That is not a session file"));
-        check("error: it is announced", (await err.getAttribute("role")) === "alert");
+        // Within the page itself: Next adds its own route announcer outside it.
+        const live = page.locator("main").locator("[role=status], [role=alert], [aria-live]");
+        check("error: the page has exactly one live region", (await live.count()) === 1, String(await live.count()));
+        check("error: the live region announces it", (await live.first().textContent()).includes("That is not a session file"));
+        const [zone, notice] = [await page.locator("[data-dropzone]").boundingBox(), await err.boundingBox()];
+        check("error: it shows beside or under the drop zone", notice.y < zone.y + zone.height + 40, `zone ends ${zone.y + zone.height}, notice at ${notice.y}`);
         check("error: the page stays on the import screen", new URL(page.url()).pathname === "/inside/load");
         check("error: logged no console errors", problems.length === 0, problems.join(" | "));
       } finally {

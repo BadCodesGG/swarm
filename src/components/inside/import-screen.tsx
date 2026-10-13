@@ -50,7 +50,7 @@ function Header() {
       <Link href="/" className={`flex min-h-11 items-center gap-2.5 pr-2 font-mono text-[13px] tracking-[0.12em] text-label hover:text-white ${ring}`}>
         {LOGO}
         <span>
-          SWARM <span className="text-rule">/</span> <span className="font-semibold text-ink">INSIDE</span>
+          SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">INSIDE</span>
         </span>
       </Link>
       <div role="group" aria-label="Sample session size" className="flex items-center rounded-xl border border-[rgba(150,172,214,0.18)] bg-[rgba(12,16,28,0.78)] p-1">
@@ -93,7 +93,6 @@ function Notice({ tone, icon, title, label, kind, children }: { tone: "warn" | "
   return (
     <section
       aria-label={label}
-      role={error ? "alert" : undefined}
       data-notice={kind}
       className={`grid grid-cols-[20px_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-[14px] border px-4 py-3.5 ${
         error ? "border-[rgba(255,92,120,0.45)] bg-[rgba(255,92,120,0.07)]" : "border-[rgba(255,181,77,0.4)] bg-[rgba(255,181,77,0.06)]"
@@ -177,6 +176,35 @@ function FolderButton({ children, className, name, onFiles }: { children: string
   );
 }
 
+/** The state column before anything is chosen (desktop only): what the loader will show there. */
+function Idle() {
+  return (
+    <section aria-label="What happens next" data-state="idle" className={`${card} max-lg:hidden`}>
+      <span className="font-mono text-[10px] tracking-[0.14em] text-label">WHAT HAPPENS NEXT</span>
+      <ol className="m-0 flex list-none flex-col gap-3 p-0 text-[13px] leading-normal text-muted">
+        <li className="grid grid-cols-[20px_minmax(0,1fr)] gap-2">
+          <span className="font-mono text-faint">1</span>
+          <span>
+            <span className="text-body">Reading.</span> Your browser reads the file here, with its progress and a Cancel.
+          </span>
+        </li>
+        <li className="grid grid-cols-[20px_minmax(0,1fr)] gap-2">
+          <span className="font-mono text-faint">2</span>
+          <span>
+            <span className="text-body">Choosing.</span> A folder that holds several sessions lists them, so you pick one.
+          </span>
+        </li>
+        <li className="grid grid-cols-[20px_minmax(0,1fr)] gap-2">
+          <span className="font-mono text-faint">3</span>
+          <span>
+            <span className="text-body">Playing.</span> A clean read starts the replay; anything worth knowing first, like missing subagents, shows here.
+          </span>
+        </li>
+      </ol>
+    </section>
+  );
+}
+
 function Ready({ trace, report, onPlay, onFiles }: { trace: SessionTrace; report: ParseReport; onPlay: () => void; onFiles: (files: PickedFile[]) => void }) {
   const missing = missingChildren(trace);
   const note = reportNote(report);
@@ -221,6 +249,12 @@ export default function ImportScreen() {
   const running = useRef<AbortController | null>(null);
 
   useEffect(() => () => running.current?.abort(), []);
+
+  // On a phone the state lands under the drop zone, often below the fold: bring it into view.
+  const states = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (view.kind !== "idle") states.current?.scrollIntoView({ block: "nearest" });
+  }, [view.kind]);
 
   const play = useCallback(
     (trace: SessionTrace) => {
@@ -278,6 +312,16 @@ export default function ImportScreen() {
     void run(picked);
   };
 
+  // The one live region's words: a short line per state, so the progress figures never chatter.
+  let announce = "";
+  if (view.kind === "reading") announce = "Reading your session.";
+  else if (view.kind === "choose") announce = `This folder holds ${view.candidates.length} sessions. Choose one to play.`;
+  else if (view.kind === "ready") announce = "Your session is ready to play.";
+  else if (view.kind === "error") {
+    const copy = errorCopy(view.error);
+    announce = `${copy.title}. ${copy.body}`;
+  }
+
   let state: ReactNode = null;
   if (view.kind === "reading") state = <Reading bytes={view.bytes} total={view.total} onCancel={cancel} />;
   else if (view.kind === "choose") state = <Chooser candidates={view.candidates} onPlay={(path) => void run(files.current, path)} />;
@@ -300,8 +344,11 @@ export default function ImportScreen() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(900px_640px_at_30%_40%,#10162b_0%,#0a0d18_55%,#070910_100%)] text-ink">
       <Header />
-      <main className="mx-auto flex w-full max-w-[1392px] flex-wrap items-start gap-6 px-4 pt-8 pb-10 sm:px-6">
-        <div className="flex max-w-[820px] min-w-0 flex-[999_1_560px] flex-col gap-5">
+      {/* One column on a phone (intro and drop zone, the state, where to find one); from lg the board's two
+          columns, the state beside the drop zone. The trailing 1fr row keeps a tall state column from
+          stretching the left rows. */}
+      <main className="mx-auto grid w-full max-w-[1392px] grid-cols-1 items-start gap-5 px-4 pt-8 pb-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[auto_auto_1fr] lg:gap-x-6">
+        <div className="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1">
           <div className="flex flex-col gap-2.5">
             <h1 className="m-0 text-[clamp(32px,4vw,48px)] leading-[1.05] font-extrabold tracking-[-0.03em]">Watch your own swarm.</h1>
             <p className="m-0 max-w-[56ch] text-[17px] leading-normal text-muted [text-wrap:pretty]">
@@ -355,34 +402,37 @@ export default function ImportScreen() {
               Parsed in your browser. Nothing is uploaded or stored.
             </p>
           </section>
+        </div>
 
-          <section aria-label="Where to find a session" className="flex flex-col gap-3.5 rounded-[14px] border border-panel-border bg-panel px-[22px] py-5">
-            <span className="font-mono text-[10px] tracking-[0.14em] text-label">WHERE TO FIND ONE</span>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-3">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[13px] text-label">macOS and Linux</span>
-                <code className="block rounded-lg bg-white/[0.04] px-3 py-2.5 font-mono text-[12.5px] leading-normal break-words text-ink">~/.claude/projects/&lt;project&gt;/&lt;session-id&gt;.jsonl</code>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[13px] text-label">Windows</span>
-                <code className="block rounded-lg bg-white/[0.04] px-3 py-2.5 font-mono text-[12.5px] leading-normal break-words text-ink">%USERPROFILE%\.claude\projects\&lt;project&gt;\&lt;session-id&gt;.jsonl</code>
-              </div>
+        <div ref={states} className={`flex min-w-0 scroll-mb-4 flex-col gap-3 lg:col-start-2 lg:row-span-3 lg:row-start-1 ${state ? "" : "max-lg:-mb-5"}`} data-states>
+          <p role="status" className="sr-only">
+            {announce}
+          </p>
+          {state ?? <Idle />}
+        </div>
+
+        <section aria-label="Where to find a session" className="flex min-w-0 flex-col gap-3.5 rounded-[14px] border border-panel-border bg-panel px-[22px] py-5 lg:col-start-1 lg:row-start-2">
+          <span className="font-mono text-[10px] tracking-[0.14em] text-label">WHERE TO FIND ONE</span>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] text-label">macOS and Linux</span>
+              <code className="block rounded-lg bg-white/[0.04] px-3 py-2.5 font-mono text-[12.5px] leading-normal break-words text-ink">~/.claude/projects/&lt;project&gt;/&lt;session-id&gt;.jsonl</code>
             </div>
-            <ul className="m-0 flex list-disc flex-col gap-1.5 pl-[18px] text-sm leading-normal text-muted">
-              <li>
-                Subagents sit beside it in <code className="font-mono text-[13px] text-ink">&lt;session-id&gt;/subagents/</code>. Choose the project folder to bring them in.
-              </li>
-              <li>
-                If you set <code className="font-mono text-[13px] text-ink">CLAUDE_CONFIG_DIR</code>, look in that folder instead of <code className="font-mono text-[13px] text-ink">.claude</code>.
-              </li>
-              <li>Your own prompts show as you wrote them, and only in this tab.</li>
-            </ul>
-          </section>
-        </div>
-
-        <div aria-live="polite" className="flex min-w-0 flex-[1_1_380px] flex-col gap-3 empty:hidden">
-          {state}
-        </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[13px] text-label">Windows</span>
+              <code className="block rounded-lg bg-white/[0.04] px-3 py-2.5 font-mono text-[12.5px] leading-normal break-words text-ink">%USERPROFILE%\.claude\projects\&lt;project&gt;\&lt;session-id&gt;.jsonl</code>
+            </div>
+          </div>
+          <ul className="m-0 flex list-disc flex-col gap-1.5 pl-[18px] text-sm leading-normal text-muted">
+            <li>
+              Subagents sit beside it in <code className="font-mono text-[13px] text-ink">&lt;session-id&gt;/subagents/</code>. Choose the project folder to bring them in.
+            </li>
+            <li>
+              If you set <code className="font-mono text-[13px] text-ink">CLAUDE_CONFIG_DIR</code>, look in that folder instead of <code className="font-mono text-[13px] text-ink">.claude</code>.
+            </li>
+            <li>Your own prompts show as you wrote them, and only in this tab.</li>
+          </ul>
+        </section>
       </main>
     </div>
   );

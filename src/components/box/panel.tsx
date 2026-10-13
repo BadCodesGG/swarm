@@ -127,10 +127,52 @@ export interface PanelProps {
   onPlay(play: boolean): void;
   onReset(): void;
   onRunTrials(): void;
+  /** The run row sits at the panel's foot; false where the HUD shows it under the scene instead (phone and tablet). */
+  withRun?: boolean;
+}
+
+/** Pause or resume, Reset, and "Run 100 trials". */
+export function RunControls({ playing, running, onPlay, onReset, onRunTrials }: Pick<PanelProps, "playing" | "running" | "onPlay" | "onReset" | "onRunTrials">) {
+  return (
+    <div className="flex gap-2">
+      <button
+        type="button"
+        aria-label={playing ? "Pause the simulation" : "Resume the simulation"}
+        onClick={() => onPlay(!playing)}
+        className="flex min-h-12 w-12 items-center justify-center rounded-[10px] border border-[rgba(150,172,214,0.22)] bg-transparent hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
+      >
+        {playing ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M3.5 2v10M10.5 2v10" stroke="#eef2f8" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M3.5 2.2v9.6L11.5 7z" fill="#eef2f8" />
+          </svg>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onReset}
+        className="min-h-12 flex-[1_1_0] rounded-[10px] border border-[rgba(150,172,214,0.22)] bg-transparent text-sm text-body hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
+      >
+        Reset
+      </button>
+      <button
+        type="button"
+        onClick={onRunTrials}
+        disabled={running}
+        data-run-trials
+        className="min-h-12 flex-[2_1_0] rounded-[10px] border-0 bg-ink text-sm font-bold text-ground hover:bg-white focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-wait disabled:opacity-70"
+      >
+        {running ? "Running 100 trials..." : "Run 100 trials"}
+      </button>
+    </div>
+  );
 }
 
 /** The controls: one switch per layer with what it caught and what it cost, two sliders, and the run controls. */
-export function Panel({ config, tally, playing, running, onConfig, onPlay, onReset, onRunTrials }: PanelProps) {
+export function Panel({ config, tally, playing, running, onConfig, onPlay, onReset, onRunTrials, withRun = true }: PanelProps) {
   const toggle = (layer: LayerId) => (on: boolean) => onConfig({ ...config, layers: { ...config.layers, [layer]: on } });
 
   const rowShell = (layer: LayerId, body: ReactNode) => {
@@ -156,7 +198,7 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
     <form
       aria-label="Containment layers"
       onSubmit={(e) => e.preventDefault()}
-      className="box-border flex min-w-0 flex-[0_1_330px] flex-col gap-1.5 rounded-[14px] border border-panel-border bg-panel p-[18px]"
+      className="box-border flex min-w-0 flex-[0_1_330px] flex-col max-[914px]:flex-[1_1_330px] gap-1.5 rounded-[14px] border border-panel-border bg-panel p-[18px]"
     >
       <div className="flex items-baseline justify-between pb-1.5 font-mono text-[10px]">
         <span className="tracking-[0.14em] text-label">LAYERS, INSIDE OUT</span>
@@ -200,41 +242,12 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
         <span>{tally.agents.toLocaleString("en-US")} agents</span>
         <span className="text-escape-text">{tally.rogues} with a hidden goal</span>
       </div>
-      <div className="grow" />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          aria-label={playing ? "Pause the simulation" : "Resume the simulation"}
-          onClick={() => onPlay(!playing)}
-          className="flex min-h-12 w-12 items-center justify-center rounded-[10px] border border-[rgba(150,172,214,0.22)] bg-transparent hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
-        >
-          {playing ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-              <path d="M3.5 2v10M10.5 2v10" stroke="#eef2f8" strokeWidth="2.2" strokeLinecap="round" />
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-              <path d="M3.5 2.2v9.6L11.5 7z" fill="#eef2f8" />
-            </svg>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="min-h-12 flex-[1_1_0] rounded-[10px] border border-[rgba(150,172,214,0.22)] bg-transparent text-sm text-body hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={onRunTrials}
-          disabled={running}
-          data-run-trials
-          className="min-h-12 flex-[2_1_0] rounded-[10px] border-0 bg-ink text-sm font-bold text-ground hover:bg-white focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-wait disabled:opacity-70"
-        >
-          {running ? "Running 100 trials..." : "Run 100 trials"}
-        </button>
-      </div>
+      {withRun ? (
+        <>
+          <div className="grow" />
+          <RunControls playing={playing} running={running} onPlay={onPlay} onReset={onReset} onRunTrials={onRunTrials} />
+        </>
+      ) : null}
     </form>
   );
 }

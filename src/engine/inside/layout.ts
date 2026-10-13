@@ -327,6 +327,66 @@ export function featuredAgent(trace: SessionTrace, t: number): number {
   return best;
 }
 
+/** The part of the canvas the scene is framed in, CSS px. */
+export interface SceneFrame {
+  top: number;
+  height: number;
+  /** Defaults to the whole width. */
+  left?: number;
+  width?: number;
+  /**
+   * "boundary" (the phone band): the boundary ring nearly fills the frame and probes run past it.
+   * "stations" (desktop, between the panels): the station ring and its labels fit inside it.
+   */
+  fit?: "boundary" | "stations";
+}
+
+/** Design framing: 100 px per world unit on a 900 px tall window. */
+const DESIGN_HEIGHT_UNITS = 9;
+/** Narrow windows fit the probes' reach across. */
+const DESIGN_WIDTH_UNITS = 9.4;
+/** The phone band's height in units: the boundary (7.5 across) nearly fills it. */
+const BAND_HEIGHT_UNITS = 8;
+/**
+ * The tilted station ring with its labels, in units: about 3 above the core and 3.4 below it (the
+ * near side reads larger), and 3.15 to each side plus a label like "SHELL 325".
+ */
+const STATIONS_FIT = { height: 6.6, width: 7.9 };
+
+/**
+ * Pixels per world unit, and the camera's view offset (CSS px) that puts the frame's centre where
+ * the window's centre would be. With no frame the scene fills the window at the board's scale.
+ */
+export function sceneFraming(view: { width: number; height: number }, frame: SceneFrame | null): { pxPerUnit: number; offsetX: number; offsetY: number } {
+  const design = view.height / DESIGN_HEIGHT_UNITS;
+  if (!frame) return { pxPerUnit: Math.min(design, view.width / DESIGN_WIDTH_UNITS), offsetX: 0, offsetY: 0 };
+  const left = frame.left ?? 0;
+  const width = frame.width ?? view.width;
+  const pxPerUnit =
+    frame.fit === "stations"
+      ? Math.min(design, frame.height / STATIONS_FIT.height, width / STATIONS_FIT.width)
+      : Math.min(frame.height / BAND_HEIGHT_UNITS, width / DESIGN_WIDTH_UNITS);
+  return { pxPerUnit, offsetX: view.width / 2 - (left + width / 2), offsetY: view.height / 2 - (frame.top + frame.height / 2) };
+}
+
+const cyclePose = newPose();
+
+/**
+ * The agent a keyboard step lands on: the orchestrator, then every subagent on screen at `t` (the
+ * agents a click can pick) in id order, wrapping. `dir` 1 steps forward, -1 back; from -1 or an agent
+ * no longer on screen it carries on from that id's place in the order.
+ */
+export function cycleAgent(trace: SessionTrace, t: number, current: number, dir: 1 | -1): number {
+  const order = [0];
+  for (let i = 1; i < trace.agents.length; i++) if (agentPose(trace, i, t, cyclePose).presence >= 0.5) order.push(i);
+  if (current < 0) return dir > 0 ? order[0] : order[order.length - 1];
+  const at = order.indexOf(current);
+  if (at >= 0) return order[(at + dir + order.length) % order.length];
+  // Gone: the next id above it going forward, the last id below it going back.
+  if (dir > 0) return order.find((id) => id > current) ?? order[0];
+  return [...order].reverse().find((id) => id < current) ?? order[order.length - 1];
+}
+
 /** The id of the point nearest (x, y) within `radius` px, or null. Ties go to the lower id. */
 export function nearestWithin(points: readonly { id: number; x: number; y: number }[], x: number, y: number, radius: number): number | null {
   let best: number | null = null;

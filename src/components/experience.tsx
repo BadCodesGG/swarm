@@ -70,12 +70,19 @@ function whenIdle(fn: () => void): () => void {
   return () => window.clearTimeout(id);
 }
 
+/**
+ * The still behind its caption. On a phone the 16:10 frame is cropped to its middle 55% (the scene's
+ * boundary ring, about x 330 to 1110 of 1440) at the full width, so the whole ring shows above the
+ * caption; on a wider screen it fills the window. The caption sits on a solid panel either way.
+ */
 function Still({ still, title, children }: { still: StillImage; title: string; children?: ReactNode }) {
   return (
-    <div className="absolute inset-0">
-      <Image src={still.src} alt={still.alt} fill priority unoptimized sizes="100vw" className="object-cover" />
-      <div className="absolute inset-0 bg-gradient-to-t from-ground/85 via-ground/5 to-ground/20" />
-      <div className="absolute bottom-8 left-6 max-w-[34rem] pr-6 sm:left-10">
+    <div className="absolute inset-0 flex flex-col overflow-y-auto max-sm:gap-4 max-sm:pb-6">
+      <div className="relative shrink-0 max-sm:h-[113vw] sm:absolute sm:inset-0">
+        <Image src={still.src} alt={still.alt} fill priority unoptimized sizes="(max-width: 639px) 181vw, 100vw" className="object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ground/85 via-ground/5 to-ground/20 max-sm:from-ground max-sm:via-transparent max-sm:to-transparent" />
+      </div>
+      <div className="relative mx-4 max-w-[34rem] rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.94)] px-5 py-4 sm:absolute sm:bottom-8 sm:left-10 sm:mx-0 sm:pr-6">
         <h1 className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink">{title}</h1>
         {children}
       </div>
@@ -106,7 +113,7 @@ function StillBar({ gate, onEnter }: { gate: "still" | "unsupported"; onEnter():
         {copy.lead} <span className="text-muted max-sm:hidden">{gate === "still" ? "The controls and the trials still work; entering starts the live scene." : copy.detail}</span>
       </p>
       {gate === "still" ? (
-        <button type="button" onClick={onEnter} className={`${enterClass} min-h-11 py-1.5`}>
+        <button type="button" onClick={onEnter} className={`${enterClass} min-h-11 shrink-0 py-1.5 whitespace-nowrap`}>
           Enter anyway
         </button>
       ) : null}

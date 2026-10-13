@@ -31,7 +31,7 @@ export function EventLog({ log, caught, escaped }: { log: readonly LogEntry[]; c
         {chip("caught", `Caught ${caught}`, "text-label")}
         {chip("escaped", `Escaped ${escaped}`, "text-escape-text")}
       </div>
-      <div className="flex flex-col gap-2">
+      <div role="log" aria-live="polite" aria-label="Latest events" className="flex flex-col gap-2">
         {lines.length === 0 ? <p className="m-0 text-faint">Nothing yet.</p> : null}
         {lines.map((e) => (
           <p key={e.id} className={`m-0 ${e.kind === "escaped" ? "text-[#ffb3c6]" : "text-muted"}`} data-log={e.kind}>

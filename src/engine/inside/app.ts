@@ -26,6 +26,7 @@ import {
   makeFlight,
   nearestWithin,
   newPose,
+  sceneFraming,
   agentPose,
   STATION_RADIUS,
   STATIONS,
@@ -33,6 +34,7 @@ import {
   stationAngle,
   stationCounts,
   webProbes,
+  type SceneFrame,
   type StationCategory,
   type WebProbe,
 } from "./layout";
@@ -117,15 +119,12 @@ export interface InsideApp extends ExperienceApp {
   follow(id: number): void;
   following(): number;
   /** The part of the canvas the scene is framed in (CSS px), or null for all of it. */
-  setFrame(frame: { top: number; height: number } | null): void;
+  setFrame(frame: SceneFrame | null): void;
   overlay(): InsideOverlay;
 }
 
 const FOV = 36;
-/** Design framing: 100 px per world unit on a 900 px tall window, the core 20 px above centre. */
-const DESIGN_HEIGHT_UNITS = 9;
-/** The phone board's band: the boundary ring (7.5 units across) nearly fills it, and probes run past its edge. */
-const FRAME_HEIGHT_UNITS = 8;
+/** The core sits this many units above the framed centre. */
 const CORE_LIFT = 0.2;
 /** The swarm plane tips back a little, so it reads as 3D without hiding the ring. */
 const TILT_X = -0.3;
@@ -197,7 +196,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   /** The visitor closed the card: stop picking one for them until the trace changes. */
   let dismissed = false;
   let followId = -1;
-  let frame: { top: number; height: number } | null = null;
+  let frame: SceneFrame | null = null;
   /** Index of the first event not yet emitted, for appending while playing. */
   let cursor = 0;
   let lastT = -1;
@@ -290,11 +289,11 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     // 100 px per unit on a 900 px tall window; narrower windows fit the probes' reach instead, and a
-    // framed scene (the phone layout) fits its own slot.
-    const pxPerUnit = Math.min(frame ? frame.height / FRAME_HEIGHT_UNITS : height / DESIGN_HEIGHT_UNITS, width / 9.4);
+    // framed scene (the phone band, or the desktop space between the panels) fits its own slot.
+    const { pxPerUnit, offsetX, offsetY } = sceneFraming({ width, height }, frame);
     const pixelScale = height / (2 * Math.tan((FOV * Math.PI) / 360));
     distance = pixelScale / pxPerUnit;
-    if (frame) camera.setViewOffset(width, height, 0, height / 2 - (frame.top + frame.height / 2), width, height);
+    if (frame) camera.setViewOffset(width, height, offsetX, offsetY, width, height);
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     placeCamera();

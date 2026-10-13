@@ -30,7 +30,7 @@ export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
           <circle cx="15.5" cy="5" r="1.4" fill="#4fd8eb" />
           <circle cx="3" cy="13.4" r="1.4" fill="#a78bff" />
         </svg>
-        SWARM <span className="text-rule">/</span> <span className="font-semibold text-ink">THE BOX</span>
+        SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">THE BOX</span>
       </Link>
       <span className={`${mono} rounded-full max-[1157px]:-order-2 border border-escape/50 px-2.5 py-[5px] text-[10px] font-semibold tracking-[0.14em] text-escape-text`}>SIMULATION</span>
       <span className="text-sm text-label">Abstract agents and abstract actions. Nothing here is a real technique.</span>

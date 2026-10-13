@@ -49,14 +49,14 @@ export function SiteFooter() {
     <footer className="relative z-[1] mx-auto box-border flex w-full max-w-[1312px] flex-wrap justify-between gap-3 px-5 pt-2 pb-7 font-mono text-xs text-faint sm:px-8">
       <span>
         Built by{" "}
-        <a href="https://badcodes.dev" className={`text-muted hover:text-white ${ring}`}>
+        <a href="https://badcodes.dev" className={`inline-flex min-h-6 items-center text-muted hover:text-white ${ring}`}>
           BadCodes
         </a>
       </span>
       <span className="flex flex-wrap gap-x-5 gap-y-2">
         <span>Sound off by default</span>
         <span>Best on a GPU</span>
-        <a href="https://github.com/BadCodesGG/swarm" className={`text-muted hover:text-white ${ring}`}>
+        <a href="https://github.com/BadCodesGG/swarm" className={`inline-flex min-h-6 items-center text-muted hover:text-white ${ring}`}>
           Source
         </a>
       </span>

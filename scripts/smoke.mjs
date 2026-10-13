@@ -313,6 +313,25 @@ async function stepInside(browser) {
       await waitInside(page, () => window.__swarm.inside.selected === -1);
       check("medium: closing the card clears the selection", (await card.count()) === 0);
 
+      // The keyboard reaches the same card: the "A next agent" hint cycles from the orchestrator through
+      // the live agents, Follow stays in the card, and Escape closes it and gives focus back.
+      const next = page.locator("[data-next-agent]");
+      await next.focus();
+      await page.keyboard.press("Enter");
+      await waitInside(page, () => window.__swarm.inside.selected === 0);
+      await card.waitFor({ state: "visible" });
+      check("keyboard: the first step selects the orchestrator and opens the card", true);
+      await page.keyboard.press("Enter");
+      await waitInside(page, () => window.__swarm.inside.selected > 0);
+      check("keyboard: the next step selects a live subagent", (await card.getByRole("button", { name: "Follow" }).count()) === 1);
+      await page.keyboard.press("a");
+      const afterA = await inside(page);
+      check("keyboard: A steps to another agent", afterA.selected >= 0, `agent ${afterA.selected}`);
+      await page.keyboard.press("Escape");
+      await waitInside(page, () => window.__swarm.inside.selected === -1);
+      await page.waitForFunction(() => document.activeElement?.hasAttribute("data-next-agent"));
+      check("keyboard: Escape closes the card and returns focus", (await card.count()) === 0);
+
       // The switcher swaps the trace in place and rewrites ?source=.
       const frame = (await inside(page)).frame;
       await page.getByRole("button", { name: "Large" }).click();

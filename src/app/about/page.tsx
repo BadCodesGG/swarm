@@ -29,11 +29,54 @@ function Section({ id, eyebrow, title, children }: { id: string; eyebrow: string
   return (
     <section aria-labelledby={id} className="flex flex-col gap-4">
       <p className="m-0 font-mono text-xs font-medium tracking-[0.18em] text-label">{eyebrow}</p>
-      <h2 id={id} className="m-0 text-[28px] leading-tight font-bold tracking-[-0.01em] text-ink-strong">
+      <h2 id={id} className="m-0 scroll-mt-16 text-[28px] leading-tight font-bold tracking-[-0.01em] text-ink-strong">
         {title}
       </h2>
       {children}
     </section>
+  );
+}
+
+const CONTENTS = [
+  { id: "act-1", label: "Act 1, Inside" },
+  { id: "act-2", label: "Act 2, The Box" },
+  { id: "sources", label: "Sources" },
+  { id: "sound-motion", label: "Sound and motion" },
+] as const;
+
+/** From lg up, the right-hand column: a contents list that stays in view, and the ways into the acts. */
+function Contents() {
+  const item = "flex min-h-8 items-center text-[15px] text-label hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none";
+  return (
+    <nav aria-label="On this page" className="sticky top-8 hidden max-w-[18rem] flex-col gap-6 self-start lg:flex">
+      <div className="flex flex-col gap-2 border-l border-panel-border pl-5">
+        <p className="m-0 font-mono text-xs font-medium tracking-[0.18em] text-label">ON THIS PAGE</p>
+        <ul className="m-0 flex list-none flex-col p-0">
+          {CONTENTS.map((c) => (
+            <li key={c.id}>
+              <a href={`#${c.id}`} className={item}>
+                {c.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="flex flex-col gap-2 border-l border-panel-border pl-5">
+        <p className="m-0 font-mono text-xs font-medium tracking-[0.18em] text-label">ENTER</p>
+        <ul className="m-0 flex list-none flex-col p-0">
+          <li>
+            <Link href="/inside" className={item}>
+              Act 1, Inside
+            </Link>
+          </li>
+          <li>
+            <Link href="/box" className={item}>
+              Act 2, The Box
+            </Link>
+          </li>
+        </ul>
+      </div>
+    </nav>
   );
 }
 
@@ -49,7 +92,7 @@ function Layer({ name, children }: { name: string; children: ReactNode }) {
 export default function AboutPage() {
   return (
     <div
-      className="relative flex min-h-screen flex-1 flex-col overflow-x-hidden text-ink"
+      className="relative flex min-h-screen flex-1 flex-col overflow-x-clip text-ink"
       style={{ background: "radial-gradient(1100px 800px at 72% 20%, #10162a 0%, #0a0d17 45%, #070910 100%)" }}
     >
       <SiteHeader current="/about" />
@@ -66,6 +109,7 @@ export default function AboutPage() {
           </p>
         </header>
 
+        <div className="flex flex-col gap-14 lg:grid lg:grid-cols-[minmax(0,44rem)_minmax(0,1fr)] lg:gap-x-20">
         <div className="flex max-w-[44rem] flex-col gap-14 text-[17px] leading-[1.6] text-body">
           <Section id="act-1" eyebrow="ACT 1, INSIDE" title="A session, replayed">
             <p className="m-0">
@@ -159,6 +203,8 @@ export default function AboutPage() {
               .
             </p>
           </Section>
+        </div>
+        <Contents />
         </div>
       </main>
       <SiteFooter />

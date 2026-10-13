@@ -1,22 +1,73 @@
 @import "tailwindcss";
 
-/* Placeholder tokens; the Claude Design pick replaces these before any scene is styled. */
+/* "Deep Field": near-black ground, cool ink, one hue per model family, containment layers in blue. */
 :root {
-  --background: #05060a;
-  --foreground: #d8dde6;
+  --ground: #070910;
+  --panel: rgba(12, 16, 28, 0.82);
+  --panel-border: rgba(150, 172, 214, 0.16);
+
+  --ink: #eef2f8;
+  --ink-strong: #f6f8fc;
+  --body: #dfe5ee;
+  --muted: #c3cad6;
+  --label: #a7b1c2;
+  --faint: #8590a3;
+  --rule: #5a6680;
+  --control: #1f2843;
+
+  --opus: #ffb54d;
+  --fable: #a78bff;
+  --sonnet: #4fd8eb;
+  --haiku: #7ee2a8;
+
+  --escape: #ff4d7d;
+  --escape-text: #ff8aa8;
+  --warn: #ffc77a;
+  --error: #ff8aa0;
+
+  /* Containment layers, innermost first. */
+  --layer-1: #dbe6ff;
+  --layer-2: #b3c6f2;
+  --layer-3: #8fa9dd;
+  --layer-4: #7f9bd6;
+  --layer-5: #5f7cbb;
+
   color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-panel-border: var(--panel-border);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --color-label: var(--label);
+  --color-faint: var(--faint);
+  --color-rule: var(--rule);
+  --color-control: var(--control);
+  --color-opus: var(--opus);
+  --color-fable: var(--fable);
+  --color-sonnet: var(--sonnet);
+  --color-haiku: var(--haiku);
+  --color-escape: var(--escape);
+  --color-escape-text: var(--escape-text);
+  --color-warn: var(--warn);
+  --color-error: var(--error);
+  --color-layer-1: var(--layer-1);
+  --color-layer-2: var(--layer-2);
+  --color-layer-3: var(--layer-3);
+  --color-layer-4: var(--layer-4);
+  --color-layer-5: var(--layer-5);
+  /* next/font sets --font-schibsted and --font-jetbrains on <html> (layout.tsx). */
+  --font-sans: var(--font-schibsted), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
 html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--ground);
+  color: var(--body);
+  font-family: var(--font-sans);
 }

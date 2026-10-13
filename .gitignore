@@ -31,4 +31,4 @@ next-env.d.ts
 
 # raw session transcripts never enter the repo; only scrubbed fixtures under src/lib/trace/__fixtures__
 *.jsonl
-!src/lib/trace/__fixtures__/*.jsonl
+!src/lib/trace/__fixtures__/**/*.jsonl

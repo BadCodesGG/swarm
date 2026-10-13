@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateTrace } from "@/lib/trace/generate";
-import { particleLife } from "@/lib/trace/timeline";
+import { buildTimeline, particleLife } from "@/lib/trace/timeline";
 import type { SessionTrace, TraceAgent, TraceEvent } from "@/lib/trace/types";
 import {
   ACTIVE_FADE,
@@ -22,8 +22,12 @@ import {
   stationIndex,
   sceneFraming,
   stationPos,
+  liveProbes,
+  PROBE_GROW,
   webProbes,
+  type WebProbe,
 } from "./layout";
+import { createPlayback } from "./playback";
 
 const U = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -175,7 +179,7 @@ describe("agentPose", () => {
 describe("flights", () => {
   it("bakes a call from the caller's pose to its station, living particleLife(rate) real seconds", () => {
     const trace = tree();
-    const f = makeFlight(trace, 5, 4)!;
+    const f = makeFlight(buildTimeline(trace), 5, 4)!;
     const caller = newPose();
     agentPose(trace, 2, 27, caller);
     expect([f.sx, f.sy, f.sz]).toEqual([caller.x, caller.y, caller.z]);
@@ -189,13 +193,13 @@ describe("flights", () => {
 
   it("flies a subagent launch to the agents station, and nothing for results or other tools", () => {
     const trace = tree();
-    expect(makeFlight(trace, 1, 1)!.station).toBe(stationIndex("agents"));
-    expect(makeFlight(trace, 6, 1)).toBeNull();
-    expect(makeFlight(trace, 8, 1)).toBeNull();
+    expect(makeFlight(buildTimeline(trace), 1, 1)!.station).toBe(stationIndex("agents"));
+    expect(makeFlight(buildTimeline(trace), 6, 1)).toBeNull();
+    expect(makeFlight(buildTimeline(trace), 8, 1)).toBeNull();
   });
 
   it("moves from start to end inside its window and is dead outside it", () => {
-    const f = makeFlight(tree(), 5, 1)!;
+    const f = makeFlight(buildTimeline(tree()), 5, 1)!;
     const p = newPose();
     expect(flightPos(f, f.t0 - 0.01, p)).toBe(false);
     expect(flightPos(f, f.t1 + 0.01, p)).toBe(false);
@@ -210,6 +214,35 @@ describe("flights", () => {
     // Decelerating into the station: past halfway at half time.
     expect(done / total).toBeGreaterThan(0.5);
     expect(done / total).toBeLessThan(1);
+  });
+
+  it("lives 0.4 to 2 real seconds at every rate, even across an idle cut", () => {
+    const tl = buildTimeline(generateTrace(50, "medium"));
+    expect(tl.cuts.length).toBeGreaterThan(0);
+    const dt = 1 / 120;
+    const p = newPose();
+    for (const rate of [1, 25, 200]) {
+      let flights = 0;
+      let acrossCut = 0;
+      for (let i = 0; i < tl.trace.events.length; i++) {
+        const f = makeFlight(tl, i, rate);
+        // A flight cut short by the end of the session is not a short flight.
+        if (!f || f.t1 >= tl.playbackDuration) continue;
+        flights++;
+        if (tl.cuts.some((c) => c.at > f.t0 && c.at < f.t1)) acrossCut++;
+        // Play the real clock from the call and time how long the streak is on screen.
+        const clock = createPlayback(tl, { t: tl.trace.events[i].t, rate, playing: true });
+        let real = 0;
+        while (flightPos(f, tl.toPlayback(clock.time()), p) && real < 5) {
+          clock.advance(dt);
+          real += dt;
+        }
+        expect(real, `event ${i} at ${rate}x`).toBeGreaterThanOrEqual(0.4 - 2 * dt);
+        expect(real, `event ${i} at ${rate}x`).toBeLessThanOrEqual(2 + 2 * dt);
+      }
+      expect(flights).toBeGreaterThan(100);
+      expect(acrossCut, `flights across a cut at ${rate}x`).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -231,6 +264,25 @@ describe("webProbes", () => {
       // A sample web call carries a short generic query to label its probe with.
       expect(p.query.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("liveProbes", () => {
+  const probe = (t0: number, t1: number): WebProbe => ({ event: 0, agent: 0, t0, t1, tool: "WebSearch", query: "", ex: 4, ey: 0, ez: 0 });
+
+  it("lists the probes out at t, in order", () => {
+    const probes = [probe(0, 10), probe(5, 6), probe(20, 30)];
+    expect(liveProbes(probes, 5.5, 64, [])).toEqual([0, 1]);
+    expect(liveProbes(probes, 15, 64, [])).toEqual([]);
+  });
+
+  it("never lists more than max, growing probes included, so the boundary's sprites stay in their buffer", () => {
+    // One probe still growing toward its end, then 64 fully out.
+    const probes = [probe(100 - PROBE_GROW / 2, 200), ...Array.from({ length: 64 }, () => probe(0, 100))];
+    expect(liveProbes(probes, 100, 64, []).length).toBeLessThanOrEqual(64);
+    // Many growing ones first: still capped.
+    const early = [...Array.from({ length: 80 }, () => probe(99.9, 200)), ...Array.from({ length: 64 }, () => probe(0, 200))];
+    expect(liveProbes(early, 100, 64, []).length).toBe(64);
   });
 });
 

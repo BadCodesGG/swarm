@@ -12,7 +12,7 @@ import { registerDebug } from "../shared/debug";
 import { EventBus } from "../shared/events";
 import { TIERS } from "../shared/quality";
 import type { BoxApp, BoxEvents, BoxSnapshot, Frame } from "./app";
-import { parseBoxParams } from "./params";
+import { parseBoxParams, SHOT_CONFIG } from "./params";
 import { createTally, type Tally } from "./tally";
 
 /** The design frame every Box scene is laid out in, scene px. */
@@ -41,7 +41,8 @@ export function createStillBox({ params, enter, paint }: StillBoxOptions): BoxAp
   const count = TIERS.lite.crowdSize;
   const bus = new EventBus<BoxEvents>();
   const audio = startBoxAudio(bus);
-  let config: BoxConfig = parsed.config;
+  // The still is the escape shot, so the HUD over it starts on the shot's settings (network off).
+  let config: BoxConfig = SHOT_CONFIG;
   let seed = parsed.seed;
   let tally: Tally = createTally(count, rogueCount(config, count));
   let version = 0;

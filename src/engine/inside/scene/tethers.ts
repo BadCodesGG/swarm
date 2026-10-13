@@ -10,7 +10,7 @@
 import { Color, Mesh, type Object3D } from "three/webgpu";
 import { attribute, float, fract, smoothstep, vec4 } from "three/tsl";
 import type { SessionTrace } from "@/lib/trace/types";
-import { agentPose, FOLD_TIME, newPose, type Pose } from "../layout";
+import { agentPose, FOLD_TIME, newPose, returnPose, type Pose } from "../layout";
 import { coverage, DESIGN_PX_PER_UNIT, dynamicAttribute, modelColor, ribbonGeometry, ribbonMaterial, type InsideUniforms } from "./common";
 
 /** Trace seconds a returned agent's dashed trail stays. */
@@ -177,7 +177,7 @@ export function createTethers(parent: Object3D, u: InsideUniforms, capacity: num
           spec.reveal = 1;
           if (since >= 0) {
             // The trail: where it orbited, back to the parent, dashed and fading.
-            agentPose(trace, i, a.returnT, rest);
+            returnPose(trace, i, rest);
             from(par, rest);
             spec.widthPx = 1.1;
             spec.dashPx = 7;

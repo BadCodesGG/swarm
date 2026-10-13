@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG, type ActionId, type CatchReport, type LayerId, type StepReport, type Verdict } from "@/lib/box/types";
+import { createState, rogueCount, step } from "@/lib/box/sim";
+import { DEFAULT_CONFIG, LAYER_ORDER, type ActionId, type BoxConfig, type CatchReport, type LayerId, type StepReport, type Verdict } from "@/lib/box/types";
+import { simRng } from "./params";
 import { RING_RADIUS } from "./layout";
 import { createTally, LOG_CAP, MARKER_TICKS, record, type TallyContext } from "./tally";
 
@@ -83,5 +85,22 @@ describe("tally", () => {
   it("starts empty", () => {
     const t = createTally(300, 2);
     expect(t).toMatchObject({ tick: 0, caughtTotal: 0, escaped: 0, usefulWork: 1, flagged: 0, agents: 300, rogues: 2, lastEscape: null });
+  });
+});
+
+describe("tally: what each layer cost", () => {
+  it("attributes all honest work lost, including agents a layer stopped, so the costs sum to the work lost", () => {
+    // A trigger-happy monitor with no audit behind it stops honest agents for good.
+    const config: BoxConfig = { ...DEFAULT_CONFIG, monitorThreshold: 0.2, layers: { ...DEFAULT_CONFIG.layers, audit: false } };
+    const state = createState(config, 3, 300);
+    const t = createTally(300, rogueCount(config, 300));
+    const r = simRng(3);
+    for (let i = 0; i < 200; i++) record(t, step(state, r), { ...ctx, config });
+    const lost = 1 - t.usefulWork;
+    const costs = LAYER_ORDER.reduce((n, l) => n + t.byLayer[l].costShare, 0);
+    expect(lost).toBeGreaterThan(0.9);
+    expect(costs).toBeCloseTo(lost, 6);
+    // Nearly all of it is the monitor's: it is the layer that stopped them.
+    expect(t.byLayer.monitor.costShare).toBeGreaterThan(0.8);
   });
 });

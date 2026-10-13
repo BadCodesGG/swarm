@@ -181,3 +181,9 @@ export function maxPixelRatio(level: QualityLevel, coarsePointer: boolean): numb
   const ratio = TIERS[level.tier].pixelRatio;
   return coarsePointer ? Math.min(ratio, 1.5) : ratio;
 }
+
+/** `?quality=hi|mid|lite` pins the tier (`QualityInputs.override`); anything else is no override. */
+export function qualityOverride(params: URLSearchParams): Partial<QualityLevel> | undefined {
+  const tier = params.get("quality");
+  return tier === "hi" || tier === "mid" || tier === "lite" ? { tier } : undefined;
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTimeline } from "@/lib/trace/timeline";
 import type { SessionTrace } from "@/lib/trace/types";
-import { clampRate, createPlayback, MAX_RATE, MIN_RATE } from "./playback";
+import { clampRate, createFrameSync, createPlayback, MAX_RATE, MIN_RATE } from "./playback";
 
 /** Events at 0 and 500 s: the 500 s gap is cut to 8 playback seconds, so playback runs 18 s. */
 function gapTrace(): SessionTrace {
@@ -93,5 +93,31 @@ describe("createPlayback", () => {
     const p = createPlayback(identity, { t: 50 });
     p.setMap({ duration: 30, toPlayback: (t) => t, toTrace: (x) => x });
     expect(p.time()).toBe(0);
+  });
+});
+
+describe("createFrameSync", () => {
+  it("rebuilds on the first frame, then emits through ordinary play however far a frame jumps", () => {
+    const sync = createFrameSync();
+    expect(sync.next(0)).toBe("rebuild");
+    expect(sync.next(0.5)).toBe("emit");
+    // Across an idle cut, or one long frame at 200x: still ordinary play, so its sounds play.
+    expect(sync.next(900)).toBe("emit");
+    expect(sync.next(950)).toBe("emit");
+  });
+
+  it("rebuilds after an explicit rewrite (a seek, a rate, a trace, a quality step), however small the jump", () => {
+    const sync = createFrameSync();
+    sync.next(100);
+    sync.rewrite();
+    expect(sync.next(110)).toBe("rebuild");
+    expect(sync.next(111)).toBe("emit");
+  });
+
+  it("rebuilds when time runs backwards, as a replay from the end does", () => {
+    const sync = createFrameSync();
+    sync.next(100);
+    expect(sync.next(0)).toBe("rebuild");
+    expect(sync.next(1)).toBe("emit");
   });
 });

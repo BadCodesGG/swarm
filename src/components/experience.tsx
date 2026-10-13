@@ -151,7 +151,9 @@ export default function Experience<A extends ExperienceApp>({
   const [gate, setGate] = useState<Gate>("probing");
   const [load, setLoad] = useState<LoadState>({ fraction: 0, label: "Preparing" });
   const [app, setApp] = useState<A | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** A start that failed, and the gate it failed under: a new gate starts afresh, so its error clears. */
+  const [failure, setFailure] = useState<{ gate: Gate; message: string } | null>(null);
+  const error = failure && failure.gate === gate ? failure.message : null;
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(
@@ -204,7 +206,7 @@ export default function Experience<A extends ExperienceApp>({
         setApp(started);
       })
       .catch((err: unknown) => {
-        if (!disposed) setError(err instanceof Error ? err.message : String(err));
+        if (!disposed) setFailure({ gate, message: err instanceof Error ? err.message : String(err) });
       });
 
     return () => {
@@ -215,7 +217,7 @@ export default function Experience<A extends ExperienceApp>({
   }, [gate, canvas, start, stillStart, withStillApp, stillSrc, enterAnyway]);
 
   const running = gate === "run";
-  const showLoader = gate === "probing" || (running && !app);
+  const showLoader = gate === "probing" || (running && !app) || error !== null;
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-ground text-body select-none">
@@ -246,14 +248,18 @@ export default function Experience<A extends ExperienceApp>({
         className={`pointer-events-none absolute inset-0 flex items-center justify-center bg-ground ease-out ${
           showLoader ? "opacity-100" : "opacity-0"
         } ${running ? "transition-opacity duration-[1200ms]" : ""}`}
-        aria-hidden={!showLoader}
       >
         <div className="flex w-64 flex-col items-center gap-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-label">{error ? "Could not start" : load.label}</p>
-          <div className="h-px w-full overflow-hidden bg-rule/40">
-            <div className="h-full bg-layer-2 transition-[width] duration-300 ease-out" style={{ width: `${Math.round(load.fraction * 100)}%` }} />
+          <div className="flex w-full flex-col items-center gap-3" aria-hidden={!showLoader}>
+            <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-label">{error ? "Could not start" : load.label}</p>
+            <div className="h-px w-full overflow-hidden bg-rule/40">
+              <div className="h-full bg-layer-2 transition-[width] duration-300 ease-out" style={{ width: `${Math.round(load.fraction * 100)}%` }} />
+            </div>
           </div>
-          {error ? <p className="text-center text-xs text-error">{error}</p> : null}
+          {/* Always in the page, so the failure is announced when its words arrive. */}
+          <p role="alert" className="text-center text-xs text-error" data-start-error>
+            {error ? <><span className="sr-only">Could not start: </span>{error}</> : null}
+          </p>
         </div>
       </div>
 

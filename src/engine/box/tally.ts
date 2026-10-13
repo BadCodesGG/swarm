@@ -128,9 +128,9 @@ export function record(t: Tally, r: StepReport, ctx: TallyContext): void {
       agent: e.agent,
       tick: r.tick,
       plan,
-      steps: escapeSteps(e.trace, ctx.config, last),
+      steps: escapeSteps(e.trace, ctx.config, last, plan),
       trail: trailLabels(e.trace),
-      offLayer: firstOffLayer(e.trace),
+      offLayer: firstOffLayer(e.trace, plan, ctx.config),
       path: escapeRun(ctx.home(e.agent), escapeHeading(e.agent)),
     };
     log(t, "escaped", escapeLine(e.agent, plan));

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "@/lib/box/types";
+import { SHOT_CONFIG } from "./params";
 import { createStillBox, fitDesign } from "./still";
 
 describe("fitDesign", () => {
@@ -26,7 +27,9 @@ describe("createStillBox", () => {
     const s = app.stats();
     expect(s.playing).toBe(false);
     expect(s.seed).toBe(7);
-    expect(s.config).toEqual(DEFAULT_CONFIG);
+    // The still is the escape shot, so the settings shown over it are the shot's: network off.
+    expect(s.config).toEqual(SHOT_CONFIG);
+    expect(s.config.layers.network).toBe(false);
     expect(s.tally.caughtTotal).toBe(0);
     app.dispose();
   });
@@ -36,7 +39,7 @@ describe("createStillBox", () => {
     const seen: unknown[] = [];
     app.bus.on("config", (c) => seen.push(c));
     const before = app.stats().version;
-    const next = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
+    const next = { ...DEFAULT_CONFIG, monitorThreshold: 0.5 };
     app.configure(next);
     expect(app.stats().config).toEqual(next);
     expect(app.stats().version).toBeGreaterThan(before);

@@ -5,7 +5,7 @@
  */
 
 import type { Timeline } from "@/lib/trace/timeline";
-import type { ModelFamily, ToolCategory, TraceAgent } from "@/lib/trace/types";
+import type { ModelFamily, SessionTrace, ToolCategory, TraceAgent } from "@/lib/trace/types";
 import { MODEL_NAMES } from "./format";
 
 /** An agent counts as "using" a tool for this many trace seconds after its call. */
@@ -30,15 +30,42 @@ const ACTIVITY: Record<Activity, string> = {
   thinking: "thinking",
 };
 
-/** The category of the agent's latest call within `RECENT` seconds of `t`, or null. */
-export function currentActivity(tl: Timeline, id: number, t: number): ToolCategory | null {
-  const { events } = tl.trace;
-  for (let i = tl.indexAt(t) - 1; i >= 0; i--) {
-    const e = events[i];
-    if (e.t < t - RECENT) return null;
-    if (e.agent === id && (e.kind === "call" || e.kind === "spawn")) return e.category ?? "other";
+/** Per trace: each agent's calls and launches, times ascending, with their categories. */
+interface CallIndex {
+  times: number[][];
+  categories: ToolCategory[][];
+}
+
+const callCache = new WeakMap<SessionTrace, CallIndex>();
+
+function callIndex(trace: SessionTrace): CallIndex {
+  let ix = callCache.get(trace);
+  if (ix) return ix;
+  ix = { times: trace.agents.map(() => []), categories: trace.agents.map(() => []) };
+  for (const e of trace.events) {
+    if ((e.kind !== "call" && e.kind !== "spawn") || !ix.times[e.agent]) continue;
+    ix.times[e.agent].push(e.t);
+    ix.categories[e.agent].push(e.category ?? "other");
   }
-  return null;
+  callCache.set(trace, ix);
+  return ix;
+}
+
+/** The category of the agent's latest call within `RECENT` seconds of `t`, or null. One search, not a scan. */
+export function currentActivity(tl: Timeline, id: number, t: number): ToolCategory | null {
+  const ix = callIndex(tl.trace);
+  const times = ix.times[id];
+  if (!times) return null;
+  // The last call at or before t.
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (times[mid] > t) hi = mid;
+    else lo = mid + 1;
+  }
+  if (lo === 0 || times[lo - 1] < t - RECENT) return null;
+  return ix.categories[id][lo - 1];
 }
 
 const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
@@ -108,7 +135,9 @@ export function narrate(tl: Timeline, t: number): string {
   const groups = new Map<Activity, TraceAgent[]>();
   for (const a of live) {
     const k = currentActivity(tl, a.id, t) ?? "thinking";
-    groups.set(k, [...(groups.get(k) ?? []), a]);
+    const g = groups.get(k);
+    if (g) g.push(a);
+    else groups.set(k, [a]);
   }
   const idle = (a: Activity) => Number(a === "thinking");
   const ranked = [...groups.entries()].sort((a, b) => idle(a[0]) - idle(b[0]) || b[1].length - a[1].length);

@@ -21,7 +21,7 @@ import { createClock, isScripted } from "../shared/clock";
 import { registerDebug } from "../shared/debug";
 import { EventBus } from "../shared/events";
 import { createPost } from "../shared/post";
-import { adaptQuality, budgetOptions, maxPixelRatio, resolveQuality, TIERS } from "../shared/quality";
+import { adaptQuality, budgetOptions, maxPixelRatio, qualityOverride, resolveQuality, TIERS } from "../shared/quality";
 import { startBoxAudio } from "../audio/box";
 import { createRenderer } from "../shared/renderer";
 import { createCrowd } from "./crowd";
@@ -102,7 +102,14 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   opts.onProgress(0.1, "Starting the renderer");
   const { renderer, isWebGPU } = await createRenderer(canvas, { forceWebGL: opts.forceWebGL });
   const coarse = window.matchMedia("(pointer: coarse)").matches;
-  const plan = resolveQuality({ pref: opts.quality, isWebGPU, coarsePointer: coarse, viewportWidth: window.innerWidth, scripted });
+  const plan = resolveQuality({
+    pref: opts.quality,
+    isWebGPU,
+    coarsePointer: coarse,
+    viewportWidth: window.innerWidth,
+    override: qualityOverride(opts.params),
+    scripted,
+  });
   // The shot always shows the design's crowd of 2,000, on any backend and width.
   const count = params.shot ? SHOT_ESCAPE.agents : TIERS[plan.level.tier].crowdSize;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio(plan.level, coarse)));

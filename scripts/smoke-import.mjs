@@ -12,9 +12,13 @@
  * `<img src=x onerror=alert(1)>` prompt is literal text and never an element or a dialog, an import
  * makes no request beyond same-origin static assets and the route, a reload with nothing in memory falls
  * back to the medium sample with a notice, and a non-session file shows the not-a-session error.
+ *
+ * Also: a session file loaded alone, then its folder chosen from the missing-subagents notice, plays with
+ * every subagent (the folder adds to the file, it does not replace it), and markup in an Agent
+ * description (the card's title) and in a turn's text (the card's brief) shows as literal text.
  */
 
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -127,7 +131,8 @@ export async function stepImport(browser, h) {
         check("choose: lists both sessions", rows.length === 2, `${rows.length} rows`);
         check("choose: the hostile prompt is literal text", rows.some((t) => t.includes(HOSTILE)), JSON.stringify(rows));
         check("choose: it made no element and opened no dialog", (await page.locator('img[src="x"]').count()) === 0 && log.dialogs.length === 0);
-        check("choose: the first session is selected", (await page.locator("input[type=radio]:checked").count()) === 1);
+        const radios = page.locator("input[type=radio]");
+        check("choose: the first session is selected", (await page.locator("input[type=radio]:checked").count()) === 1 && (await radios.first().isChecked()), `${await radios.count()} rows`);
         // The hostile file has no conversation; choose the real session (the one with a subagent).
         await page.locator("label", { hasText: "1 agent" }).locator("input[type=radio]").check();
         await page.getByRole("button", { name: "Play this session" }).click();
@@ -140,6 +145,83 @@ export async function stepImport(browser, h) {
         check("choose: the chosen session plays as an upload", chosen.traceSource === "upload", `${chosen.agents} agents`);
         check("choose: no hostile element in the HUD", (await page.locator('img[src="x"]').count()) === 0 && log.dialogs.length === 0);
         check("choose: logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
+      } finally {
+        await context.close();
+      }
+    }
+
+    // --- a session file alone, then its folder; markup where the HUD shows session text ---
+    {
+      // A copy of the fixture with markup at the head of every Agent description and every turn's text.
+      const hostile = path.join(scratch, "hostile");
+      const subagents = path.join(hostile, "session", "subagents");
+      mkdirSync(subagents, { recursive: true });
+      const poison = (text) =>
+        text.replaceAll('"description":"', `"description":"${HOSTILE} `).replaceAll('"type":"text","text":"', `"type":"text","text":"${HOSTILE} `);
+      writeFileSync(path.join(hostile, "session.jsonl"), poison(readFileSync(path.join(FIXTURES, "session.jsonl"), "utf8")));
+      for (const name of readdirSync(path.join(FIXTURES, "session", "subagents"))) {
+        writeFileSync(path.join(subagents, name), poison(readFileSync(path.join(FIXTURES, "session", "subagents", name), "utf8")));
+      }
+
+      const { context, page, problems } = await h.openPage(browser, "/inside/load");
+      const log = record(page);
+      try {
+        await page.getByRole("heading", { name: "Watch your own swarm." }).waitFor();
+        await page.locator("[data-input=file]").setInputFiles(path.join(hostile, "session.jsonl"));
+        await page.locator("[data-notice=child-missing] [data-input=missing-folder]").waitFor({ timeout: 60_000 });
+        const summary = page.locator("[data-state=ready] span.font-mono").first();
+        const alone = await summary.textContent();
+        check("missing: the file alone shows the missing-subagents notice", true, alone ?? "");
+
+        // Choose the session's own folder (only subagents/ inside): it adds to the file already loaded.
+        await page.locator("[data-input=missing-folder]").setInputFiles(path.join(hostile, "session"));
+        await page.waitForFunction(
+          (before) => {
+            const s = document.querySelector("[data-state=ready] span.font-mono");
+            return document.querySelector("[data-notice]:not([data-notice=child-missing]):not([data-notice=truncated])") || (s && s.textContent !== before);
+          },
+          alone,
+          { timeout: 60_000 },
+        );
+        check("missing: choosing the folder keeps the session file", (await page.locator("[data-notice=no-session-file]").count()) === 0);
+        check("missing: and brings in its subagents", (await summary.textContent()) !== alone, `${alone} then ${await summary.textContent()}`);
+        await page.getByRole("button", { name: "Play this session" }).click();
+        await page.waitForURL(/\/inside\?source=upload/);
+        await arrived(page, h);
+        const played = await h.inside(page);
+        check("missing: the merged session plays every subagent", played.agents === FIXTURE_AGENTS, `${played.agents} agents`);
+
+        // Pause on a moment with helpers out, then step the keyboard to one and open its card.
+        await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+        await page.keyboard.press("Space");
+        await h.waitInside(page, () => window.__swarm.inside.playing === false);
+        const bar = await page.locator("[data-scrubber]").boundingBox();
+        let live = false;
+        for (const at of [0.3, 0.5, 0.2, 0.4, 0.6, 0.15, 0.7, 0.1, 0.8]) {
+          await page.mouse.click(bar.x + bar.width * at, bar.y + bar.height / 2);
+          await page.waitForTimeout(250);
+          if ((await h.inside(page)).agentsAlive >= 1) {
+            live = true;
+            break;
+          }
+        }
+        check("hostile: found a moment with a helper out", live);
+        // The scene may already have picked a helper for the card; else step from the orchestrator to one.
+        await page.locator("[data-next-agent]").focus();
+        for (let i = 0; i < 4 && (await h.inside(page)).selected <= 0; i++) {
+          await page.keyboard.press("Enter");
+          await page.waitForTimeout(150);
+        }
+        await h.waitInside(page, () => window.__swarm.inside.selected > 0);
+        const card = page.locator("[data-detail-card]");
+        await card.waitFor({ state: "visible" });
+        const title = card.locator("h2");
+        check("hostile: the card title shows the description's markup as literal text", (await title.isVisible()) && (await title.textContent()).includes(HOSTILE), await title.textContent());
+        const brief = card.locator("[data-brief]");
+        check("hostile: the brief shows the turn text's markup as literal text", (await brief.isVisible()) && (await brief.textContent()).includes(HOSTILE), await brief.textContent());
+        check("hostile: the card holds no img element", (await card.locator("img").count()) === 0);
+        check("hostile: the page made no hostile element and opened no dialog", (await page.locator('img[src="x"]').count()) === 0 && log.dialogs.length === 0, log.dialogs.join(" | "));
+        check("missing: logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
       } finally {
         await context.close();
       }

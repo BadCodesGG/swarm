@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type InputHTMLAttributes, type ReactNode } from "react";
 import { setImported } from "@/engine/inside/imported";
 import { loadSession } from "@/lib/trace/load";
-import { filesFromDrop, filesFromInput, type PickedFile } from "@/lib/trace/pick-files";
+import { filesFromDrop, filesFromInput, mergePicked, type PickedFile } from "@/lib/trace/pick-files";
 import type { ParseError, ParseReport, SessionCandidate, SessionTrace } from "@/lib/trace/types";
 import { agentsCopy, errorCopy, formatProgress, formatSize, missingChildren, missingCopy, percentRead, reportNote, truncatedCopy } from "./import-copy";
 
@@ -246,6 +246,8 @@ export default function ImportScreen() {
   const [view, setView] = useState<View>({ kind: "idle" });
   const [dragging, setDragging] = useState(false);
   const files = useRef<PickedFile[]>([]);
+  /** The session chosen from several, kept so a later pick of its subagents reads the same one. */
+  const session = useRef<string | undefined>(undefined);
   const running = useRef<AbortController | null>(null);
 
   useEffect(() => () => running.current?.abort(), []);
@@ -264,15 +266,25 @@ export default function ImportScreen() {
     [router],
   );
 
+  /**
+   * Reads a pick. `source` is the files, or a walk that gathers them (a drop), which runs under the
+   * same abort as the read: Cancel, a newer pick or leaving the page stops it, and nothing it found
+   * starts a worker or a route afterwards. `merge` adds the pick to the files already loaded.
+   */
   const run = useCallback(
-    async (picked: PickedFile[], session?: string) => {
+    async (source: PickedFile[] | ((signal: AbortSignal) => Promise<PickedFile[]>), { chosen, merge = false }: { chosen?: string; merge?: boolean } = {}) => {
       running.current?.abort();
       const ctl = new AbortController();
       running.current = ctl;
-      files.current = picked;
       setView({ kind: "reading", bytes: 0, total: 0 });
       try {
-        const result = await loadSession(picked, (bytes, total) => setView({ kind: "reading", bytes, total }), ctl.signal, { session });
+        const found = typeof source === "function" ? await source(ctl.signal) : source;
+        if (ctl.signal.aborted) return;
+        const picked = merge ? mergePicked(files.current, found) : found;
+        // A fresh pick forgets the earlier choice; files added to it keep it.
+        if (!merge || chosen !== undefined) session.current = chosen;
+        files.current = picked;
+        const result = await loadSession(picked, (bytes, total) => setView({ kind: "reading", bytes, total }), ctl.signal, { session: session.current });
         if (ctl.signal.aborted) return;
         if (!result.ok) {
           if ("choose" in result) setView({ kind: "choose", candidates: result.choose });
@@ -296,14 +308,12 @@ export default function ImportScreen() {
     setView({ kind: "idle" });
   };
 
-  const onDrop = async (e: DragEvent<HTMLElement>) => {
+  const onDrop = (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     setDragging(false);
-    try {
-      await run(await filesFromDrop(e.dataTransfer));
-    } catch {
-      setView({ kind: "error", error: "read-failed", report: null });
-    }
+    // The entries are taken before the walk's first await, while the browser still holds them.
+    const data = e.dataTransfer;
+    void run((signal) => filesFromDrop(data, signal));
   };
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -324,8 +334,8 @@ export default function ImportScreen() {
 
   let state: ReactNode = null;
   if (view.kind === "reading") state = <Reading bytes={view.bytes} total={view.total} onCancel={cancel} />;
-  else if (view.kind === "choose") state = <Chooser candidates={view.candidates} onPlay={(path) => void run(files.current, path)} />;
-  else if (view.kind === "ready") state = <Ready trace={view.trace} report={view.report} onPlay={() => play(view.trace)} onFiles={(f) => void run(f)} />;
+  else if (view.kind === "choose") state = <Chooser candidates={view.candidates} onPlay={(path) => void run(files.current, { chosen: path })} />;
+  else if (view.kind === "ready") state = <Ready trace={view.trace} report={view.report} onPlay={() => play(view.trace)} onFiles={(f) => void run(f, { merge: true })} />;
   else if (view.kind === "error") {
     const copy = errorCopy(view.error);
     const note = view.report ? reportNote(view.report) : null;

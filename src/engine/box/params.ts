@@ -15,6 +15,9 @@ import { DEFAULT_CONFIG, type BoxConfig, type StepReport } from "@/lib/box/types
  */
 export const SHOT_ESCAPE = { seed: 1812, agents: 2000 } as const;
 
+/** The escape shot's settings: every layer on but the network allowlist. */
+export const SHOT_CONFIG: BoxConfig = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
+
 export interface BoxParams {
   seed: number;
   shot: "escape" | null;
@@ -27,7 +30,7 @@ export function parseBoxParams(params: URLSearchParams): BoxParams {
   const raw = params.get("seed");
   const n = raw === null || raw.trim() === "" ? NaN : Number(raw);
   const seed = Number.isInteger(n) && n >= 0 ? n : shot ? SHOT_ESCAPE.seed : 1;
-  const config: BoxConfig = shot ? { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } } : DEFAULT_CONFIG;
+  const config: BoxConfig = shot ? SHOT_CONFIG : DEFAULT_CONFIG;
   return { seed, shot, forceCpu: params.get("sim") === "cpu", config };
 }
 

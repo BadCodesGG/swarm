@@ -38,7 +38,10 @@ const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRen
 // A GPU-less runner gets no WebGPU flags: the page then takes whatever fallback the browser really offers.
 const SOFTWARE_ARGS = ["--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--disable-gpu"];
 const BROWSER_ARGS = SOFTWARE ? SOFTWARE_ARGS : GPU_ARGS;
-const VIEWPORT = SOFTWARE ? { width: 640, height: 360 } : { width: 1280, height: 720 };
+// Software rendering is slow, so CI keeps the canvas small, but no smaller than the desktop HUD: it
+// needs 640 px of height (`min-h-[640px]`), or its timeline sits below the fold where no click reaches
+// it, and room for the side panels and the card in one row, or the card wraps under the timeline.
+const VIEWPORT = SOFTWARE ? { width: 960, height: 720 } : { width: 1280, height: 720 };
 // With no WebGPU adapter at all, three says so once as it falls back; that is the expected path here.
 const EXPECTED_WARNINGS = SOFTWARE ? ["THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend."] : [];
 
@@ -64,32 +67,42 @@ function watch(page) {
   return problems;
 }
 
-async function openPage(browser, route) {
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+/**
+ * Opens a route in a fresh context. `scripts()` waits past idle and returns the body of every script
+ * the visit loaded, lazy chunks and prefetches included, not only the ones the HTML names.
+ */
+async function openPage(browser, route, contextOptions = {}) {
+  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, ...contextOptions });
   const page = await context.newPage();
   const problems = watch(page);
+  const bodies = [];
+  page.on("response", (r) => {
+    if (r.request().resourceType() === "script") bodies.push(r.text().catch(() => ""));
+  });
   const response = await page.goto(`${BASE}${route}`, { waitUntil: "load" });
-  return { context, page, problems, response };
+  const scripts = async () => {
+    await page.waitForTimeout(1500);
+    return Promise.all(bodies);
+  };
+  return { context, page, problems, response, scripts };
 }
 
-/** Fetches the route's HTML and every same-origin script it references. */
-async function routeSources(route) {
+/** The route's HTML, fetched directly. */
+async function routeHtml(route) {
   const res = await fetch(`${BASE}${route}`);
-  const html = await res.text();
-  const srcs = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
-  const scripts = await Promise.all(srcs.map((s) => fetch(new URL(s, BASE)).then((r) => r.text())));
-  return { res, html, scripts };
+  return { res, html: await res.text() };
 }
 
 async function stepLanding(browser) {
   console.log("-- 1. landing");
-  const { res, html, scripts } = await routeSources("/");
+  const { res, html } = await routeHtml("/");
   check("GET / is 200", res.status === 200, String(res.status));
-  check("/ carries no WebGPURenderer", ![html, ...scripts].some((t) => t.includes("WebGPURenderer")), `${scripts.length} scripts`);
 
-  const { context, page, problems, response } = await openPage(browser, "/");
+  const { context, page, problems, response, scripts } = await openPage(browser, "/");
   try {
     check("/ loads with status 200 in the browser", response?.status() === 200, String(response?.status()));
+    const loaded = await scripts();
+    check("/ carries no WebGPURenderer in its HTML or any script the visit loaded", ![html, ...loaded].some((t) => t.includes("WebGPURenderer")), `${loaded.length} scripts`);
     const hrefs = await page.$$eval("a[href]", (as) => as.map((a) => a.getAttribute("href")));
     check("/ links to /inside", hrefs.includes("/inside"));
     check("/ links to /box", hrefs.includes("/box"));
@@ -147,13 +160,14 @@ const CITATIONS = [
 
 async function stepAbout(browser) {
   console.log("-- 6. about");
-  const { res, html, scripts } = await routeSources("/about");
+  const { res, html } = await routeHtml("/about");
   check("GET /about is 200", res.status === 200, String(res.status));
-  check("/about carries no WebGPURenderer", ![html, ...scripts].some((t) => t.includes("WebGPURenderer")), `${scripts.length} scripts`);
 
-  const { context, page, problems, response } = await openPage(browser, "/about");
+  const { context, page, problems, response, scripts } = await openPage(browser, "/about");
   try {
     check("/about loads with status 200 in the browser", response?.status() === 200, String(response?.status()));
+    const loaded = await scripts();
+    check("/about carries no WebGPURenderer in its HTML or any script the visit loaded", ![html, ...loaded].some((t) => t.includes("WebGPURenderer")), `${loaded.length} scripts`);
     const text = await page.textContent("main");
     check("/about says Act 2 is a simulation", /The Box is a simulation/.test(text));
     check("/about says uploads are parsed in the browser and never sent", /parsed in a Web Worker on your device/.test(text) && /never uploaded/.test(text));
@@ -283,10 +297,12 @@ async function stepInside(browser) {
       check("medium: found a moment with several live subagents", crowded);
       const target = await page.evaluate(() => {
         const { screenOf, agents, selected } = window.__swarm.inside;
+        // screenOf is canvas px; the mouse and elementFromPoint take viewport px.
+        const rect = document.querySelector("canvas").getBoundingClientRect();
         const pts = [];
         for (let id = 1; id < agents; id++) {
           const p = screenOf(id);
-          if (p) pts.push({ id, ...p });
+          if (p) pts.push({ id, x: rect.left + p.x, y: rect.top + p.y });
         }
         const clear = pts.filter((p) => {
           const el = document.elementFromPoint(p.x, p.y);
@@ -307,7 +323,11 @@ async function stepInside(browser) {
       await card.getByRole("button", { name: "Follow" }).click();
       await waitInside(page, (id) => window.__swarm.inside.following === id, target.id);
       check("medium: Follow makes the camera follow", true);
+      const spawnT = await page.evaluate((id) => window.__swarm.inside.spawnTOf(id), target.id);
+      check("medium: the playhead is past the agent's start before the jump", (await inside(page)).t > spawnT, `spawn at ${spawnT}`);
       await card.getByRole("button", { name: "Jump to its start" }).click();
+      await waitInside(page, (s) => Math.abs(window.__swarm.inside.t - s) < 1e-6, spawnT);
+      check("medium: Jump to its start moves the playhead to the agent's spawn", true, `t = ${spawnT}`);
       await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id);
       await card.getByRole("button", { name: "Close details" }).click();
       await waitInside(page, () => window.__swarm.inside.selected === -1);
@@ -348,9 +368,53 @@ async function stepInside(browser) {
   }
 }
 
+/**
+ * The phone's bottom sheet is a modal dialog: focus moves in, the window shortcuts and Tab stay off
+ * the controls under it, and Escape closes it and gives focus back to the agent bar.
+ */
+async function stepInsidePhone(browser) {
+  console.log("-- 2b. inside on a phone");
+  const phone = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
+  const { context, page, problems } = await openPage(browser, "/inside?source=medium&seed=1", phone);
+  try {
+    await waitInside(page, () => window.__swarm?.inside?.frame > 5, null, 90_000);
+    await page.locator("button[aria-keyshortcuts=A]").first().focus();
+    await page.keyboard.press("Enter");
+    await waitInside(page, () => window.__swarm.inside.selected === 0);
+    const bar = page.locator('button[aria-expanded][aria-label^="Selected agent"]');
+    await bar.click();
+    const dialog = page.getByRole("dialog", { name: "Selected agent details" });
+    await dialog.waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.activeElement?.closest("[role=dialog]") != null);
+    check("phone: opening the sheet moves focus into it", true);
+    const before = await inside(page);
+    await page.keyboard.press("Space");
+    await page.keyboard.press("a");
+    await page.keyboard.press("3");
+    await page.waitForTimeout(200);
+    const after = await inside(page);
+    const same = after.playing === before.playing && after.selected === before.selected && after.rate === before.rate;
+    check("phone: the window shortcuts are off while the sheet is open", same, JSON.stringify({ before: [before.playing, before.selected, before.rate], after: [after.playing, after.selected, after.rate] }));
+    let under = 0;
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press("Tab");
+      if (await page.evaluate(() => document.activeElement?.closest("[data-under-sheet]") != null)) under++;
+    }
+    check("phone: Tab never reaches the controls under the sheet", under === 0, `${under} of 12 presses`);
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-expanded") === "false");
+    check("phone: Escape closes the sheet and gives focus back to the agent bar", (await bar.getAttribute("aria-expanded")) === "false");
+    check("phone: logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
+  } finally {
+    await context.close();
+  }
+}
+
 const STEPS = [
   stepLanding,
   stepInside,
+  stepInsidePhone,
   ...boxSteps({ check, openPage, software: SOFTWARE }),
   (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside }),
   stepAbout,

@@ -41,12 +41,14 @@ const linkRing = "outline-none focus-visible:ring-2 focus-visible:ring-layer-1";
 
 /**
  * Space, Left / Right, 1 / 2 / 3, A / Shift+A (next and previous agent) and Escape (close the card),
- * unless the key belongs to the control that has focus.
+ * unless the key belongs to the control that has focus. While a modal sheet is open only Escape
+ * works: the rest belong to the controls under it.
  */
-function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: () => boolean) {
+function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: () => boolean, modal: boolean) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (modal && e.key !== "Escape") return;
       const el = e.target instanceof HTMLElement ? e.target : null;
       const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
       if (typing) return;
@@ -72,7 +74,7 @@ function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [app, onCycle, onEscape]);
+  }, [app, onCycle, onEscape, modal]);
 }
 
 /** The Act 1 HUD over the canvas; a stacked layout on a phone. */
@@ -80,6 +82,14 @@ export function Hud({ app }: { app: InsideApp }) {
   const narrow = useNarrow();
   const selected = useSelection(app);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // A cleared selection (a source switch, say) closes the sheet, so it does not pop back with the next pick.
+  const [sheetSelection, setSheetSelection] = useState(selected);
+  if (sheetSelection !== selected) {
+    setSheetSelection(selected);
+    if (selected < 0) setSheetOpen(false);
+  }
+  const sheet = useRef<HTMLDivElement>(null);
+  const sheetShown = narrow && selected >= 0 && sheetOpen;
   const [announced, setAnnounced] = useState("");
   const slot = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLElement>(null);
@@ -111,7 +121,7 @@ export function Hud({ app }: { app: InsideApp }) {
 
   /** Escape closes the phone's sheet, else the card. False when there was nothing to close. */
   const escape = useCallback(() => {
-    if (sheetOpen) {
+    if (sheetShown) {
       setSheetOpen(false);
       requestAnimationFrame(() => agentBar.current?.focus());
       return true;
@@ -120,9 +130,14 @@ export function Hud({ app }: { app: InsideApp }) {
     app.select(-1);
     refocus();
     return true;
-  }, [app, refocus, sheetOpen]);
+  }, [app, refocus, sheetShown]);
 
-  useShortcuts(app, cycle, escape);
+  useShortcuts(app, cycle, escape, sheetShown);
+
+  // The sheet is modal: focus moves into it as it opens (and back to the agent bar as it closes).
+  useEffect(() => {
+    if (sheetShown) sheet.current?.focus();
+  }, [sheetShown]);
 
   // The phone frames the scene in the band between the counters and the cards; the desktop frames it
   // between the header, the side panels, the card's column and the timeline, so the station ring and
@@ -169,6 +184,8 @@ export function Hud({ app }: { app: InsideApp }) {
   if (narrow) {
     return (
       <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 px-4 pt-3 pb-4 font-sans text-ink">
+        {/* Inert under the open sheet, so Tab cannot reach the controls it covers; `contents` keeps the column's layout. */}
+        <div className="contents" inert={sheetShown} data-under-sheet>
         <header className="flex items-center justify-between gap-2">
           <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2 font-mono text-xs tracking-[0.12em] text-label ${linkRing}`}>
             {LOGO}
@@ -202,11 +219,15 @@ export function Hud({ app }: { app: InsideApp }) {
         {selected >= 0 ? <AgentBar ref={agentBar} app={app} id={selected} expanded={sheetOpen} onToggle={() => setSheetOpen((o) => !o)} /> : null}
         <div className="grow" aria-hidden="true" />
         <Timeline app={app} narrow />
-        {selected >= 0 && sheetOpen ? (
+        </div>
+        {sheetShown ? (
           <div
+            ref={sheet}
             role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
             aria-label="Selected agent details"
-            className="pointer-events-auto absolute inset-x-0 bottom-0 z-10 max-h-[78%] overflow-y-auto rounded-t-[18px] border border-b-0 border-panel-border bg-[rgba(12,16,28,0.96)] px-4 pt-4 pb-6 shadow-[0_-18px_48px_rgba(0,0,0,0.5)]"
+            className="pointer-events-auto absolute inset-x-0 bottom-0 z-10 max-h-[78%] overflow-y-auto rounded-t-[18px] outline-none border border-b-0 border-panel-border bg-[rgba(12,16,28,0.96)] px-4 pt-4 pb-6 shadow-[0_-18px_48px_rgba(0,0,0,0.5)]"
           >
             <DetailCard
               key={selected}

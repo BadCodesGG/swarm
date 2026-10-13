@@ -10,14 +10,13 @@
 
 import { Color, Mesh, MeshBasicNodeMaterial, SphereGeometry, type Object3D } from "three/webgpu";
 import { abs, attribute, color, cos, exp, float, normalView, pow, sin, smoothstep, fract, uniform, vec3, vec4 } from "three/tsl";
-import { BOUNDARY_RADIUS, newPose, stationIndex, stationPos, type WebProbe } from "../layout";
+import { BOUNDARY_RADIUS, liveProbes, newPose, PROBE_GROW, stationIndex, stationPos, type WebProbe } from "../layout";
 import { coverage, dynamicAttribute, premultiplied, ribbonGeometry, ribbonMaterial, spriteGeometry, spriteMaterial, type InsideUniforms } from "./common";
 import { createLineBatch, type LineSpec } from "./tethers";
 
-/** Trace seconds a probe takes to reach its end. */
-const PROBE_GROW = 1.2;
 /** Trace seconds the crossing flash takes to fade. */
 const FLASH_FADE = 1.6;
+/** Probes drawn at once; each takes at most two fx sprites (its crossing flash and its end dot). */
 const MAX_PROBES = 64;
 
 export interface Boundary {
@@ -92,6 +91,7 @@ export function createBoundary(root: Object3D, swarm: Object3D, u: InsideUniform
   const white = new Color(0xffffff);
   const spec: LineSpec = { ax: web.x, ay: web.y, az: web.z, bx: 0, by: 0, bz: 0, bow: 0, widthPx: 1.3, dashPx: 5, reveal: 1, color: white, alpha: 0.5 };
   const drawn: number[] = [];
+  const live: number[] = [];
 
   return {
     setCameraDistance(d) {
@@ -107,9 +107,8 @@ export function createBoundary(root: Object3D, swarm: Object3D, u: InsideUniform
       const fxArr = aFx.array as Float32Array;
       const kindArr = aKind.array as Float32Array;
       let nfx = 0;
-      for (let i = 0; i < probes.length && drawn.length < MAX_PROBES; i++) {
+      for (const i of liveProbes(probes, t, MAX_PROBES, live)) {
         const p = probes[i];
-        if (t < p.t0 || t > p.t1) continue;
         const reveal = Math.min(1, (t - p.t0) / PROBE_GROW);
         spec.bx = p.ex;
         spec.by = p.ey;

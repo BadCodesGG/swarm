@@ -12,7 +12,7 @@
  */
 
 import { MODEL_FAMILIES } from "@/lib/trace/categories";
-import { particleLife } from "@/lib/trace/timeline";
+import { particleLife, type Timeline } from "@/lib/trace/timeline";
 import type { SessionTrace, ToolCategory } from "@/lib/trace/types";
 
 export const STATIONS = ["web", "plan", "advisor", "agents", "edit", "mcp", "files", "shell"] as const satisfies readonly ToolCategory[];
@@ -93,33 +93,116 @@ function orbitOffset(trace: SessionTrace, id: number, t: number, out: Pose): voi
   out.z = Math.sin(k * 1.7 + a.parent) * r * 0.3;
 }
 
-const scratch: Pose[] = [];
+/**
+ * Per trace: every agent's last computed pose and the time it was computed for. A frame poses each
+ * agent several times (agents, tethers, picking) at one `t`, so a pose's ancestors are computed
+ * once per frame, not once per descendant: a deep spawn chain stays linear.
+ */
+interface PoseMemo {
+  at: Float64Array;
+  x: Float64Array;
+  y: Float64Array;
+  z: Float64Array;
+  presence: Uint8Array;
+  /** Ancestors waiting to be posed, deepest first. */
+  stack: Int32Array;
+}
+
+const poseMemo = new WeakMap<SessionTrace, PoseMemo>();
+
+function memoFor(trace: SessionTrace): PoseMemo {
+  let m = poseMemo.get(trace);
+  if (m) return m;
+  const n = trace.agents.length;
+  m = { at: new Float64Array(n).fill(NaN), x: new Float64Array(n), y: new Float64Array(n), z: new Float64Array(n), presence: new Uint8Array(n), stack: new Int32Array(n) };
+  poseMemo.set(trace, m);
+  return m;
+}
+
+const isRoot = (trace: SessionTrace, id: number) => {
+  const a = trace.agents[id];
+  return !a || a.parent < 0;
+};
 
 /** Agent `id` at trace time `t`, written into `out`. */
 export function agentPose(trace: SessionTrace, id: number, t: number, out: Pose): Pose {
-  const a = trace.agents[id];
-  if (!a || a.parent < 0) {
+  if (isRoot(trace, id)) {
     out.x = out.y = out.z = 0;
     out.presence = 1;
     return out;
   }
-  const fold = a.returned ? clamp01((t - a.returnT) / FOLD_TIME) : 0;
-  // Parent first, into a scratch pose per depth so the recursion never clobbers it.
-  const p = (scratch[a.depth] ??= newPose());
-  agentPose(trace, a.parent, t, p);
-  // The orbit holds still once the agent has returned, so it folds straight back in.
-  orbitOffset(trace, id, a.returned ? Math.min(t, a.returnT) : t, offset);
-  const s = easeOut(clamp01((t - a.spawnT) / SPAWN_TIME)) * (1 - easeIn(fold));
-  out.x = p.x + offset.x * s;
-  out.y = p.y + offset.y * s;
-  out.z = p.z + offset.z * s;
-  out.presence = t < a.spawnT || fold >= 1 ? 0 : 1;
+  const m = memoFor(trace);
+  if (m.at[id] !== t) {
+    // Climb to the nearest ancestor already posed at t (or the root), then pose back down.
+    let n = 0;
+    let k = id;
+    while (!isRoot(trace, k) && m.at[k] !== t && n < m.stack.length) {
+      m.stack[n++] = k;
+      k = trace.agents[k].parent;
+    }
+    let px = 0;
+    let py = 0;
+    let pz = 0;
+    if (!isRoot(trace, k)) {
+      px = m.x[k];
+      py = m.y[k];
+      pz = m.z[k];
+    }
+    for (let j = n - 1; j >= 0; j--) {
+      const c = m.stack[j];
+      const a = trace.agents[c];
+      const fold = a.returned ? clamp01((t - a.returnT) / FOLD_TIME) : 0;
+      // The orbit holds still once the agent has returned, so it folds straight back in.
+      orbitOffset(trace, c, a.returned ? Math.min(t, a.returnT) : t, offset);
+      const s = easeOut(clamp01((t - a.spawnT) / SPAWN_TIME)) * (1 - easeIn(fold));
+      px = m.x[c] = px + offset.x * s;
+      py = m.y[c] = py + offset.y * s;
+      pz = m.z[c] = pz + offset.z * s;
+      m.presence[c] = t < a.spawnT || fold >= 1 ? 0 : 1;
+      m.at[c] = t;
+    }
+  }
+  out.x = m.x[id];
+  out.y = m.y[id];
+  out.z = m.z[id];
+  out.presence = m.presence[id];
   return out;
 }
 
 const offset = newPose();
 
-/** A call or a subagent launch in flight from its caller to its station. Trace seconds. */
+/** Per trace: where each agent was at its `returnT` (x, y, z per agent; NaN until asked). */
+const returnMemo = new WeakMap<SessionTrace, Float64Array>();
+
+/**
+ * Where agent `id` was when it returned (the end of its trail), written into `out`. Fixed for the
+ * trace, so it is posed once and kept: asking for it never disturbs the current frame's poses.
+ */
+export function returnPose(trace: SessionTrace, id: number, out: Pose): Pose {
+  let m = returnMemo.get(trace);
+  if (!m) {
+    m = new Float64Array(trace.agents.length * 3).fill(NaN);
+    returnMemo.set(trace, m);
+  }
+  const a = trace.agents[id];
+  if (!a) return agentPose(trace, id, 0, out);
+  if (Number.isNaN(m[id * 3])) {
+    agentPose(trace, id, a.returnT, out);
+    m[id * 3] = out.x;
+    m[id * 3 + 1] = out.y;
+    m[id * 3 + 2] = out.z;
+  }
+  out.x = m[id * 3];
+  out.y = m[id * 3 + 1];
+  out.z = m[id * 3 + 2];
+  out.presence = 1;
+  return out;
+}
+
+/**
+ * A call or a subagent launch in flight from its caller to its station. `t0` and `t1` are playback
+ * seconds (after idle compression), which run at `rate` per real second even across a cut.
+ */
 export interface Flight {
   event: number;
   agent: number;
@@ -140,7 +223,8 @@ const flightStart = newPose();
 const flightEnd = newPose();
 
 /** The flight for event `index`, or null if it does not fly (results, turns, tools with no station). */
-export function makeFlight(trace: SessionTrace, index: number, rate: number): Flight | null {
+export function makeFlight(timeline: Timeline, index: number, rate: number): Flight | null {
+  const { trace } = timeline;
   const e = trace.events[index];
   if (!e) return null;
   let station = -1;
@@ -161,8 +245,8 @@ export function makeFlight(trace: SessionTrace, index: number, rate: number): Fl
     ex: flightEnd.x,
     ey: flightEnd.y,
     ez: flightEnd.z,
-    t0: e.t,
-    t1: e.t + particleLife(rate) * Math.max(rate, 0),
+    t0: timeline.arrays.playback[index],
+    t1: timeline.arrays.playback[index] + particleLife(rate) * Math.max(rate, 0),
   };
 }
 
@@ -172,7 +256,7 @@ export function flightEase(u: number): number {
   return 1 - (1 - v) * (1 - v);
 }
 
-/** The flight's head at trace time `t`; false (and `out` untouched) outside its window. */
+/** The flight's head at playback time `t`; false (and `out` untouched) outside its window. */
 export function flightPos(f: Flight, t: number, out: Pose): boolean {
   if (t < f.t0 || t > f.t1) return false;
   const k = flightEase((t - f.t0) / Math.max(f.t1 - f.t0, 1e-9));
@@ -252,6 +336,23 @@ export function webProbes(trace: SessionTrace): WebProbe[] {
   return out;
 }
 
+/** Trace seconds a probe takes to reach its end. */
+export const PROBE_GROW = 1.2;
+
+/**
+ * Indices of the probes out at `t`, in list order, at most `max`. A probe still growing counts as
+ * much as one that has reached its end, so the boundary's sprites (a flash and an end dot each)
+ * never outnumber `2 * max`.
+ */
+export function liveProbes(probes: readonly WebProbe[], t: number, max: number, out: number[]): number[] {
+  out.length = 0;
+  for (let i = 0; i < probes.length && out.length < max; i++) {
+    const p = probes[i];
+    if (t >= p.t0 && t <= p.t1) out.push(i);
+  }
+  return out;
+}
+
 /** Trace seconds a station takes to go dark after its last call returns. */
 export const ACTIVE_FADE = 1.5;
 /** A subagent launch keeps the agents station lit this long. */
@@ -313,12 +414,14 @@ export function featuredAgent(trace: SessionTrace, t: number): number {
     const a = trace.agents[id];
     return a.parent >= 0 && a.spawnT + SPAWN_TIME <= t && (!a.returned || t < a.returnT);
   };
+  // One pass marks every agent with a running child of its own, so the pick stays linear.
+  const hasRunningChild = new Uint8Array(trace.agents.length);
+  for (const c of trace.agents) if (c.parent >= 0 && running(c.id)) hasRunningChild[c.parent] = 1;
   let best = -1;
   let bestScore = -Infinity;
   for (const a of trace.agents) {
     if (!running(a.id)) continue;
-    const parentOfRunning = trace.agents.some((c) => c.parent === a.id && running(c.id));
-    const score = (parentOfRunning ? 1e9 : 0) + a.toolCalls;
+    const score = (hasRunningChild[a.id] ? 1e9 : 0) + a.toolCalls;
     if (score > bestScore) {
       best = a.id;
       bestScore = score;

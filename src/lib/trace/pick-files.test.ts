@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesFromDirectory, filesFromDrop, filesFromInput } from "./pick-files";
+import { filesFromDirectory, filesFromDrop, filesFromInput, mergePicked } from "./pick-files";
 
 const file = (name: string) => new File(["x"], name);
 
@@ -87,5 +87,35 @@ describe("filesFromDirectory", () => {
     ]);
     const got = await filesFromDirectory(root as unknown as FileSystemDirectoryHandle);
     expect(got.map((f) => f.path)).toEqual(["abc/abc.jsonl", "abc/subagents/agent-a.jsonl", "abc/subagents/agent-a.meta.json"]);
+  });
+});
+
+describe("filesFromDrop: stopping", () => {
+  it("stops walking a dropped folder once its signal aborts, and rejects with the abort", async () => {
+    const ctl = new AbortController();
+    let opened = 0;
+    const counted = (full: string): FakeEntry => ({ ...fileEntry(full), file: (ok) => (opened++, ok(file(base(full)))) });
+    const big = dirEntry("/abc", Array.from({ length: 50 }, (_, i) => counted(`/abc/agent-${i}.jsonl`)));
+    const walk = filesFromDrop(drop([big]), ctl.signal);
+    ctl.abort();
+    await expect(walk).rejects.toMatchObject({ name: "AbortError" });
+    expect(opened).toBeLessThan(50);
+  });
+});
+
+describe("mergePicked", () => {
+  it("adds a later pick to what was loaded, the later file winning on the same path", () => {
+    const session = { path: "abc.jsonl", file: file("abc.jsonl") };
+    const sub = { path: "abc/subagents/agent-a.jsonl", file: file("agent-a.jsonl") };
+    const again = { path: "abc.jsonl", file: file("abc.jsonl") };
+    const merged = mergePicked([session], [sub, again]);
+    expect(merged.map((f) => f.path)).toEqual(["abc.jsonl", "abc/subagents/agent-a.jsonl"]);
+    expect(merged[0].file).toBe(again.file);
+  });
+
+  it("treats backslash and slash paths as the same file", () => {
+    const a = { path: ["abc", "subagents", "agent-a.jsonl"].join(String.fromCharCode(92)), file: file("agent-a.jsonl") };
+    const b = { path: "abc/subagents/agent-a.jsonl", file: file("agent-a.jsonl") };
+    expect(mergePicked([a], [b])).toHaveLength(1);
   });
 });

@@ -1,4 +1,4 @@
-import type { PickedFile } from "./session-files";
+import { normalizePath, type PickedFile } from "./session-files";
 
 export type { PickedFile };
 
@@ -14,7 +14,8 @@ function readBatch(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]
   return new Promise((resolve, reject) => reader.readEntries(resolve, reject));
 }
 
-async function walkEntry(entry: FileSystemEntry, inFolder: boolean, out: PickedFile[]): Promise<void> {
+async function walkEntry(entry: FileSystemEntry, inFolder: boolean, out: PickedFile[], signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   if (entry.isFile) {
     if (inFolder && !relevant(entry.name)) return;
     const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
@@ -25,12 +26,12 @@ async function walkEntry(entry: FileSystemEntry, inFolder: boolean, out: PickedF
   const reader = (entry as FileSystemDirectoryEntry).createReader();
   // readEntries returns at most 100 entries per call; an empty batch ends the folder.
   for (let batch = await readBatch(reader); batch.length > 0; batch = await readBatch(reader)) {
-    for (const child of batch) await walkEntry(child, true, out);
+    for (const child of batch) await walkEntry(child, true, out, signal);
   }
 }
 
-/** A drop: files, or folders walked recursively. */
-export async function filesFromDrop(data: DataTransfer): Promise<PickedFile[]> {
+/** A drop: files, or folders walked recursively. Aborting `signal` stops the walk and rejects with its reason. */
+export async function filesFromDrop(data: DataTransfer, signal?: AbortSignal): Promise<PickedFile[]> {
   // The entries must be taken before the first await; the browser clears the items afterwards.
   const entries: FileSystemEntry[] = [];
   for (const item of Array.from(data.items ?? [])) {
@@ -40,7 +41,8 @@ export async function filesFromDrop(data: DataTransfer): Promise<PickedFile[]> {
   }
   if (entries.length === 0) return filesFromInput(data.files);
   const out: PickedFile[] = [];
-  for (const entry of entries) await walkEntry(entry, false, out);
+  for (const entry of entries) await walkEntry(entry, false, out, signal);
+  signal?.throwIfAborted();
   return out;
 }
 
@@ -64,4 +66,11 @@ export async function filesFromDirectory(handle: FileSystemDirectoryHandle): Pro
   const out: PickedFile[] = [];
   await walkHandle(handle as unknown as DirectoryLike, `${handle.name}/`, out);
   return out;
+}
+
+/** What was loaded plus a later pick (the subagents folder, say), one file per path; the later pick wins. */
+export function mergePicked(loaded: readonly PickedFile[], picked: readonly PickedFile[]): PickedFile[] {
+  const byPath = new Map<string, PickedFile>();
+  for (const f of [...loaded, ...picked]) byPath.set(normalizePath(f.path), f);
+  return [...byPath.values()];
 }

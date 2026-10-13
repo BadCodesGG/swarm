@@ -32,8 +32,8 @@ export type Vec4Node = Node<"vec4">;
 
 export function createUniforms() {
   return {
-    /** Trace seconds, written by the app each frame. */
-    time: uniform(0),
+    /** Playback seconds (trace time with idle stretches cut), written by the app each frame. */
+    playTime: uniform(0),
     /** CSS px per world unit at view depth 1: projection[1][1] * half the canvas height. */
     pixelScale: uniform(450),
     /** Screen px per design px: 1 at the 1440x900 hero framing (100 px per world unit), less on a phone. */

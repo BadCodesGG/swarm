@@ -2,6 +2,7 @@ import { fork, pick, type Rng } from "../rng";
 import { ACTIONS } from "./actions";
 import { evaluate } from "./layers";
 import {
+  LAYER_ORDER,
   type ActionId,
   type Attempt,
   type BoxConfig,
@@ -57,6 +58,12 @@ export interface BoxState {
   auditPool: number;
   escapedTotal: number;
   caught: Record<LayerId, number>;
+  /** `LAYER_ORDER` index of the layer that stopped each agent; -1 while it has not been stopped. */
+  caughtBy: Int8Array;
+  /**
+   * Honest work lost to each layer, in agent-ticks: its checks on honest agents, and every tick an
+   * honest agent it stopped can no longer work. Sums to the honest work lost.
+   */
   cost: Record<LayerId, number>;
 }
 
@@ -97,6 +104,7 @@ export function createState(config: BoxConfig, seed: number, agentCount: number,
     auditPool: config.auditBudget * agentCount,
     escapedTotal: 0,
     caught: zeroByLayer(),
+    caughtBy: new Int8Array(agentCount).fill(-1),
     cost: zeroByLayer(),
   };
 }
@@ -138,9 +146,13 @@ export function step(state: BoxState, r: Rng): StepReport {
     rolls.monitor = r();
     rolls.audit = r();
     r();
-    if (state.status[i] !== STATUS.active) continue;
-
     const isRogue = state.rogue[i] === 1;
+    if (state.status[i] !== STATUS.active) {
+      // An honest agent a layer stopped loses this whole tick to that layer.
+      if (!isRogue && state.caughtBy[i] >= 0) state.cost[LAYER_ORDER[state.caughtBy[i]]] += 1;
+      continue;
+    }
+
     const plan = state.plans[i];
     const acting = isRogue && plan !== null && act < ROGUE_ACT;
     attempt.agent = i;
@@ -166,12 +178,19 @@ export function step(state: BoxState, r: Rng): StepReport {
     const ev = evaluate(attempt, { auditPool: state.auditPool, explain: state.explain }, config);
     state.auditPool -= ev.auditSpent;
     state.history[i] = state.history[i] * HISTORY_KEEP + ev.suspicion * (1 - HISTORY_KEEP);
-    for (const v of ev.trace) state.cost[v.layer] += v.cost;
+    if (!isRogue) {
+      // An honest tick loses at most the whole tick, shared by the layers that checked it.
+      const scale = ev.cost > 1 ? 1 / ev.cost : 1;
+      for (const v of ev.trace) state.cost[v.layer] += v.cost * scale;
+    }
     if (ev.flagged) flags.push({ agent: i, action: attempt.action, suspicion: ev.suspicion, reviewed: ev.auditSpent > 0 });
 
     if (ev.verdict.outcome === "catch") {
       state.status[i] = STATUS.caught;
+      state.caughtBy[i] = LAYER_ORDER.indexOf(ev.verdict.layer);
       state.caught[ev.verdict.layer]++;
+      // The rest of this tick is lost to the layer that stopped it, too.
+      if (!isRogue) state.cost[ev.verdict.layer] += Math.max(0, 1 - ev.cost);
       catches.push({
         agent: i,
         layer: ev.verdict.layer,

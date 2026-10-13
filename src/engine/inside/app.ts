@@ -17,7 +17,7 @@ import { createClock } from "../shared/clock";
 import { registerDebug } from "../shared/debug";
 import { EventBus } from "../shared/events";
 import { createPost } from "../shared/post";
-import { adaptQuality, budgetOptions, maxPixelRatio, resolveQuality, TIERS } from "../shared/quality";
+import { adaptQuality, budgetOptions, maxPixelRatio, qualityOverride, resolveQuality, TIERS } from "../shared/quality";
 import { startInsideAudio } from "../audio/inside";
 import { createRenderer } from "../shared/renderer";
 import {
@@ -40,7 +40,7 @@ import {
 } from "./layout";
 import { getImported } from "./imported";
 import { parseInsideParams, type InsideParams } from "./params";
-import { createPlayback } from "./playback";
+import { createFrameSync, createPlayback } from "./playback";
 import { createAgents } from "./scene/agents";
 import { createBackdrop } from "./scene/backdrop";
 import { createBoundary } from "./scene/boundary";
@@ -151,6 +151,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     isWebGPU,
     coarsePointer: coarse,
     viewportWidth: window.innerWidth,
+    override: qualityOverride(opts.params),
     scripted: params.shot,
   });
   const tier = TIERS[plan.level.tier];
@@ -199,15 +200,16 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   let frame: SceneFrame | null = null;
   /** Index of the first event not yet emitted, for appending while playing. */
   let cursor = 0;
-  let lastT = -1;
-  let lastRate = -1;
+  /** A seek, a rate change, a new trace or a quality step rewrites the ring; ordinary play emits. */
+  const sync = createFrameSync();
 
   const rebuildParticles = (t: number) => {
     particles.reset();
     const [lo, hi] = timeline.visibleAt(t, playback.rate());
+    const now = timeline.toPlayback(t);
     for (let i = lo; i < hi; i++) {
-      const f = makeFlight(trace, i, playback.rate());
-      if (f && f.t1 >= t) particles.emit(f);
+      const f = makeFlight(timeline, i, playback.rate());
+      if (f && f.t1 >= now) particles.emit(f);
     }
     cursor = hi;
   };
@@ -216,7 +218,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     const hi = timeline.indexAt(t);
     for (let i = cursor; i < hi; i++) {
       const e = trace.events[i];
-      const f = makeFlight(trace, i, playback.rate());
+      const f = makeFlight(timeline, i, playback.rate());
       if (f) particles.emit(f);
       if (e.kind === "spawn" && e.child !== undefined) bus.emit("spawn", { agent: e.child, parent: e.agent });
       else if (e.kind === "return" && e.child !== undefined) bus.emit("return", { agent: e.child });
@@ -251,7 +253,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     boundary.setProbes(probes);
     playback.setMap(timeline);
     playback.seek(startT);
-    lastT = -1;
+    sync.rewrite();
     bus.emit("trace", { trace: next });
     bus.emit("select", { agent: -1 });
   };
@@ -401,6 +403,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     events: 0,
     duration: 0,
     screenOf,
+    /** Agent `id`'s spawn time, trace seconds, or null. */
+    spawnTOf: (id: number) => trace?.agents[id]?.spawnT ?? null,
     counters: null as null | { tokens: number; toolCalls: number; agentsSpawned: number; agentsActive: number; elapsed: number },
     streaks: 0,
     probes: 0,
@@ -418,18 +422,16 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio(stepped, coarse)));
       particles.dispose();
       particles = createParticles(swarm, u, TIERS[stepped.tier].particleCap);
-      lastT = -1;
+      sync.rewrite();
       debug.tier = stepped.tier;
     }
     const dt = clock.tick();
     playback.advance(dt);
     const t = playback.time();
     const rate = playback.rate();
-    u.time.value = t;
-    if (t < lastT || rate !== lastRate || lastT < 0 || t - lastT > 30) rebuildParticles(t);
+    u.playTime.value = timeline.toPlayback(t);
+    if (sync.next(t) === "rebuild") rebuildParticles(t);
     else emitUpTo(t);
-    lastT = t;
-    lastRate = rate;
     particles.flush();
 
     swarm.updateMatrixWorld();
@@ -495,8 +497,14 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     uploadMissing,
     play: () => playback.play(),
     pause: () => playback.pause(),
-    seek: (t) => playback.seek(t),
-    setRate: (r) => playback.setRate(r),
+    seek: (t) => {
+      playback.seek(t);
+      sync.rewrite();
+    },
+    setRate: (r) => {
+      playback.setRate(r);
+      sync.rewrite();
+    },
     time: () => playback.time(),
     rate: () => playback.rate(),
     playing: () => playback.playing(),

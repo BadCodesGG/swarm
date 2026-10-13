@@ -78,3 +78,29 @@ export function createPlayback(
     },
   };
 }
+
+/**
+ * Whether a frame rewrites the particle ring or emits the events the playhead crossed. Ordinary
+ * play always emits, however far one frame jumps (an idle cut, a long frame at 200x), so its cues
+ * sound; a seek, a rate change, a new trace or a quality step calls `rewrite()` and skips them.
+ */
+export interface FrameSync {
+  rewrite(): void;
+  next(t: number): "rebuild" | "emit";
+}
+
+export function createFrameSync(): FrameSync {
+  let pending = true;
+  let last = -Infinity;
+  return {
+    rewrite() {
+      pending = true;
+    },
+    next(t) {
+      const rebuild = pending || t < last;
+      pending = false;
+      last = t;
+      return rebuild ? "rebuild" : "emit";
+    },
+  };
+}

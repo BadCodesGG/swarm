@@ -132,7 +132,8 @@ rogue's ask is granted when its roll beats the grant rate; honest privileged wor
 **monitor** scores the action plus the agent's recent history and catches at or above
 `monitorThreshold`; `split-steps` lowers each step's score; a low threshold flags honest agents.
 **audit** reviews flagged attempts while `auditBudget` lasts; spent, flags pass. Each layer's cost
-slows honest work. **Escape**: a rogue's hidden plan is a sequence of harmful steps; once every
+slows honest work, and an honest agent a layer stops is work lost to that layer every tick after,
+so the layers' costs sum to the honest work lost. **Escape**: a rogue's hidden plan is a sequence of harmful steps; once every
 step has passed every enabled layer it reaches the outer shell and `StepReport.escaped` names it.
 
 ### `src/engine/shared/`
@@ -269,9 +270,12 @@ refuses to write if any string value is not a known category key.
 **Act 1, playback.** Each frame `t += dt * rate` (clamped); the scene is then a pure function of
 `(trace, t, rate)`: poses from `agentPose`, tethers for `spawnT <= t < returnT` plus a fold-in
 tail, counters from `countersAt(t)`. Particles are an instanced ring (cap per tier) with
-attributes `start`, `end`, `t0`, `t1`, `category`, baked from `layout.ts` at emission; the vertex
-node places each from a `uTime` uniform and hides it outside `[t0, t1]`. Playing appends events
-entering `visibleAt`; a seek or rate change rewrites the ring from `visibleAt(t, rate)`.
+attributes `start`, `end`, `t0`, `t1`, `category`, baked from `layout.ts` at emission; `t0` and
+`t1` are playback seconds (after idle cuts), so a flight lives 0.4 to 2 real seconds even across a
+cut. The vertex node places each from a `playTime` uniform (playback seconds) and hides it outside
+`[t0, t1]`. Playing appends events entering `visibleAt`, however far one frame jumps, so their
+sounds play; a seek, a rate change, a new trace or a quality step (an explicit rewrite, never a
+guess from the size of the jump) rewrites the ring from `visibleAt(t, rate)` and skips their sounds.
 
 **Act 2, live.** The panel's `BoxConfig` lives in the page's React state and goes to
 `app.configure`. Each 10 Hz tick `step(state, r)` decides; the app writes per-agent targets and

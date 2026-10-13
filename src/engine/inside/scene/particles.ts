@@ -1,6 +1,6 @@
 /**
  * Tool calls in flight (Decision 8): an instanced ring of streaks whose every attribute is baked at
- * emission (start, end, t0, t1, colour) and placed in the vertex stage from the `time` uniform, so
+ * emission (start, end, t0, t1, colour) and placed in the vertex stage from the `playTime` uniform, so
  * a seek is a buffer rewrite and WebGPU and WebGL2 draw the same thing. Nothing is simulated.
  *
  * A streak is a 3 px ribbon from a short way behind the head to the head: a white head, a tail
@@ -48,7 +48,7 @@ export function createParticles(parent: Object3D, u: InsideUniforms, capacity: n
   const start = attribute("aStart", "vec4");
   const end = attribute("aEnd", "vec4");
   const col = attribute("aCol", "vec3");
-  const progress = u.time.sub(start.w).div(max(end.w.sub(start.w), 1e-4));
+  const progress = u.playTime.sub(start.w).div(max(end.w.sub(start.w), 1e-4));
   const alive = progress.greaterThanEqual(0).and(progress.lessThanEqual(1));
   const material = ribbonMaterial(
     u,

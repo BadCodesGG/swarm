@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FrameBudget, TIERS, adaptQuality, budgetOptions, maxPixelRatio, resolveQuality, stepDown, type QualityInputs } from "./quality";
+import { FrameBudget, TIERS, adaptQuality, budgetOptions, maxPixelRatio, qualityOverride, resolveQuality, stepDown, type QualityInputs } from "./quality";
 
 const desktop: QualityInputs = { pref: "auto", isWebGPU: true, coarsePointer: false, viewportWidth: 1600 };
 
@@ -170,5 +170,20 @@ describe("adaptQuality", () => {
     expect(budgetOptions(new URLSearchParams("budgetMs=-1"))).toEqual({});
     expect(budgetOptions(new URLSearchParams("budgetMs=x"))).toEqual({});
     expect(budgetOptions(new URLSearchParams(""))).toEqual({});
+  });
+});
+
+describe("qualityOverride", () => {
+  it("reads ?quality= as a pinned tier, and nothing for a missing or unknown value", () => {
+    expect(qualityOverride(new URLSearchParams("quality=lite"))).toEqual({ tier: "lite" });
+    expect(qualityOverride(new URLSearchParams("quality=mid"))).toEqual({ tier: "mid" });
+    expect(qualityOverride(new URLSearchParams("quality=hi"))).toEqual({ tier: "hi" });
+    expect(qualityOverride(new URLSearchParams(""))).toBeUndefined();
+    expect(qualityOverride(new URLSearchParams("quality=ultra"))).toBeUndefined();
+  });
+
+  it("pins the tier and stops adapting once passed to resolveQuality", () => {
+    const plan = resolveQuality({ ...desktop, override: qualityOverride(new URLSearchParams("quality=mid")) });
+    expect(plan).toEqual({ level: { tier: "mid" }, adaptive: false });
   });
 });

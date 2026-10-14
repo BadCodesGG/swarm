@@ -107,3 +107,23 @@ export const WEB_QUERIES: readonly string[] = [
   "export data as csv",
   "splitting a large module",
 ];
+
+/** What an orchestrator tells a subagent: plain engineering briefs, each under 280 characters. */
+export const BRIEFS: readonly string[] = [
+  "Find every caller of parseConfig and report which ones pass a default value. Do not change any code; list file, line and the argument used.",
+  "Read the import step and measure where the time goes on a large input. Report the three slowest functions with rough timings and one suggested fix each.",
+  "Write failing tests for the streak logic covering an empty list, a single day, a gap of one day and a change of time zone. Do not touch the implementation.",
+  "Review the settings page for keyboard access: tab order, visible focus and labels on every control. Report each problem with the file and a one line fix.",
+  "Look up the current guidance on cache headers for static assets and summarise the two safest options in five lines, with the trade-off of each.",
+  "Split the oversized form module into a validation file and a view file. Keep every export working and run the existing tests before and after.",
+  "Check how dates are stored and compared across the app, and list every place that assumes local time. Report only; no edits.",
+  "Document how to run the project locally and how the folders are organised. Verify each command on a clean checkout and fix anything that fails.",
+  "Trace why the search box lags behind typing. Find the handler, say what runs on each keystroke and propose the smallest change that debounces it.",
+  "Write a dry run for the data migration that prints what would change and counts rows before and after. It must not modify anything.",
+  "Add pagination to the list view using the existing component styles. Cover the first page, the last page and an empty list with tests.",
+  "List every place the export format is built and confirm they agree on column order and quoting. Report differences with file and line.",
+  "Explore the repository layout and report the entry points, the main data types and where each feature lives, in under twenty lines.",
+  "Reproduce the failing date test, find the root cause and fix it properly. Explain why the test was right and what the code got wrong.",
+  "Audit error handling in the file import: which failures are swallowed, which are shown to the user. Report a table of cases and gaps.",
+  "Compare the two candidate caching approaches on complexity and risk, then recommend one. Keep the answer to a short paragraph and a list of caveats.",
+];

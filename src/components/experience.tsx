@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { clickLeavesPage } from "@/lib/leaves-page";
 import Image from "next/image";
 import { readPrefs, writePref, type Quality } from "@/engine/shared/prefs";
 
@@ -146,7 +147,7 @@ export default function Experience<A extends ExperienceApp>({
   /** The canvas's accessible name. */
   label: string;
   /** Rendered over the canvas once the engine is running (HUD, panel). */
-  overlay?: (app: A) => ReactNode;
+  overlay?: (app: A, ctx: { still: boolean }) => ReactNode;
 }) {
   const [gate, setGate] = useState<Gate>("probing");
   const [load, setLoad] = useState<LoadState>({ fraction: 0, label: "Preparing" });
@@ -202,15 +203,29 @@ export default function Experience<A extends ExperienceApp>({
           started.dispose();
           return;
         }
-        dispose = () => started.dispose();
+        let stopped = false;
+        dispose = () => {
+          if (stopped) return;
+          stopped = true;
+          started.dispose();
+        };
         setApp(started);
       })
       .catch((err: unknown) => {
         if (!disposed) setFailure({ gate, message: err instanceof Error ? err.message : String(err) });
       });
 
+    // A click on a link to another page stops the engine at once: a scene drawn in software can hold
+    // the main thread so long that the router never gets to show the next page. `dispose` runs once,
+    // so the unmount below is then a no-op.
+    const onLeave = (ev: MouseEvent) => {
+      if (clickLeavesPage(ev)) dispose?.();
+    };
+    document.addEventListener("click", onLeave, true);
+
     return () => {
       disposed = true;
+      document.removeEventListener("click", onLeave, true);
       dispose?.();
       setApp(null);
     };
@@ -266,10 +281,10 @@ export default function Experience<A extends ExperienceApp>({
       {app && overlay && stillGate && withStillApp ? (
         <div className="absolute inset-0 flex flex-col">
           <StillBar gate={stillGate} onEnter={enterAnyway} />
-          <div className="relative min-h-0 flex-1">{overlay(app)}</div>
+          <div className="relative min-h-0 flex-1">{overlay(app, { still: true })}</div>
         </div>
       ) : null}
-      {app && overlay && running ? overlay(app) : null}
+      {app && overlay && running ? overlay(app, { still: false }) : null}
     </main>
   );
 }

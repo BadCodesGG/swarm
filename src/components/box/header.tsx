@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import type { Tally } from "@/engine/box/tally";
 import { percent } from "@/engine/box/explain";
@@ -16,8 +17,8 @@ function Counter({ label, value, tone }: { label: string; value: string; tone?: 
   );
 }
 
-/** The top bar: wordmark home, the SIMULATION tag and its caveat, and the live counters. */
-export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
+/** The top bar: wordmark home, the SIMULATION tag and its caveat, any status pills, and the live counters. */
+export function BoxHeader({ tally, status }: { tally: Readonly<Tally>; status?: ReactNode }) {
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-3 max-[1157px]:gap-x-2.5">
       <Link
@@ -34,8 +35,9 @@ export function BoxHeader({ tally }: { tally: Readonly<Tally> }) {
       </Link>
       <span className={`${mono} rounded-full max-[1157px]:-order-2 border border-escape/50 px-2.5 py-[5px] text-[10px] font-semibold tracking-[0.14em] text-escape-text`}>SIMULATION</span>
       <span className="text-sm text-label">Abstract agents and abstract actions. Nothing here is a real technique.</span>
+      {status ? <div className="flex flex-wrap items-center gap-1.5 empty:hidden">{status}</div> : null}
       <div className="grow" />
-      <dl className={`${mono} m-0 flex flex-wrap gap-x-7 gap-y-2 text-ink`}>
+      <dl className={`${mono} m-0 flex flex-wrap gap-x-7 gap-y-2 text-ink max-[640px]:basis-full`}>
         <Counter label="TICK" value={tally.tick.toLocaleString("en-US")} />
         <Counter label="CAUGHT" value={tally.caughtTotal.toLocaleString("en-US")} />
         <Counter label="ESCAPED" value={tally.escaped.toLocaleString("en-US")} tone="escape" />

@@ -6,7 +6,7 @@ export const IDLE_GAP = 120;
 /** ...to this many playback seconds. */
 export const IDLE_KEEP = 8;
 
-export const EVENT_KINDS: readonly EventKind[] = ["prompt", "turn", "call", "result", "spawn", "return"];
+export const EVENT_KINDS: readonly EventKind[] = ["prompt", "turn", "call", "result", "spawn", "return", "compact"];
 /** `category` array value for an event with no category. */
 export const NO_CATEGORY = 255;
 

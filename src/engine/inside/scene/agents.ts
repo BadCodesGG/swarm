@@ -1,7 +1,8 @@
 /**
- * Subagents: one instanced glowing point each, a white-hot centre inside a halo in the model
- * family's colour. Sizes by family (Opus largest, Haiku smallest), within the 22 to 44 px halo and
- * 5 to 9 px centre of the design. The selected agent carries a thin white ring.
+ * Subagents: one instanced point each, the hub of its cloud: a small bright centre inside a short
+ * halo in the model family's colour, sized by family (Opus largest, Haiku smallest). Kept small and
+ * under the bloom threshold so the cloud's grains stay the body of the agent. The selected agent
+ * carries a thin white ring.
  *
  * Positions are written from `agentPose` each frame (a few hundred agents at most on screen).
  */
@@ -14,11 +15,11 @@ import { dynamicAttribute, modelColor, spriteGeometry, spriteMaterial } from "./
 
 /** Halo and centre radius, design px, by family. */
 const SIZE: Record<ModelFamily, [number, number]> = {
-  opus: [42, 8.5],
-  fable: [36, 7.5],
-  sonnet: [31, 6.5],
-  haiku: [25, 5.5],
-  other: [28, 6],
+  opus: [12, 3.5],
+  fable: [11, 3.2],
+  sonnet: [10, 3],
+  haiku: [9, 2.6],
+  other: [10, 3],
 };
 const RING_GAP = 8;
 
@@ -53,13 +54,13 @@ export function createAgents(parent: Object3D, capacity: number): Agents {
     const presence = pos.w;
     const core = smoothstep(centre.add(1), centre.sub(1), rPx);
     const q = rPx.div(centre);
-    const inner = mix(vec3(1, 1, 1), col, smoothstep(0.6, 2.2, q)).mul(exp(q.mul(q).mul(-0.35)).mul(0.9));
+    const inner = mix(vec3(1, 1, 1), col, smoothstep(0.6, 2.2, q)).mul(exp(q.mul(q).mul(-0.35)).mul(0.7));
     const h = rPx.div(halo);
-    const glow = col.mul(exp(h.mul(h).mul(-3.4)).mul(0.95).mul(smoothstep(1.28, 0.8, h)));
+    const glow = col.mul(exp(h.mul(h).mul(-3.4)).mul(0.6).mul(smoothstep(1.28, 0.8, h)));
     const ringR = centre.add(RING_GAP);
     const ring = smoothstep(1.4, 0.4, rPx.sub(ringR).abs()).mul(selected).mul(0.95);
-    const rgb = vec3(1.0, 0.99, 0.97).mul(core.mul(1.9)).add(inner.add(glow).mul(float(1).sub(core))).add(vec3(ring));
-    return vec4(rgb.mul(presence), core.add(ring).min(1).mul(presence).mul(0.6));
+    const rgb = vec3(1.0, 0.99, 0.97).mul(core.mul(1.1)).add(inner.add(glow).mul(float(1).sub(core))).add(vec3(ring));
+    return vec4(rgb.mul(presence), core.add(ring).min(1).mul(presence).mul(0.4));
   });
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;

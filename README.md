@@ -12,27 +12,55 @@ WebGPU (and WebGL 2 where WebGPU is missing).
 
 **Act 1, Inside** (`/inside`) replays an AI coding session as a 3D swarm: the orchestrator at the
 core, subagents spawning out of it and folding back when they return, every tool call flying to a
-station for its kind, and every web call leaving the boundary. Scrub it, run it at up to 200x, and
-click any agent for what it was doing.
+station for its kind, and every web call leaving the boundary. A camera director flies the nebula
+of agent clusters, or you take the camera. Scrub it, run it at 1x, 20x or 200x, click any agent
+for what it was doing, and read the instrument panels (stages, tool mix, model mix, tokens per
+minute, context, a log) and the recap card. On a sample, "Copy link to this moment" shares the
+exact frame.
 
 It plays one of three sample sessions (small, medium, large), or your own Claude Code session. The
 samples are generated from a seed: their shape follows statistics measured from real sessions, but
 every prompt and line of text in them is hand-written and generic, and the player labels them as
 samples.
 
-**Act 2, The Box** (`/box`) is a clearly labelled **simulation**. A crowd of abstract agents works
-inside five layers of containment (sandbox, permissions, network allowlist, monitor, human audit),
-and a few of them have a hidden goal of getting out. Switch layers off and see what gets caught and
-what escapes; "Run 100 trials" plots each setup as safety against useful work. Actions are
-abstract: the Box never shows a real command, technique or host. Each layer is grounded in
-published AI control research; the [about page](https://swarm.badcodes.dev/about) cites it.
+**Act 2, The Box** (`/box`) is a clearly labelled **simulation**: three fictional labs on one map,
+each with a crowd of abstract agents inside five layers of containment (sandbox, permissions,
+network allowlist, monitor, human audit), and a few agents with a hidden goal of getting out. The
+labs share a few things (a cache, a registry, a runner, a chat bus) that an escaped agent can try
+to reach. It makes no AI calls, and runs are deterministic: a link to a run shows the same run.
+
+- **Presets** set up a world to start from (a plain visit opens "Breakout").
+- **Watch** lets it run and marks each step of a breakout on a numbered marker; **Defend** gives
+  you the layers and a budget of useful work to spend on them; **Play as the agent** deals a hand
+  of abstract cards against a lab's layers; **Edit world** changes the labs, their layers and cast.
+- A **timeline** rewinds to any tick and branches from it, and the **debrief** says what got through
+  and why. "Run 100 trials" plots each setup as safety against useful work.
+
+Actions are abstract: the Box never shows a real command, technique or host, and it names no real
+company. Each layer is grounded in published AI control research; the
+[about page](https://swarm.badcodes.dev/about) cites it.
+
+## Tours, shortcuts and the hand-off
+
+- **First-visit tours.** Each act opens with a short, skippable tour (Escape skips it), shown once
+  and remembered in `localStorage` under `swarm-tour-inside` and `swarm-tour-box`. Storage that
+  throws is tolerated: the tour then shows on each load. Scripted browsers (`navigator.webdriver`)
+  and `?shot=` frames skip it unless the address says `?tour=1`; `?tour=0` turns it off.
+- **Shortcuts.** `?` (or the ? button) opens a sheet of the keys that act answers: Act 1 takes Space,
+  Left and Right, 1 to 3, A, Shift+A, D and Escape; Act 2 takes 1 to 9, Home and Escape.
+- **From Act 1 to Act 2.** On a sample session, "Take this swarm into The Box" links to
+  `/box?from=inside&agents=<n>&models=<names>`. `/box` clamps the count and keeps only the four
+  model names it knows, then sizes the three labs and draws their cast from them. A session you
+  loaded yourself gets no link: nothing of it reaches an address, storage or the network.
+- **WebGL 2 badge.** Without WebGPU the acts draw with WebGL 2 and show a small badge saying so (and,
+  on the Box, that the crowd moves on the CPU).
 
 ## Your session stays on your device
 
 You can load a Claude Code session file (`~/.claude/projects/<project>/<session-id>.jsonl`) or its
 folder. It is parsed in a Web Worker in your browser and held in memory for that tab only: it is
 never uploaded, never stored, and gone on reload. The site has no API routes and no server code that
-could receive it. Session text is untrusted input and is only ever rendered as text.
+could receive it. What is read is the brief handed to each subagent (its first 280 characters) and numbers (permission source, think time, compaction token counts, result sizes). Tool arguments and results are not read. Nothing leaves the browser. Session text is untrusted input and is only ever rendered as text.
 
 Raw transcripts never enter this repository: `.gitignore` blocks `*.jsonl` except the scrubbed test
 fixture under `src/lib/trace/__fixtures__/`, which `scripts/scrub-fixture.mjs` made with every free
@@ -47,6 +75,7 @@ text, id and name replaced and every timestamp moved to a fixed epoch.
   way in. The Box keeps its controls there, and "Run 100 trials" still works.
 - Quality starts at hi or lite from the device, and on "auto" steps down a tier (hi, mid, lite)
   by itself while frames run slow.
+- The only other thing stored is the tour flags above, and nothing in them is about your session.
 
 ## Running it
 
@@ -66,7 +95,7 @@ npm run lint           # ESLint
 npm run typecheck      # generates the Next route types, then tsc --noEmit
 npm run test           # Vitest: trace contract and parser, generator, box rules, layout, playback, audio, quality
 npm run build          # production build
-npm run test:smoke     # boots the build and drives the landing page, both acts, the import and /about in Chromium
+npm run test:smoke     # boots the build and drives the landing page, both acts, the import, /about, the tours, ? sheets and hand-off in Chromium
 ```
 
 The smoke test needs a build first and Playwright's Chromium (`npx playwright install chromium`).
@@ -77,6 +106,7 @@ Images, all from the production build (`npm run build` first):
 ```bash
 node scripts/shot.mjs       # Act 1 hero frame into .shots/
 node scripts/shot-box.mjs   # Act 2 escape frame into .shots/
+node scripts/shot-site.mjs  # tours, ? sheets, WebGL 2 badges, hand-off, landing and About, at 1440x900 and 390x844
 node scripts/stills.mjs     # the reduced-motion stills, public/stills/*.jpg
 node scripts/og.mjs         # the share card, public/og.jpg (1200x630, under 300 KB)
 ```

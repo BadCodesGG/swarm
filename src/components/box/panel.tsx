@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { BoxConfig, LayerId } from "@/lib/box/types";
 import { LAYER_ORDER } from "@/lib/box/types";
 import type { Tally } from "@/engine/box/tally";
@@ -99,18 +99,28 @@ function Slider({
   dim: boolean;
   name: string;
 }) {
+  // While a drag is on, the thumb follows the pointer and the engine catches up (it replays the run).
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? current;
+  const end = () => setDraft(null);
   return (
     <label className={`flex flex-col gap-0.5 pr-2.5 pb-2.5 pl-[62px] font-mono text-[11px] text-label ${dim ? "opacity-50" : ""}`}>
       <span className="flex justify-between">
         {label}
-        <span className="text-ink">{value}</span>
+        <span className="text-ink">{draft === null ? value : String(draft)}</span>
       </span>
       <input
         type="range"
         min={min}
         max={max}
-        value={current}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={shown}
+        onChange={(e) => {
+          setDraft(Number(e.target.value));
+          onChange(Number(e.target.value));
+        }}
+        onPointerUp={end}
+        onKeyUp={end}
+        onBlur={end}
         className="m-0 h-7 w-full cursor-pointer accent-layer-2"
         data-slider={name}
       />
@@ -127,6 +137,15 @@ export interface PanelProps {
   onPlay(play: boolean): void;
   onReset(): void;
   onRunTrials(): void;
+  /** The lab whose layers these are (`data-lab`), and its name for the panel's heading. */
+  lab: string;
+  labName: string;
+  /** That lab's own counts so far. */
+  labStats: { caught: number; escaped: number; flagged: number };
+  /** What each layer caught in that lab and what it cost it (a share of the lab's work); the world's tally where absent. */
+  perLayer?: Record<LayerId, { caught: number; costShare: number }> | null;
+  /** The lab's monitor threshold or audit budget moved (the engine replays the run with it). */
+  onThreshold(key: "monitorThreshold" | "auditBudget", value: number): void;
   /** The run row sits at the panel's foot; false where the HUD shows it under the scene instead (phone and tablet). */
   withRun?: boolean;
 }
@@ -172,7 +191,7 @@ export function RunControls({ playing, running, onPlay, onReset, onRunTrials }: 
 }
 
 /** The controls: one switch per layer with what it caught and what it cost, two sliders, and the run controls. */
-export function Panel({ config, tally, playing, running, onConfig, onPlay, onReset, onRunTrials, withRun = true }: PanelProps) {
+export function Panel({ config, tally, playing, running, onConfig, onPlay, onReset, onRunTrials, withRun = false, lab, labName, labStats, perLayer, onThreshold }: PanelProps) {
   const toggle = (layer: LayerId) => (on: boolean) => onConfig({ ...config, layers: { ...config.layers, [layer]: on } });
 
   const rowShell = (layer: LayerId, body: ReactNode) => {
@@ -189,14 +208,15 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
   };
 
   const right = (layer: LayerId) => {
-    const t = tally.byLayer[layer];
-    if (layer === "monitor" && config.layers.audit) return <Counts top={`${tally.flagged} flagged`} cost={costLabel(t.costShare)} />;
+    const t = perLayer?.[layer] ?? tally.byLayer[layer];
+    if (layer === "monitor" && config.layers.audit) return <Counts top={`${labStats.flagged} flagged`} cost={costLabel(t.costShare)} />;
     return <Counts top={String(t.caught)} cost={costLabel(t.costShare)} />;
   };
 
   return (
     <form
-      aria-label="Containment layers"
+      aria-label={`Containment layers of ${labName}`}
+      data-lab={lab}
       onSubmit={(e) => e.preventDefault()}
       className="box-border flex min-w-0 flex-[0_1_330px] flex-col max-[914px]:flex-[1_1_330px] gap-1.5 rounded-[14px] border border-panel-border bg-panel p-[18px]"
     >
@@ -204,6 +224,9 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
         <span className="tracking-[0.14em] text-label">LAYERS, INSIDE OUT</span>
         <span className="tracking-[0.1em] text-faint">CAUGHT / COST</span>
       </div>
+      <p className="m-0 pb-1 font-mono text-[11px] text-muted" data-lab-stats>
+        <b className="text-ink">{labName}</b>: {labStats.caught} caught, {labStats.escaped} escaped, {labStats.flagged} flagged
+      </p>
 
       {LAYER_ORDER.map((layer) =>
         rowShell(
@@ -218,7 +241,7 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
                 min={0}
                 max={100}
                 current={Math.round(config.monitorThreshold * 100)}
-                onChange={(v) => onConfig({ ...config, monitorThreshold: v / 100 })}
+                onChange={(v) => onThreshold("monitorThreshold", v / 100)}
                 dim={!config.layers.monitor}
               />
             ) : null}
@@ -228,9 +251,9 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
                 label="Review budget"
                 value={`${Math.round(config.auditBudget * 100)}% of actions`}
                 min={0}
-                max={10}
+                max={20}
                 current={Math.round(config.auditBudget * 100)}
-                onChange={(v) => onConfig({ ...config, auditBudget: v / 100 })}
+                onChange={(v) => onThreshold("auditBudget", v / 100)}
                 dim={!config.layers.audit}
               />
             ) : null}
@@ -238,10 +261,6 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
         ),
       )}
 
-      <div className="mt-1.5 flex justify-between border-t border-[rgba(150,172,214,0.12)] pt-3 font-mono text-xs text-muted">
-        <span>{tally.agents.toLocaleString("en-US")} agents</span>
-        <span className="text-escape-text">{tally.rogues} with a hidden goal</span>
-      </div>
       {withRun ? (
         <>
           <div className="grow" />

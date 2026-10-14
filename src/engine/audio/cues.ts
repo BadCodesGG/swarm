@@ -105,7 +105,14 @@ export function bindInside<M extends InsideCueEvents>(bus: EventBus<M>, offer: O
   return () => offs.forEach((off) => off());
 }
 
-export interface BoxCueEvents {
+/** What the world adds when there are several labs: a reach into another lab, one turned away, a lab breached. */
+export interface WorldCueEvents {
+  crossing: { from: { agent: number } };
+  held: { from: { agent: number } };
+  breached: { lab: string };
+}
+
+export interface BoxCueEvents extends Partial<WorldCueEvents> {
   catch: Pick<CatchReport, "agent" | "layer">;
   escape: { agent: number };
   trials: Pick<TrialSummary, "safety">;
@@ -119,5 +126,12 @@ export function bindBox<M extends BoxCueEvents>(bus: EventBus<M>, offer: Offer):
     bus.on("escape", ({ agent }) => offer({ timbre: "alarm", hz: 660, pan: panFor(agent + 1), level: 0.3 }, RANK.headline)),
     bus.on("trials", ({ safety }) => offer({ timbre: "chord", hz: trialsHz(safety), pan: 0, level: 0.24 }, RANK.headline)),
   ];
+  // The world's events exist only on a bus that carries them; one that does not simply never emits them.
+  const world = bus as unknown as EventBus<WorldCueEvents>;
+  offs.push(
+    world.on("crossing", ({ from }) => offer({ timbre: "whoosh", hz: 520, pan: panFor(from.agent + 1), level: 0.26 }, RANK.headline)),
+    world.on("held", ({ from }) => offer({ timbre: "bell", hz: 330, pan: panFor(from.agent + 1), level: 0.2 }, RANK.headline)),
+    world.on("breached", () => offer({ timbre: "alarm", hz: 440, pan: 0, level: 0.28 }, RANK.headline)),
+  );
   return () => offs.forEach((off) => off());
 }

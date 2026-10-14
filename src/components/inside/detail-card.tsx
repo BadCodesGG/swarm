@@ -4,6 +4,7 @@ import { useCallback, type CSSProperties, type Ref } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { agentInfo, type AgentInfo } from "@/engine/inside/agent-info";
 import { CATEGORY_LABELS, clock, compact, MODEL_NAMES, MODEL_VARS, runClock } from "@/engine/inside/format";
+import { EyeSections } from "./eye-sections";
 import { useEngineSnapshot, useTimeline } from "./use-engine";
 
 /** Bar colours for the most, second and third most used tool categories. */
@@ -13,7 +14,7 @@ const key = (i: AgentInfo | null) =>
   i ? [i.id, i.state, Math.floor(i.running), i.tokens, i.calls, i.helpers, i.lastCall?.t, i.mix.map((m) => `${m.category}${m.count}`).join()].join("|") : "";
 const sameInfo = (a: AgentInfo | null, b: AgentInfo | null) => key(a) === key(b);
 
-const STATE_PILL = { running: "RUNNING", returned: "RETURNED", waiting: "NOT STARTED" } as const;
+const STATE_PILL: Record<AgentInfo["state"], string> = { running: "RUNNING", "waiting-on-you": "WAITING ON YOU", returned: "RETURNED", waiting: "NOT STARTED" };
 
 const mono = "font-mono";
 const sectionLabel = `${mono} text-[10px] tracking-[0.12em] text-faint`;
@@ -37,13 +38,13 @@ export function AgentBar({ app, id, expanded, onToggle, ref }: { app: InsideApp;
       aria-label={`Selected agent: ${info.label}`}
       onClick={onToggle}
       style={{ borderColor: `color-mix(in srgb, ${m} 40%, transparent)` }}
-      className="pointer-events-auto grid min-h-14 grid-cols-[10px_minmax(0,1fr)_auto_16px] items-center gap-2.5 rounded-[14px] border bg-[rgba(12,16,28,0.86)] px-3.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-layer-1"
+      className="pointer-events-auto grid min-h-14 grid-cols-[10px_minmax(0,1fr)_auto_16px] items-center gap-2.5 rounded-[14px] border bg-panel px-3.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-layer-1"
     >
       <span className="size-2.5 rounded-full" style={{ background: m, boxShadow: `0 0 10px ${m}` }} />
       <span className="flex min-w-0 flex-col gap-px">
         <span className="truncate text-[15px] font-bold">{info.label}</span>
         <span className={`${mono} truncate text-[11px] text-label`}>
-          {MODEL_NAMES[info.model]}, {info.state === "returned" ? "ran" : "running"} {runClock(info.running)}, {info.calls} calls
+          {MODEL_NAMES[info.model]}, {info.state === "returned" ? "ran" : "active"} {runClock(info.running)}, {info.calls} calls
         </span>
       </span>
       <Pill info={info} />
@@ -58,7 +59,8 @@ function Pill({ info }: { info: AgentInfo }) {
   const m = MODEL_VARS[info.model];
   return (
     <span
-      className={`${mono} rounded-full px-2 py-[3px] text-[10px] tracking-[0.1em]`}
+      data-state={info.state}
+      className={`${mono} whitespace-nowrap rounded-full px-2 py-[3px] text-[10px] tracking-[0.1em]`}
       style={{ background: `color-mix(in srgb, ${m} 14%, transparent)`, color: `color-mix(in srgb, ${m} 70%, white)` }}
     >
       {STATE_PILL[info.state]}
@@ -67,8 +69,9 @@ function Pill({ info }: { info: AgentInfo }) {
 }
 
 /**
- * The selected agent: label, model, state, running time, tokens, calls, helpers, tool mix, the
+ * The selected agent: label, model, state, active time, tokens, calls, helpers, tool mix, the
  * brief it was given and its last call, with Follow and Jump. Session text is React text only.
+ * The details scroll inside the card; Follow and Jump stay pinned to its bottom edge.
  */
 export function DetailCard({
   app,
@@ -102,70 +105,75 @@ export function DetailCard({
       aria-label="Selected agent"
       data-detail-card
       style={frame}
-      className={`pointer-events-auto flex flex-col gap-3.5 ${
-        sheet ? "" : "box-border w-80 max-w-full self-end rounded-[14px] border bg-[rgba(12,16,28,0.84)] p-[18px] backdrop-blur-[10px]"
-      }`}
+      className={`pointer-events-auto flex min-h-0 flex-col ${sheet ? "" : "box-border w-80 max-w-full rounded-[14px] border bg-panel backdrop-blur-[10px]"}`}
     >
-      <div className="flex items-start gap-2.5">
-        <span className="mt-[7px] size-2.5 shrink-0 rounded-full" style={{ background: m, boxShadow: `0 0 10px ${m}` }} />
-        <div className="flex min-w-0 grow flex-col gap-0.5">
-          <h2 className="m-0 text-[19px] font-bold tracking-[-0.01em] [overflow-wrap:anywhere]">{info.label}</h2>
-          <span className={`${mono} text-xs text-label`}>{MODEL_NAMES[info.model]}</span>
+      <div className={`flex min-h-0 flex-col gap-3.5 overflow-y-auto ${sheet ? "px-4 pt-4 pb-3.5" : "p-[18px] pb-3.5"}`} data-detail-scroll>
+        <div className="flex items-start gap-2.5">
+          <span className="mt-[7px] size-2.5 shrink-0 rounded-full" style={{ background: m, boxShadow: `0 0 10px ${m}` }} />
+          <div className="flex min-w-0 grow flex-col gap-1">
+            <h2 className="m-0 text-[19px] font-bold tracking-[-0.01em] [overflow-wrap:anywhere]">{info.label}</h2>
+            {/* The state sits by the model, not by the title: WAITING ON YOU beside a name would wrap the name mid-word. */}
+            <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className={`${mono} text-xs text-label`}>{MODEL_NAMES[info.model]}</span>
+              <Pill info={info} />
+            </span>
+          </div>
+          <button
+            type="button"
+            aria-label="Close details"
+            onClick={onClose}
+            className="-mt-3 -mr-3 flex size-11 shrink-0 items-center justify-center border-0 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-layer-1"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <path d="M3 3l8 8M11 3l-8 8" stroke="#a7b1c2" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-        <Pill info={info} />
-        <button
-          type="button"
-          aria-label="Close details"
-          onClick={onClose}
-          className="-mt-3 -mr-3 flex size-11 shrink-0 items-center justify-center border-0 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-layer-1"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-            <path d="M3 3l8 8M11 3l-8 8" stroke="#a7b1c2" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
 
-      <dl className={`${mono} m-0 grid grid-cols-4 gap-2`}>
-        <Stat label="running" value={runClock(info.running)} />
-        <Stat label="tokens" value={compact(info.tokens)} />
-        <Stat label="calls" value={String(info.calls)} />
-        <Stat label="helpers" value={String(info.helpers)} />
-      </dl>
+        <dl className={`${mono} m-0 grid grid-cols-4 gap-2`}>
+          <Stat label="active" value={runClock(info.running)} />
+          <Stat label="tokens" value={compact(info.tokens)} />
+          <Stat label="calls" value={String(info.calls)} />
+          <Stat label="helpers" value={String(info.helpers)} />
+        </dl>
 
-      <div className="flex flex-col gap-1.5">
-        <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-[3px] bg-white/6" role="img" aria-label="Tool mix">
-          {top.map((x, i) => (
-            <span key={x.category} style={{ flex: `${x.count} 1 0`, background: MIX_COLOURS[i] }} />
-          ))}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-[3px] bg-white/6" role="img" aria-label="Tool mix">
+            {top.map((x, i) => (
+              <span key={x.category} style={{ flex: `${x.count} 1 0`, background: MIX_COLOURS[i] }} />
+            ))}
+          </div>
+          <div className={`${mono} flex gap-3.5 text-[11px] text-label`}>
+            {total === 0 ? (
+              <span>no calls yet</span>
+            ) : (
+              top.map((x) => (
+                <span key={x.category}>
+                  {CATEGORY_LABELS[x.category]} {x.count}
+                </span>
+              ))
+            )}
+          </div>
         </div>
-        <div className={`${mono} flex gap-3.5 text-[11px] text-label`}>
-          {total === 0 ? (
-            <span>no calls yet</span>
-          ) : (
-            top.map((x) => (
-              <span key={x.category}>
-                {CATEGORY_LABELS[x.category]} {x.count}
-              </span>
-            ))
-          )}
+
+        <div className="flex flex-col gap-1.5">
+          <span className={sectionLabel}>{orchestrator ? "ITS ROLE" : "EVERYTHING IT WAS TOLD"}</span>
+          <p className="m-0 text-sm leading-normal text-body [overflow-wrap:anywhere]" data-brief>
+            {orchestrator ? "The one voice that plans: it reads the prompt, does some work itself and hands the rest to subagents." : info.brief}
+          </p>
+        </div>
+
+        <EyeSections app={app} id={id} returned={info.state === "returned"} />
+
+        <div className="flex flex-col gap-1.5">
+          <span className={sectionLabel}>{info.lastCall ? `LAST CALL, ${clock(info.lastCall.t)}` : "LAST CALL"}</span>
+          <p className={`${mono} m-0 rounded-lg bg-white/4 px-2.5 py-2 text-xs leading-normal text-ink [overflow-wrap:anywhere]`}>
+            {info.lastCall ? info.lastCall.text : "None yet"}
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <span className={sectionLabel}>{orchestrator ? "ITS ROLE" : parent === 0 ? "BRIEF FROM THE ORCHESTRATOR" : "BRIEF FROM ITS PARENT"}</span>
-        <p className="m-0 text-sm leading-normal text-body [overflow-wrap:anywhere]" data-brief>
-          {orchestrator ? "The one voice that plans: it reads the prompt, does some work itself and hands the rest to subagents." : info.brief}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className={sectionLabel}>{info.lastCall ? `LAST CALL, ${clock(info.lastCall.t)}` : "LAST CALL"}</span>
-        <p className={`${mono} m-0 rounded-lg bg-white/4 px-2.5 py-2 text-xs leading-normal text-ink [overflow-wrap:anywhere]`}>
-          {info.lastCall ? info.lastCall.text : "None yet"}
-        </p>
-      </div>
-
-      <div className="flex gap-2">
+      <div className={`flex shrink-0 gap-2 border-t border-panel-border ${sheet ? "px-4 pt-3 pb-6" : "px-[18px] py-3"}`} data-detail-actions>
         <button
           type="button"
           aria-pressed={following === id}

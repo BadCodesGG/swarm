@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { budgetMs } from "@/lib/test-budget";
 import { runTrial, runTrials } from "./trials";
 import { DEFAULT_CONFIG, allOff, type BoxConfig, type LayerId } from "./types";
 
@@ -63,6 +64,6 @@ describe("runTrials", () => {
     runTrials(DEFAULT_CONFIG, 100, 1);
     const ms = performance.now() - t0;
     console.log(`100 trials: ${Math.round(ms)} ms`);
-    expect(ms).toBeLessThan(6000);
+    expect(ms).toBeLessThan(budgetMs(6000));
   }, 30_000);
 });

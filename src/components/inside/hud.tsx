@@ -1,24 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
-import { cycleAgent } from "@/engine/inside/layout";
+import { cycleAgent, type StationCategory } from "@/engine/inside/layout";
 import AudioToggle from "@/components/audio-toggle";
+import { ActTools, FallbackBadge } from "@/components/site/act-tools";
+import { BankBar, BankPanels, BankToggle } from "./bank";
 import { Counters } from "./counters";
 import { AgentBar, DetailCard } from "./detail-card";
 import { KeyPanel } from "./key-panel";
+import { Handoff } from "./handoff";
+import { CopyMoment, useMomentSync } from "./moment";
 import { NowPanel } from "./now-panel";
 import { RATES } from "./rates";
+import { RecapCard, useRecapVisible } from "./recap-card";
+import { Roster } from "./roster";
 import { Timeline } from "./scrubber";
 import { SourceSwitcher } from "./source-switcher";
-import { useNarrow, useSelection } from "./use-engine";
+import { StageStrip } from "./stage-strip";
+import { StationPanel } from "./station-panel";
+import { useMedia, useNarrow, useSelection, useStation } from "./use-engine";
 
 /** Fraction of the playback axis one Left / Right press moves. */
 const STEP = 0.02;
 
-/** The card's width (`w-80`): the desktop scene keeps clear of this column whether or not a card is open. */
-const CARD_COLUMN = 320;
+/** The card's width (`w-80`, `w-64` below 1100 px, where 320 would be most of the scene): the desktop scene keeps clear of this column whether or not a card is open. */
+const cardColumn = () => (window.innerWidth < 1100 ? 256 : 320);
 /** CSS px the station labels keep from the panels around the scene. */
 const SCENE_GAP = 8;
 
@@ -40,7 +48,7 @@ const UPLOAD = (
 const linkRing = "outline-none focus-visible:ring-2 focus-visible:ring-layer-1";
 
 /**
- * Space, Left / Right, 1 / 2 / 3, A / Shift+A (next and previous agent) and Escape (close the card),
+ * Space, Left / Right, 1 / 2 / 3, A / Shift+A (next and previous agent) and Escape (close the station panel or the card),
  * unless the key belongs to the control that has focus. While a modal sheet is open only Escape
  * works: the rest belong to the controls under it.
  */
@@ -67,6 +75,8 @@ function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: 
         app.seek(tl.toTrace(Math.min(Math.max(pb, 0), tl.playbackDuration)));
       } else if (e.key === "a" || e.key === "A") {
         onCycle(e.shiftKey ? -1 : 1);
+      } else if (e.key === "d" || e.key === "D") {
+        app.resumeDirector();
       } else if (e.key >= "1" && e.key <= String(RATES.length)) {
         app.setRate(RATES[Number(e.key) - 1]);
       } else return;
@@ -77,10 +87,20 @@ function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: 
   }, [app, onCycle, onEscape, modal]);
 }
 
+/** The small viewports where the instrument bank starts collapsed to one row. */
+const SMALL = "(max-width: 1099px), (max-height: 819px)";
+
 /** The Act 1 HUD over the canvas; a stacked layout on a phone. */
 export function Hud({ app }: { app: InsideApp }) {
   const narrow = useNarrow();
+  const small = useMedia(SMALL);
   const selected = useSelection(app);
+  const station = useStation(app);
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const [bankPref, setBankPref] = useState<boolean | null>(null);
+  const bankOpen = bankPref ?? (!narrow && !small);
+  const bankId = useId();
+  const [recapShown, dismissRecap] = useRecapVisible(app);
   const [sheetOpen, setSheetOpen] = useState(false);
   // A cleared selection (a source switch, say) closes the sheet, so it does not pop back with the next pick.
   const [sheetSelection, setSheetSelection] = useState(selected);
@@ -92,14 +112,24 @@ export function Hud({ app }: { app: InsideApp }) {
   const sheetShown = narrow && selected >= 0 && sheetOpen;
   const [announced, setAnnounced] = useState("");
   const slot = useRef<HTMLDivElement>(null);
-  const header = useRef<HTMLElement>(null);
+  const top = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
-  const timeline = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
+  const column = useRef<HTMLDivElement>(null);
   const nextAgent = useRef<HTMLButtonElement>(null);
   const agentBar = useRef<HTMLButtonElement>(null);
-  /** Where focus goes when the card closes: the control that had it when the keyboard picked an agent. */
+  /** Where focus goes when the card or station panel closes: the control that had it when it opened. */
   const returnTo = useRef<HTMLElement | null>(null);
+
+  useMomentSync(app);
+
+  const remember = () => {
+    const active = document.activeElement;
+    returnTo.current = active instanceof HTMLElement && active !== document.body ? active : null;
+  };
+
+  const holdCard = useCallback((on: boolean) => app.holdAutoSelect(on), [app]);
 
   const cycle = useCallback(
     (dir: 1 | -1) => {
@@ -119,11 +149,16 @@ export function Hud({ app }: { app: InsideApp }) {
     requestAnimationFrame(() => (back?.isConnected ? back : nextAgent.current)?.focus());
   }, []);
 
-  /** Escape closes the phone's sheet, else the card. False when there was nothing to close. */
+  /** Escape closes the phone's sheet, else the station panel, else the card. False when there was nothing to close. */
   const escape = useCallback(() => {
     if (sheetShown) {
       setSheetOpen(false);
       requestAnimationFrame(() => agentBar.current?.focus());
+      return true;
+    }
+    if (app.station()) {
+      app.selectStation(null);
+      refocus();
       return true;
     }
     if (app.selected() < 0) return false;
@@ -140,8 +175,8 @@ export function Hud({ app }: { app: InsideApp }) {
   }, [sheetShown]);
 
   // The phone frames the scene in the band between the counters and the cards; the desktop frames it
-  // between the header, the side panels, the card's column and the timeline, so the station ring and
-  // its labels clear all of them.
+  // between the header and stage strip, the side panels, the card's column and the bank and timeline,
+  // so the station ring and its labels clear all of them (and so does the camera's free frame).
   useEffect(() => {
     const fit = () => {
       if (narrow) {
@@ -151,20 +186,23 @@ export function Hud({ app }: { app: InsideApp }) {
         app.setFrame({ top: r.top, height: r.height });
         return;
       }
-      const h = header.current?.getBoundingClientRect();
+      const h = top.current?.getBoundingClientRect();
       const s = side.current?.getBoundingClientRect();
       const w = row.current?.getBoundingClientRect();
-      const tl = timeline.current?.getBoundingClientRect();
+      const tl = bottom.current?.getBoundingClientRect();
       if (!h || !s || !w || !tl) return;
-      const top = h.bottom + SCENE_GAP;
+      const y = h.bottom + SCENE_GAP;
       const left = s.right + SCENE_GAP;
-      const right = Math.max(left + 1, w.right - CARD_COLUMN - SCENE_GAP);
-      app.setFrame({ top, height: Math.max(1, tl.top - SCENE_GAP - top), left, width: right - left, fit: "stations" });
+      const right = Math.max(left + 1, w.right - cardColumn() - SCENE_GAP);
+      app.setFrame({ top: y, height: Math.max(1, tl.top - SCENE_GAP - y), left, width: right - left, fit: "stations" });
     };
     fit();
     const ro = new ResizeObserver(fit);
-    for (const el of [slot.current, header.current, side.current, row.current, timeline.current]) if (el) ro.observe(el);
+    for (const el of [slot.current, top.current, side.current, row.current, bottom.current]) if (el) ro.observe(el);
+    const scroller = column.current;
+    scroller?.addEventListener("scroll", fit, { passive: true });
     return () => {
+      scroller?.removeEventListener("scroll", fit);
       ro.disconnect();
       app.setFrame(null);
     };
@@ -175,23 +213,50 @@ export function Hud({ app }: { app: InsideApp }) {
     refocus();
   };
 
+  const openStation = (key: StationCategory) => {
+    remember();
+    app.selectStation(key);
+  };
+  const closeStation = () => {
+    app.selectStation(null);
+    refocus();
+  };
+
   const status = (
     <p role="status" className="sr-only">
       {announced}
     </p>
   );
 
+  const rosterToggle = (
+    <button
+      type="button"
+      data-roster-toggle
+      aria-expanded={rosterOpen}
+      aria-controls="roster-panel"
+      onClick={() => setRosterOpen((o) => !o)}
+      className={`pointer-events-auto flex min-h-8 shrink-0 items-center gap-1.5 rounded-md border bg-panel px-2.5 font-mono text-[10px] tracking-[0.14em] outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1 ${
+        rosterOpen ? "border-opus/45 text-warn" : "border-panel-border text-label"
+      }`}
+    >
+      ROSTER
+    </button>
+  );
+
   if (narrow) {
     return (
-      <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 px-4 pt-3 pb-4 font-sans text-ink">
-        {/* Inert under the open sheet, so Tab cannot reach the controls it covers; `contents` keeps the column's layout. */}
-        <div className="contents" inert={sheetShown} data-under-sheet>
+      <div className="pointer-events-none absolute inset-0 font-sans text-ink">
+        {/* The column scrolls when its panels outgrow a short screen (a drag on any panel scrolls it); the
+            scene frame follows the slot as it moves. Inert under the open sheet, so Tab cannot reach the controls it covers. */}
+        <div ref={column} className="absolute inset-0 overflow-y-auto overscroll-contain" inert={sheetShown} data-under-sheet>
+        <div className="flex min-h-full flex-col gap-2.5 px-4 pt-3 pb-4">
         <header className="flex items-center justify-between gap-2">
           <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2 font-mono text-xs tracking-[0.12em] text-label ${linkRing}`}>
             {LOGO}
             <span className="font-semibold text-ink">INSIDE</span>
           </Link>
           <AudioToggle className="ml-auto" />
+          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} badge={false} onTouring={holdCard} />
           <Link
             href="/inside/load"
             className={`pointer-events-auto flex min-h-11 items-center gap-1.5 rounded-xl border border-opus/45 bg-opus/8 px-3.5 text-sm font-semibold text-warn ${linkRing}`}
@@ -200,25 +265,49 @@ export function Hud({ app }: { app: InsideApp }) {
             Your session
           </Link>
         </header>
+        <FallbackBadge render={{ isWebGPU: app.isWebGPU }} className="self-start" />
         <SourceSwitcher app={app} narrow />
         <Counters app={app} compact />
-        {/* The design's 300 px scene band. It takes spare height up to 340 px, so the cards sit under the
-            ring and the scrubber stays at the bottom as on the board; it gives way first on a short screen. */}
-        <div ref={slot} className="max-h-[340px] min-h-[200px] flex-[1_1_300px]" aria-hidden="true" />
+        <StageStrip app={app} compact />
+        {/* The scene band. It takes nearly all the spare height up to 340 px (the spacer below gets the rest, so
+            the scrubber stays at the bottom as on the board); with no spare height it keeps 150 px and the column scrolls. */}
+        <div ref={slot} className="max-h-[340px] min-h-[150px] flex-[100_1_150px]" aria-hidden="true" />
         <NowPanel app={app} narrow />
-        {/* Shown only while focused, so the keyboard has a way to the agents without changing the board's look. */}
+        {/* Shown only while focused, floating over the top of the page so showing and hiding it never moves the layout. */}
         <button
           ref={nextAgent}
           type="button"
           aria-keyshortcuts="A"
           onClick={() => cycle(1)}
-          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:ring-2 focus-visible:ring-layer-1"
+          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-panel px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:fixed focus-visible:inset-x-4 focus-visible:top-20 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-layer-1"
         >
           Select the next agent (A)
         </button>
+        {rosterOpen ? (
+          <div id="roster-panel" className="flex max-h-[38vh] min-h-0 flex-col">
+            <Roster app={app} onClose={() => setRosterOpen(false)} />
+          </div>
+        ) : null}
+        {station ? (
+          <div className="pointer-events-auto max-h-[34vh] min-h-0 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-3.5">
+            <StationPanel app={app} station={station} sheet onClose={closeStation} />
+          </div>
+        ) : null}
+        {recapShown ? <RecapCard app={app} sheet onClose={dismissRecap} /> : null}
         {selected >= 0 ? <AgentBar ref={agentBar} app={app} id={selected} expanded={sheetOpen} onToggle={() => setSheetOpen((o) => !o)} /> : null}
         <div className="grow" aria-hidden="true" />
+        <BankBar app={app} open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId}>
+          {rosterToggle}
+          <CopyMoment app={app} compact />
+          <Handoff app={app} compact />
+        </BankBar>
+        {bankOpen ? (
+          <div className="max-h-[36vh] overflow-y-auto">
+            <BankPanels app={app} narrow id={bankId} onStation={openStation} />
+          </div>
+        ) : null}
         <Timeline app={app} narrow />
+        </div>
         </div>
         {sheetShown ? (
           <div
@@ -227,7 +316,7 @@ export function Hud({ app }: { app: InsideApp }) {
             aria-modal="true"
             tabIndex={-1}
             aria-label="Selected agent details"
-            className="pointer-events-auto absolute inset-x-0 bottom-0 z-10 max-h-[78%] overflow-y-auto rounded-t-[18px] outline-none border border-b-0 border-panel-border bg-[rgba(12,16,28,0.96)] px-4 pt-4 pb-6 shadow-[0_-18px_48px_rgba(0,0,0,0.5)]"
+            className="pointer-events-auto absolute inset-x-0 bottom-0 z-10 flex max-h-[78%] flex-col rounded-t-[18px] outline-none border border-b-0 border-panel-border bg-panel shadow-[0_-18px_48px_rgba(0,0,0,0.5)]"
           >
             <DetailCard
               key={selected}
@@ -246,37 +335,65 @@ export function Hud({ app }: { app: InsideApp }) {
     );
   }
 
+  const rightColumn = recapShown || station || selected >= 0;
+
   return (
-    <div className="pointer-events-none absolute inset-0 grid min-h-[640px] grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-6 py-5 font-sans text-ink">
-      <header ref={header} className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2.5 pr-2 font-mono text-[13px] tracking-[0.12em] text-label hover:text-white ${linkRing}`}>
-          {LOGO}
-          <span>
-            SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">INSIDE</span>
-          </span>
-        </Link>
-        <SourceSwitcher app={app} narrow={false} />
-        <Link
-          href="/inside/load"
-          className={`pointer-events-auto flex min-h-11 items-center gap-2 rounded-xl border border-opus/45 bg-opus/8 px-4 text-sm font-semibold text-warn ${linkRing}`}
-        >
-          {UPLOAD}
-          Load your session
-        </Link>
-        <div className="grow" />
-        <Counters app={app} />
-        <AudioToggle />
-      </header>
+    <div className="pointer-events-none absolute inset-0 grid min-h-[640px] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 px-6 py-5 font-sans text-ink">
+      {/* The toolbar and the dock are bands to the viewport's edges: the scene runs under them but never shows through. */}
+      <div ref={top} className="-mx-6 -mt-5 flex flex-col gap-2 bg-chrome px-6 pt-5 pb-2.5 backdrop-blur-[10px]">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2.5 pr-2 font-mono text-[13px] tracking-[0.12em] text-label hover:text-white ${linkRing}`}>
+            {LOGO}
+            <span>
+              SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">INSIDE</span>
+            </span>
+          </Link>
+          <SourceSwitcher app={app} narrow={false} />
+          <Link
+            href="/inside/load"
+            className={`pointer-events-auto flex min-h-11 items-center gap-2 rounded-xl border border-opus/45 bg-opus/8 px-4 text-sm font-semibold text-warn ${linkRing}`}
+          >
+            {UPLOAD}
+            Load your session
+          </Link>
+          <div className="grow" />
+          <Counters app={app} />
+          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} onTouring={holdCard} />
+          <AudioToggle />
+        </header>
+        {/* The strip wants 520 px; below that it takes its own row and the buttons wrap under it. */}
+        <div className="flex flex-wrap items-stretch gap-x-3 gap-y-2">
+          <div className="min-w-0 flex-[1_1_520px]">
+            <StageStrip app={app} />
+          </div>
+          <BankToggle open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId} />
+          {rosterToggle}
+          <CopyMoment app={app} />
+          <Handoff app={app} />
+        </div>
+      </div>
 
       <div ref={row} className="flex min-h-0 flex-wrap items-stretch justify-between gap-4">
         <div ref={side} className="flex max-h-full min-h-0 w-[300px] max-w-full flex-col gap-3">
           <NowPanel app={app} narrow={false} />
-          <KeyPanel open={typeof window === "undefined" || window.innerHeight >= 820} />
+          {rosterOpen ? (
+            <div id="roster-panel" className="flex min-h-0 flex-1 flex-col">
+              <Roster app={app} onClose={() => setRosterOpen(false)} />
+            </div>
+          ) : (
+            <KeyPanel open={typeof window === "undefined" || window.innerHeight >= 960} />
+          )}
         </div>
-        {selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
+        {rightColumn ? (
+          <div className="flex h-full max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3 max-[1100px]:w-64">
+            {recapShown ? <RecapCard app={app} onClose={dismissRecap} /> : null}
+            {station ? <StationPanel app={app} station={station} onClose={closeStation} /> : selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
+          </div>
+        ) : null}
       </div>
 
-      <div ref={timeline}>
+      <div ref={bottom} className="-mx-6 -mb-5 flex flex-col gap-2 bg-chrome px-6 pt-2.5 pb-5 backdrop-blur-[10px]">
+        {bankOpen ? <BankPanels app={app} id={bankId} onStation={openStation} /> : <BankBar app={app} open={false} hideToggle onToggle={() => setBankPref(true)} controls={bankId} />}
         <Timeline app={app} narrow={false} nextAgentRef={nextAgent} onNextAgent={() => cycle(1)} />
       </div>
       {status}

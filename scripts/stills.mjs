@@ -1,8 +1,9 @@
 /**
- * Makes the reduced-motion stills, `public/stills/inside.jpg` and `public/stills/box.jpg`, from the
+ * Makes the reduced-motion stills, `public/stills/inside.jpg`, `public/stills/box.jpg` and
+ * `public/stills/box-world.jpg`, from the
  * production build. `experience.tsx` shows them in its `still` and `unsupported` states.
  *
- *   npm run build && node scripts/stills.mjs [--only=inside|box] [--port=3130]
+ *   npm run build && node scripts/stills.mjs [--only=inside|box|box-world] [--port=3130]
  *
  * Inside: the hero frame without the HUD (`/inside?shot=hero&source=medium&hud=0`, the frame
  * shot.mjs takes) at 1440x900, filling the screen behind the still's caption.
@@ -10,8 +11,12 @@
  * The Box: the escape (`/box?shot=escape`, as shot-box.mjs) cropped to the scene slot alone. Under
  * reduced motion the Box keeps its live HUD and draws this image into the slot with the 760x560
  * design frame fitted as the live camera fits it, so the crop is taken at a width where the slot
- * has exactly that aspect (below 1158 px) and with the slot's DOM labels hidden: the live HUD
+ * has exactly that aspect (below the 915 px breakpoint) and with the slot's DOM labels hidden: the live HUD
  * draws its own over the still.
+ *
+ * The Box world: the three-lab breakout (`/box?shot=breakout`) cropped the same way. The page draws
+ * this one in place of box.jpg whenever it opens with a preset or a shared scenario; the lab names,
+ * link names and numbered markers are part of the image (the still has no overlay of its own).
  *
  * Fails on any console error or `THREE.` warning, or when no launch strategy draws with WebGPU.
  */
@@ -39,6 +44,20 @@ const settle = (act) => async (page) => {
   await page.waitForTimeout(1600);
 };
 
+/**
+ * The Box's scene slot alone, at the 760:560 the still is fitted to. The escape still hides the
+ * page's own scene labels (the still's HUD draws its own); the world still keeps them, because its
+ * lab names, link names and numbered markers are DOM over the canvas and the still has no overlay.
+ */
+const shootSlot = ({ labels }) => async (page) => {
+  if (!labels) await page.addStyleTag({ content: "[data-scene-slot] > * { visibility: hidden !important; }" });
+  const slot = await page.locator("[data-scene-slot]").boundingBox();
+  if (!slot) throw new Error("no [data-scene-slot] on the page");
+  const aspect = slot.width / slot.height;
+  if (Math.abs(aspect - 760 / 560) > 0.01) throw new Error(`scene slot is ${slot.width}x${slot.height}, not 760:560`);
+  return jpegUnder((opts) => page.screenshot({ ...opts, clip: slot }), MAX_BYTES);
+};
+
 const STILLS = [
   {
     name: "inside",
@@ -52,17 +71,18 @@ const STILLS = [
     name: "box",
     act: "box",
     url: `${BASE}/box?shot=escape`,
-    // Below the 1158 px breakpoint the slot keeps the design's 760:560; DPR 2 keeps it sharp on retina.
-    context: { viewport: { width: 1100, height: 1000 }, deviceScaleFactor: 2 },
+    // Below the 915 px breakpoint the slot keeps the design's 760:560 (wider, it fills the column's height); DPR 2 keeps it sharp on retina.
+    context: { viewport: { width: 900, height: 1000 }, deviceScaleFactor: 2 },
     ready: settle("box"),
-    async shoot(page) {
-      await page.addStyleTag({ content: "[data-scene-slot] > * { visibility: hidden !important; }" });
-      const slot = await page.locator("[data-scene-slot]").boundingBox();
-      if (!slot) throw new Error("no [data-scene-slot] on the page");
-      const aspect = slot.width / slot.height;
-      if (Math.abs(aspect - 760 / 560) > 0.01) throw new Error(`scene slot is ${slot.width}x${slot.height}, not 760:560`);
-      return jpegUnder((opts) => page.screenshot({ ...opts, clip: slot }), MAX_BYTES);
-    },
+    shoot: shootSlot({ labels: false }),
+  },
+  {
+    name: "box-world",
+    act: "box",
+    url: `${BASE}/box?shot=breakout`,
+    context: { viewport: { width: 900, height: 1000 }, deviceScaleFactor: 2 },
+    ready: settle("box"),
+    shoot: shootSlot({ labels: true }),
   },
 ].filter((s) => !ONLY || s.name === ONLY);
 

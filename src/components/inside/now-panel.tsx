@@ -20,7 +20,7 @@ export function NowPanel({ app, narrow }: { app: InsideApp; narrow: boolean }) {
     <section
       aria-label="What is happening now"
       className={`pointer-events-auto flex flex-col rounded-[14px] border border-panel-border ${
-        narrow ? "gap-1.5 bg-[rgba(12,16,28,0.8)] px-3.5 py-3" : "gap-2.5 bg-[rgba(12,16,28,0.78)] p-[18px] backdrop-blur-[10px]"
+        narrow ? "gap-1.5 bg-panel px-3.5 py-3" : "gap-2.5 bg-panel p-[18px] backdrop-blur-[10px]"
       }`}
     >
       <span className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-opus">

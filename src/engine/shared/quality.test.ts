@@ -37,6 +37,8 @@ describe("tiers", () => {
     const { hi, mid, lite } = TIERS;
     expect(hi.particleCap).toBeGreaterThan(mid.particleCap);
     expect(mid.particleCap).toBeGreaterThan(lite.particleCap);
+    expect(hi.nebula).toBeGreaterThan(mid.nebula);
+    expect(mid.nebula).toBeGreaterThan(lite.nebula);
     expect(hi.crowdSize).toBeGreaterThan(mid.crowdSize);
     expect(mid.crowdSize).toBeGreaterThan(lite.crowdSize);
     expect(hi.pixelRatio).toBeGreaterThanOrEqual(mid.pixelRatio);

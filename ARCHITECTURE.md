@@ -4,7 +4,7 @@ Scope is the approved plan (`typed-percolating-truffle.md`): `/` landing, `/insi
 `/box` (Act 2), `/about`. Every engine convention follows `../cubic-mm`. React owns the HUD and
 overlays only; the scenes are vanilla three r186 `WebGPURenderer` + TSL in `src/engine/`, loaded
 on the client after a capability probe; `/` and `/about` load no three. The site has no accounts,
-no API routes and no stored user data, so there is no authorization surface; the Box "layers" are
+no API routes and no stored user data (a few preferences and the tour flags only), so there is no authorization surface; the Box "layers" are
 simulated containment, not app access control.
 
 Dependency direction (an arrow means "may import"):
@@ -33,7 +33,9 @@ The one contract both sources emit, so the renderer knows one format.
 // types.ts
 export type ModelFamily = "opus" | "fable" | "sonnet" | "haiku" | "other";
 export type ToolCategory = "web" | "shell" | "files" | "edit" | "agents" | "advisor" | "plan" | "mcp" | "other";
-export type EventKind = "prompt" | "turn" | "call" | "result" | "spawn" | "return";
+export type EventKind = "prompt" | "turn" | "call" | "result" | "spawn" | "return" | "compact";
+export type PermissionSource = "user" | "rule" | "auto" | "other"; // who allowed a call; "user" is a human wait
+export interface CompactInfo { trigger: "manual" | "auto"; preTokens: number; postTokens: number; durationMs: number }
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 export interface TraceAgent {
@@ -62,8 +64,12 @@ export interface TraceEvent {
   call?: number;         // result/return: index of the matching call/spawn event
   child?: number;        // spawn/return: the subagent's id
   usage?: Usage;         // turn: that assistant message's usage
-  isError?: boolean;     // result
-  excerpt?: string;      // turn text and handback at most 280 chars; human prompts at most 2,000
+  isError?: boolean;     // result, and a spawn whose launch failed
+  excerpt?: string;      // turn text, handback and a spawn's brief at most 280 chars; human prompts at most 2,000
+  permission?: PermissionSource; // result
+  size?: number;         // result: characters in the content (a number, never the text)
+  thinkMs?: number;      // turn
+  compact?: CompactInfo; // compact
 }
 
 export interface SessionTrace {
@@ -121,6 +127,10 @@ counter, so any `t` costs O(log n). Parsed and generated traces go through the s
 | `sim.ts` | `createState(config, seed, agentCount)`, `step(state, r): StepReport` (one decision tick) | agent arrays (role, plan step, suspicion history, status, shell reached, work done), audit budget, escape detection |
 | `trials.ts` | `runTrial(config, seed)`, `runTrials(config, n, seed): TrialSummary` (safety = 1 minus escape rate; usefulness = honest work over the all-off baseline on the same seeds) | fixed `TRIAL_AGENTS`/`TRIAL_TICKS` |
 | `replay.ts` | `stoppingLayers(config, seed, agentCount, agent, tick): LayerId[]`: the off layers that, turned on alone, keep that agent in by that tick, innermost first, proved by replaying the run (same seed and crowd size) rather than ranked by rule | the replays |
+| `world-types.ts`, `world.ts`, `links.ts`, `breakout.ts`, `intercept.ts` | `Scenario { seed, labs: LabSpec[], links: Link[] }`; `createWorld(scenario)` runs several labs (each its own `sim` state, `Cast` of dispositions and layer settings) and a link pass that lets an escaped agent reach another lab through a shared thing (cache, registry, runner, chat bus); `breakoutSteps` numbers the sub-steps of a breakout; `interceptLines` writes the fictional dialogue | the lab and link draws, so a run is a pure function of its scenario |
+| `presets.ts`, `share.ts`, `branch.ts`, `seek.ts`, `world-replay.ts`, `world-trials.ts` | `presetScenario(preset, seed?, labs?)` (breakout, default lab, rushed launch, air gapped, everything off); `scenarioToParams` / `scenarioFromParams` (the versioned share format, validated on read); a rebuildable snapshot at any tick; world-wide replays and trials | the share encoding and its limits |
+| `agent-mode.ts`, `budget.ts` | Play as the agent (turn-based abstract move cards ruled on by the lab's real layers, rolls a pure function of seed and turn); Defend (the share of work the layers may use up) | the card hand and the budget arithmetic |
+| `handoff.ts` | `handoffSearch(trace)` (null for anything but a sample), `parseHandoff(params)` (count clamped, model names an allowlist), `withHandoff(params)` (turns a valid hand-off into the share format's `scenario`), `castFor(models)` | what an Act 1 session may hand to Act 2: a count and model kinds, never text |
 | `trials.worker.ts` + `trials-client.ts` | `runTrialsOffThread(config, n, seed, signal)`, `stoppingLayersOffThread(config, seed, agentCount, agent, tick, signal)` | the worker |
 
 The live crowd size is a `createState` argument taken from the quality tier; trials always use
@@ -193,6 +203,35 @@ still image as props, shared by both acts); `inside/` (`hud`, `scrubber`, `count
 bus plus rAF polling, as cubic-mm's `use-hud.ts`). Routes `src/app/{page,inside/page,box/page,
 about/page}.tsx`, each through `pageMetadata()`.
 
+`inside/` now also holds the instrument bank (`bank`, `charts`, `stage-strip`, `now-panel`, `key-panel`,
+`agent-lanes`), `roster`, `station-panel`, `recap-card`, `moment` (the shareable URL, samples only)
+and `handoff` (the link into the Box, samples only); `box/` holds `box-hud` with its toolbar (presets,
+modes, edit world), `lab-panels`, `timeline`, `play-panels` (Defend and Play as the agent), `debrief`,
+`event-log` and `outside-panel`.
+
+### `src/components/site/` (the furniture both acts share)
+- `tour-state.ts` (pure): `shouldShowTour(act, { search, automated })`, `hasSeenTour`, `markTourSeen`.
+  The flag is `swarm-tour-<act>` in `localStorage`; every read and write is in try/catch and a skip is
+  also held in memory for the visit, so storage that throws costs nothing but a repeated tour.
+  Scripted browsers (`navigator.webdriver`) and `?shot=` frames skip the tour so the scripts that
+  drive the acts are never met by a dialog; `?tour=1` forces it (never past the seen flag), `?tour=0`
+  turns it off.
+- `modal.tsx`: the one dialog (native `<dialog>` + `showModal()`: inert page, top layer). It wraps Tab
+  at both ends, closes on Escape, hands focus back, and while open keeps every key from the act's own
+  window shortcuts. `tour.tsx` (three steps per act, plain words, no real names) and `help-sheet.tsx`
+  build on it.
+- `shortcuts.ts`: the keys each act answers, kept beside the handlers they were read from
+  (`useShortcuts` in `inside/hud.tsx`; the 1 to 9, Escape and Home keys of the Box).
+- `act-tools.tsx`: `ActTools` (tour, ? button and key, sheet; on the Box also the "cast from Act 1"
+  note) and `FallbackBadge` (shown when `isWebGPU` is false and the frame is not a reduced-motion
+  still; the Box adds "CPU CROWD" from `crowdMode`). Inside mounts it in its HUD header, the Box floats
+  it (`float`), as its header is not ours to edit.
+
+**Act 1 to Act 2 hand-off.** `inside/handoff.tsx` renders a link only when `handoffSearch(trace)` is
+non-null, which needs `trace.source === "sample"`. `box-experience.tsx` passes the page's parameters
+through `withHandoff` before `firstVisitParams`; a link that already names a run (`scenario`, `preset`,
+`shot`, `b`, `v`) is left alone. The Box shows model kinds only as a count, never by name.
+
 ## Seams
 
 Each test is a colocated `*.test.ts` in Vitest unless it names a script.
@@ -223,11 +262,15 @@ blobs; nothing is read on the main thread) and `loadSession` posts it to `trace/
    `isSidechain`, `agentId`, `message.id`, `message.model`, `message.usage`, block types, tool
    names and ids, Agent inputs `description`/`subagent_type`/`model`/`run_in_background`,
    `toolUseResult` `agentId`/`status`/`resolvedModel`/`totalDurationMs`/`totalTokens`/
-   `totalToolUseCount`, and capped excerpts (human prompt text where `origin.kind === "human"`,
-   a turn's first text block, `handbackReport.text`). `cwd`, `gitBranch`,
+   `totalToolUseCount`, numbers (`permissionDecision.source` mapped to `user`/`rule`/`auto`/`other`,
+   `thinkingDurationMs`, a result's content length, a `compact_boundary`'s `trigger`/`preTokens`/
+   `postTokens`/`durationMs`), and capped excerpts (human prompt text where `origin.kind === "human"`,
+   a turn's first text block, `handbackReport.text`, and the Agent call's `input.prompt`, the brief
+   handed to each subagent, first 280 characters). An `isCompactSummary` record is never a prompt.
+   Tool arguments and results are not read: no other `input` field, no result text. `cwd`, `gitBranch`,
    `serverClassifierContext`, attachments, hook output, `bridge-session` ids, thinking,
    signatures, encrypted advisor content, `toolUseResult` bodies and `file-history-*` are never
-   copied. Unknown `type`s are counted and ignored.
+   copied. Unknown `type`s are counted and ignored. Nothing leaves the browser.
 4. Assistant records group by `message.id` into one `turn`; usage is taken once, from the record
    with the largest `output_tokens`.
 5. `finish()` links: parent `Agent` `tool_use.id` -> meta `toolUseId` -> `agentId` ->
@@ -288,7 +331,8 @@ reads `crowd.positions`. Catches go to the bus (shell flash, audio, counters); a
 It needs no engine, so it also works on the reduced-motion still. The summary becomes a point on
 `trials-plot.tsx`.
 
-**Stored state.** Only the three `swarm-*` preferences in `localStorage`. No database, no
+**Stored state.** Only the three `swarm-*` preferences and the two `swarm-tour-*` flags in `localStorage`
+(none of them about a session). No database, no
 migrations; an unknown value falls back to its default on read.
 
 ## Decisions
@@ -326,6 +370,13 @@ migrations; an unknown value falls back to its default on read.
     current `__fixtures__/*.jsonl` negation leaves the `subagents/` child files ignored.
 17. **Sequencing: the Act 1 hero frame lands before the parser**, on the contract and a minimal
     generator, so the look is checked early. Reorders plan steps 3 and 4; scope is unchanged.
+18. **One native `<dialog>` for the tour and the ? sheet.** Focus trap, inert page and top layer for
+    free; a window capture listener keeps the act's shortcuts out. Rejected: a hand-rolled overlay.
+19. **The hand-off is a query string read as untrusted input.** `/box` clamps and allowlists it, and
+    only samples build one, so an upload cannot reach a URL. Rejected: sessionStorage or a shared
+    module (an upload would then sit somewhere it can leak from).
+20. **Automated browsers skip the tour, `?tour=1` brings it back.** The smoke and shot scripts drive
+    both acts with keys and clicks a modal would swallow. Rejected: seeding the flag in every script.
 
 ## Testing
 
@@ -334,7 +385,9 @@ The fixture, `src/lib/trace/__fixtures__/session.jsonl` plus its `subagents/` fi
 keeps record shapes and housekeeping types; replaces every free text with placeholders; fakes
 every id; re-bases every `timestamp` to a fixed epoch (2000-01-01) keeping the offsets; maps MCP
 server names in `mcp__<server>__*`, plugin `subagent_type` values and meta `description`/
-`agentType` to fakes; keeps the dropped fields with sentinels (`cwd: "FIXTURE-SECRET-CWD"`); and
+`agentType` to fakes; keeps the dropped fields with sentinels (`cwd: "FIXTURE-SECRET-CWD"`; a result's content is a sentinel
+padded to its length, the parser reads that length); makes the Agent/Task `input.prompt` placeholder
+text, the one tool input it copies; and
 injects one malformed line, one unknown type and a human prompt `<img src=x onerror=alert(1)>`.
 `build.test.ts` asserts the agent tree, a nested and a background spawn (its `return` at
 `returnT`), usage once per message, advisor and web categories, report counts, each cap, and that
@@ -412,7 +465,8 @@ None.
     "src/engine/inside: startInside -> InsideApp (setTrace, play, pause, seek, setRate, pick); pure layout + playback; instanced scene",
     "src/engine/box: startBox -> BoxApp (configure, reset, stats); Crowd gpu/cpu; shells, agents, internet",
     "src/engine/audio: cubic-mm audio engine and limiter on each act's bus",
-    "src/components: experience gate; inside HUD (scrubber, counters, source switcher, file drop, detail card, sample tag); box panel + trials plot",
+    "src/components: experience gate; inside HUD (scrubber, counters, source switcher, file drop, detail card, sample tag); box panel + trials plot; site/ (tour, ? sheet, WebGL 2 badge)",
+    "src/lib/box/handoff.ts: sample-only Inside to Box hand-off, clamped and allowlisted on read",
     "routes /, /inside, /box, /about via pageMetadata()"
   ],
   "seams": [

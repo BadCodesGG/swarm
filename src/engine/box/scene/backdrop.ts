@@ -4,7 +4,7 @@
  */
 
 import { Mesh, MeshBasicNodeMaterial, type Scene } from "three/webgpu";
-import { color, length, mix, positionLocal, screenUV, vec2, vec4 } from "three/tsl";
+import { clamp, color, float, fract, length, mix, positionLocal, screenUV, vec2, vec4 } from "three/tsl";
 import { premultiplied, quadGeometry, type BoxUniforms } from "./common";
 
 export interface Backdrop {
@@ -21,7 +21,10 @@ export function createBackdrop(scene: Scene, u: BoxUniforms): Backdrop {
   const t = length(px.sub(centre).div(vec2(820, 640)));
   const inner = mix(color(0x0f1529), color(0x0a0d18), t.div(0.55).clamp(0, 1));
   const rgb = mix(inner, color(0x070910), t.sub(0.55).div(0.45).clamp(0, 1));
-  material.colorNode = vec4(rgb, 1);
+  // The map's dot grid, one faint dot per 24 px (rgba(150,172,214,0.09) as the board draws it).
+  const cell = fract(px.div(24)).sub(0.5).mul(24);
+  const dot = clamp(float(1).sub(length(cell)), 0, 1).mul(0.09).mul(u.grid);
+  material.colorNode = vec4(mix(rgb, color(0x96acd6), dot), 1);
   premultiplied(material);
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;

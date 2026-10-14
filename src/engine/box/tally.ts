@@ -5,7 +5,8 @@
 
 import { LAYER_ORDER, type ActionId, type BoxConfig, type LayerId, type StepReport } from "@/lib/box/types";
 import { escapeHeading, escapePath, ringPoint, type EscapePath, type Point } from "./layout";
-import { catchLine, catchMarker, escapeLine, escapeSteps, flagMarker, trailLabels, type EscapeStep } from "./explain";
+import type { LabId, WorldEvent } from "@/lib/box/world-types";
+import { breachedLine, catchLine, catchMarker, crossingLine, escapeLine, escapeSteps, flagMarker, heldLine, trailLabels, worldEscapeLine, type EscapeStep } from "./explain";
 
 export const LOG_CAP = 60;
 /** Decision ticks a catch marker stays on its ring. */
@@ -138,3 +139,102 @@ export function record(t: Tally, r: StepReport, ctx: TallyContext): void {
     log(t, "escaped", escapeLine(e.agent, plan));
   }
 }
+
+// --- the world: what the labs did to each other ---
+
+export type LabStatus = "held" | "breached";
+
+export interface WorldLogEntry {
+  id: number;
+  tick: number;
+  kind: "escape" | "crossed" | "held" | "breached";
+  lab: LabId;
+  text: string;
+}
+
+/** The lateral story so far: escapes, crossings, refused reaches and which labs are breached. */
+export interface WorldTally {
+  /** Newest first. */
+  log: WorldLogEntry[];
+  breached: LabId[];
+  /** Reaches each lab turned away. */
+  heldContacts: Partial<Record<LabId, number>>;
+  crossings: number;
+  seq: number;
+}
+
+export function createWorldTally(): WorldTally {
+  return { log: [], breached: [], heldContacts: {}, crossings: 0, seq: 0 };
+}
+
+export const labStatus = (t: WorldTally, id: LabId): LabStatus => (t.breached.includes(id) ? "breached" : "held");
+
+/** Folds one world tick's events into the lateral story. `plan` is an escapee's hidden plan. */
+export function recordWorld(t: WorldTally, events: readonly WorldEvent[], plan: (lab: LabId, agent: number) => readonly ActionId[]): void {
+  const add = (tick: number, kind: WorldLogEntry["kind"], lab: LabId, text: string) => {
+    t.log.unshift({ id: t.seq++, tick, kind, lab, text });
+    if (t.log.length > LOG_CAP) t.log.length = LOG_CAP;
+  };
+  const breach = (tick: number, lab: LabId) => {
+    if (t.breached.includes(lab)) return;
+    t.breached.push(lab);
+    add(tick, "breached", lab, breachedLine(lab));
+  };
+  for (const e of events) {
+    if (e.type === "escape") {
+      add(e.tick, "escape", e.lab, worldEscapeLine({ lab: e.lab, agent: e.agent }, plan(e.lab, e.agent)));
+      breach(e.tick, e.lab);
+    } else if (e.type === "contact" && e.outcome === "crossed") {
+      t.crossings++;
+      add(e.tick, "crossed", e.to, crossingLine(e.from, e.to, e.link));
+      breach(e.tick, e.to);
+    } else if (e.type === "contact") {
+      t.heldContacts[e.to] = (t.heldContacts[e.to] ?? 0) + 1;
+      add(e.tick, "held", e.to, heldLine(e.from, e.to, e.link, e.layer));
+    }
+  }
+}
+
+/**
+ * One tally for the whole world, for the counters that sum across labs. A single lab's own tally
+ * comes back as it is. Catch markers stay with their lab (their places are lab-local), and the
+ * latest escape is whichever lab's came last.
+ */
+export function mergeTallies(list: readonly Tally[]): Tally {
+  if (list.length === 1) return list[0];
+  const out = createTally(
+    list.reduce((n, t) => n + t.agents, 0),
+    list.reduce((n, t) => n + t.rogues, 0),
+  );
+  out.tick = Math.max(0, ...list.map((t) => t.tick));
+  const possible = list.map((t) => Math.max(1, (t.agents - t.rogues) * t.tick));
+  const allPossible = possible.reduce((n, p) => n + p, 0);
+  list.forEach((t, i) => {
+    out.caughtTotal += t.caughtTotal;
+    out.escaped += t.escaped;
+    out.flagged += t.flagged;
+    out.work += t.work;
+    for (const l of LAYER_ORDER) {
+      out.byLayer[l].caught += t.byLayer[l].caught;
+      out.byLayer[l].costShare += (t.byLayer[l].costShare * possible[i]) / allPossible;
+    }
+  });
+  out.usefulWork = out.tick > 0 ? out.work / allPossible : 1;
+  out.log = list
+    .flatMap((t) => t.log)
+    .sort((a, b) => b.tick - a.tick || b.id - a.id)
+    .slice(0, LOG_CAP);
+  out.lastEscape = list.reduce<EscapeRecord | null>((best, t) => (t.lastEscape && (!best || t.lastEscape.tick >= best.tick) ? t.lastEscape : best), null);
+  out.seq = Math.max(0, ...list.map((t) => t.seq));
+  return out;
+}
+
+/** One lab's counts, as the map's lab cards show them. */
+export interface LabTotals {
+  caught: number;
+  escaped: number;
+  /** Actions its monitor sent on to a human reviewer. */
+  flagged: number;
+}
+
+export const labTotals = (t: Tally): LabTotals => ({ caught: t.caughtTotal, escaped: t.escaped, flagged: t.flagged });

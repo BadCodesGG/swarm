@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test on the production build.
  *
- *   npm run build && npm run test:smoke [-- --port=3132] [--allow-software]
+ *   npm run build && npm run test:smoke [-- --port=3132] [--allow-software] [--only=site]
  *
  * Boots `next start` (it refuses to run without a build: dev mode hides prerender problems) and
  * drives it in Playwright Chromium. Prints a line per assertion, exits 1 on the first failure.
@@ -15,13 +15,18 @@
  *      /about, and has no sideways scroll at 390 px.
  *   6. about: `/about` is 200, says Act 2 is a simulation and uploads stay in the browser, cites each
  *      source by title and link, has no sideways scroll at 390 px, and its og:image is a 1200x630 JPEG.
+ *   7. site: both acts' first-visit tours (shown once, skippable, storage may throw), the ? sheet, the Inside to
+ *      Box hand-off, the WebGL 2 badge and the new landing, About and Box copy (see smoke-site.mjs).
  */
 
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { boxSteps } from "./smoke-box.mjs";
+import { stepHud } from "./smoke-hud.mjs";
 import { stepImport } from "./smoke-import.mjs";
+import { stepSite } from "./smoke-site.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -71,8 +76,31 @@ function watch(page) {
  * Opens a route in a fresh context. `scripts()` waits past idle and returns the body of every script
  * the visit loaded, lazy chunks and prefetches included, not only the ones the HTML names.
  */
+/**
+ * With SMOKE_SHOTS=<dir> (CI sets it), every context saves a screenshot and the engine state of each
+ * page as it closes. A step closes its context in its own `finally` before a failure reaches the top,
+ * so this is the only point that still sees the page as it failed; CI uploads the folder on failure.
+ */
+const SHOTS = process.env.SMOKE_SHOTS ?? "";
+let shotCount = 0;
+function keepLastLook(context, route) {
+  const close = context.close.bind(context);
+  context.close = async (...args) => {
+    const n = String(++shotCount).padStart(2, "0");
+    const name = `${n}-${route.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "root"}`;
+    for (const [i, page] of context.pages().entries()) {
+      await mkdir(SHOTS, { recursive: true });
+      await page.screenshot({ path: path.join(SHOTS, `${name}-${i}.png`), timeout: 10_000 }).catch(() => {});
+      const state = await page.evaluate(() => JSON.stringify({ url: location.href, inside: window.__swarm?.inside ?? null }, (_, v) => (typeof v === "function" ? undefined : v))).catch((e) => String(e));
+      await writeFile(path.join(SHOTS, `${name}-${i}.json`), state).catch(() => {});
+    }
+    return close(...args);
+  };
+}
+
 async function openPage(browser, route, contextOptions = {}) {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, ...contextOptions });
+  if (SHOTS) keepLastLook(context, route);
   const page = await context.newPage();
   const problems = watch(page);
   const bodies = [];
@@ -284,36 +312,40 @@ async function stepInside(browser) {
       check("medium: the counter reads countersAt at the new time", callsBack === back.counters.toolCalls, `${callsBack} vs ${back.counters.toolCalls}`);
 
       // Clicking an agent selects it and fills the card.
-      // Paused, so the scene is a pure function of the playhead: find a moment with several agents out.
-      let crowded = false;
-      for (const at of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
-        await page.mouse.click(box.x + box.width * at, box.y + box.height / 2);
-        await page.waitForTimeout(250);
-        if ((await inside(page)).agentsAlive >= 3) {
-          crowded = true;
-          break;
-        }
-      }
-      check("medium: found a moment with several live subagents", crowded);
-      const target = await page.evaluate(() => {
-        const { screenOf, agents, selected } = window.__swarm.inside;
-        // screenOf is canvas px; the mouse and elementFromPoint take viewport px.
-        const rect = document.querySelector("canvas").getBoundingClientRect();
-        const pts = [];
-        for (let id = 1; id < agents; id++) {
-          const p = screenOf(id);
-          if (p) pts.push({ id, x: rect.left + p.x, y: rect.top + p.y });
-        }
-        const clear = pts.filter((p) => {
-          const el = document.elementFromPoint(p.x, p.y);
-          return el instanceof HTMLCanvasElement && p.id !== selected;
+      // Paused, so the scene is a pure function of the playhead. The camera frames one cluster, so most
+      // live agents sit off screen: look for a moment with one in the open, clear of every panel.
+      const findTarget = () =>
+        page.evaluate(() => {
+          const { screenOf, agents, selected } = window.__swarm.inside;
+          // screenOf is canvas px; the mouse and elementFromPoint take viewport px.
+          const rect = document.querySelector("canvas").getBoundingClientRect();
+          for (let id = 1; id < agents; id++) {
+            const p = screenOf(id);
+            if (!p) continue;
+            const x = rect.left + p.x;
+            const y = rect.top + p.y;
+            if (id !== selected && document.elementFromPoint(x, y) instanceof HTMLCanvasElement) return { id, x, y };
+          }
+          return null;
         });
-        return clear[0] ?? null;
-      });
+      let target = null;
+      for (const at of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.35, 0.55, 0.65, 0.45]) {
+        await page.mouse.click(box.x + box.width * at, box.y + box.height / 2);
+        await page.waitForTimeout(500);
+        target = await findTarget();
+        if (target) break;
+      }
+      check("medium: found a moment with a live subagent in the open", target !== null);
       check("medium: an agent is on screen to click", target !== null);
-      await page.mouse.click(target.x, target.y);
-      await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id);
-      check("medium: clicking an agent selects it", true, `agent ${target.id}`);
+      // The camera still eases while paused, and on a slow software renderer an agent can drift off the
+      // point between measuring it and the click: measure again right before each try.
+      let picked = false;
+      for (let attempt = 0; attempt < 5 && !picked; attempt++) {
+        if (attempt > 0) target = (await findTarget()) ?? target;
+        await page.mouse.click(target.x, target.y);
+        picked = await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id, 4000).then(() => true, () => false);
+      }
+      check("medium: clicking an agent selects it", picked, `agent ${target.id}`);
       const card = page.locator("[data-detail-card]");
       await card.waitFor({ state: "visible" });
       const title = await card.locator("h2").textContent();
@@ -382,6 +414,27 @@ async function stepInsidePhone(browser) {
     await page.keyboard.press("Enter");
     await waitInside(page, () => window.__swarm.inside.selected === 0);
     const bar = page.locator('button[aria-expanded][aria-label^="Selected agent"]');
+    await bar.waitFor({ state: "visible" });
+    // With the agent bar added the column still fits an 844 px phone; on a shorter one it scrolls to the scrubber.
+    // The WebGL 2 badge adds a row of its own, and only that row may run over.
+    const column = () => page.evaluate(() => {
+      const s = document.querySelector("[data-under-sheet]");
+      const bar = document.querySelector("[data-scrubber]").getBoundingClientRect();
+      const badge = document.querySelector("[data-under-sheet] [data-webgl-badge]");
+      const row = badge ? badge.getBoundingClientRect().height + parseFloat(getComputedStyle(s.firstElementChild).rowGap) : 0;
+      return { content: s.scrollHeight, height: s.clientHeight, top: s.scrollTop, scrubber: bar.bottom, view: innerHeight, row };
+    });
+    const tall = await column();
+    check("phone: with an agent selected the column fits 844 px", tall.content <= tall.height + tall.row, `content ${tall.content} of ${tall.height}, badge row ${Math.round(tall.row)}`);
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector("[data-under-sheet]").scrollTo(0, 1e6));
+    await page.waitForTimeout(200);
+    const short = await column();
+    check("phone: at 667 px the column scrolls the scrubber into view", short.top > 0 && short.scrubber <= short.view, `scrolled ${short.top}, scrubber bottom ${Math.round(short.scrubber)} of ${short.view}`);
+    await page.evaluate(() => document.querySelector("[data-under-sheet]").scrollTo(0, 0));
+    await page.setViewportSize(phone.viewport);
+    await page.waitForTimeout(300);
     await bar.click();
     const dialog = page.getByRole("dialog", { name: "Selected agent details" });
     await dialog.waitFor({ state: "visible" });
@@ -411,14 +464,18 @@ async function stepInsidePhone(browser) {
   }
 }
 
+/** [name, step]; `--only=site` (comma-separated names) runs just those, for working on one step. */
 const STEPS = [
-  stepLanding,
-  stepInside,
-  stepInsidePhone,
-  ...boxSteps({ check, openPage, software: SOFTWARE }),
-  (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside }),
-  stepAbout,
+  ["landing", stepLanding],
+  ["inside", stepInside],
+  ["phone", stepInsidePhone],
+  ["hud", (browser) => stepHud(browser, { openPage, check, inside, waitInside, blur })],
+  ...boxSteps({ check, openPage, software: SOFTWARE }).map((step, i) => [`box${i + 1}`, step]),
+  ["import", (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside })],
+  ["about", stepAbout],
+  ["site", (browser) => stepSite(browser, { BASE, SOFTWARE, VIEWPORT, openPage, check, inside, waitInside, watch })],
 ];
+const ONLY = value("only", "").split(",").filter(Boolean);
 
 if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
   console.error("FAIL  no production build: run `npm run build` first (the smoke test serves `next start`)");
@@ -432,7 +489,7 @@ try {
   console.log(`serving the production build on ${BASE}`);
   const browser = await chromium.launch({ headless: true, channel: "chromium", args: BROWSER_ARGS });
   try {
-    for (const step of STEPS) await step(browser);
+    for (const [name, step] of STEPS) if (ONLY.length === 0 || ONLY.includes(name)) await step(browser);
   } finally {
     await browser.close();
   }

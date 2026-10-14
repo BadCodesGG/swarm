@@ -70,11 +70,12 @@ describe.each(SIZES)("generateTrace %s", (size) => {
       const models = new Set(t.agents.slice(1).map((a) => a.model));
       expect(models.size, msg).toBeGreaterThanOrEqual(2);
       expect(models.has("other"), msg).toBe(false);
-      // The category and model on the wire agree with the shared name tables.
-      for (const e of t.events) {
-        if (e.kind === "call" || e.kind === "result") expect(categorize(e.tool!)).toBe(e.category);
-      }
-      for (const a of t.agents) expect(modelFamily(a.modelId)).toBe(a.model);
+      // The category and model on the wire agree with the shared name tables. Collected, then asserted
+      // once: an expect per event over 50 large traces ran past the 5 s timeout on CI.
+      const badTools = t.events.filter((e) => (e.kind === "call" || e.kind === "result") && categorize(e.tool!) !== e.category).map((e) => `${e.tool} as ${e.category}`);
+      const badModels = t.agents.filter((a) => modelFamily(a.modelId) !== a.model).map((a) => `${a.modelId} as ${a.model}`);
+      expect(badTools, msg).toEqual([]);
+      expect(badModels, msg).toEqual([]);
     });
   });
 

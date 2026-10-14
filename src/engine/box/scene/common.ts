@@ -36,6 +36,8 @@ export function createUniforms() {
     viewSize: uniform(new Vector2(1, 1)),
     /** Device px per CSS px. */
     dpr: uniform(1),
+    /** 1 draws the map's faint dot grid behind the labs. */
+    grid: uniform(0),
   };
 }
 export type BoxUniforms = ReturnType<typeof createUniforms>;

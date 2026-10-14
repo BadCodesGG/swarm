@@ -8,12 +8,27 @@
  *      escapes within ESCAPE_TIMEOUT_MS and the "What just happened" explainer appears, then names a
  *      layer to turn on once the worker's replay has proved it; "Run 100 trials" adds a plotted
  *      point within TRIALS_TIMEOUT_MS.
+ *   6. The playground: a plain `/box` opens the breakout preset with its strip of presets; the lab
+ *      selector changes `data-lab` on the one layer panel; a layer flip on one lab reaches that lab
+ *      only; "Edit world" adds and removes a lab; a share link restores the scenario in a fresh page;
+ *      one agent card played puts a line in the turn log.
+ *   7. `/box?shot=breakout`: a marker click and the key 2 open a detail card that names the layers
+ *      that would have stopped it, Escape closes it, a branch from a marker shows both outcomes, and
+ *      "Replay with this switched on" reruns with that layer on.
+ *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
+ *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
+ *      is within the first screen and every lab is in frame.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
  *
  * Every step fails on any console error, page error or `THREE.` warning (via `openPage`'s watcher).
  */
+
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { measureScene } from "./lib/scene-labels.mjs";
 
 const LAYERS = ["sandbox", "permissions", "network", "monitor", "audit"];
 const READY_TIMEOUT_MS = 60_000;
@@ -22,6 +37,8 @@ const ESCAPE_TIMEOUT_MS = 90_000;
 const TRIALS_TIMEOUT_MS = 90_000;
 /** The replay runs the escape's ticks again, once per off layer, in the worker. */
 const RERUN_TIMEOUT_MS = 30_000;
+/** The scene's least height beside the lab column (`box-hud.tsx` sets it), whatever is docked under it. */
+const SCENE_MIN_PX = 400;
 
 const box = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm?.box ?? null)));
 
@@ -114,5 +131,249 @@ export function boxSteps({ check, openPage, software = false }) {
     }
   }
 
-  return [stepBox, stepWebGL];
+  const labsOf = async (page) => (await box(page)).labs;
+  const layerSig = (labs) => labs.map((l) => `${l.id}:${Object.values(l.layers).map(Number).join("")}`).join(" ");
+
+  /** A plain /box: the strip, the lab selector, the builder, the share round trip, the two play modes. */
+  async function stepPlayground(browser) {
+    console.log("-- 6. the playground");
+    const { context, page, problems } = await openPage(browser, "/box");
+    try {
+      await waitForFrames(page, "box");
+      const presets = await page.locator("[data-preset]").evaluateAll((els) => els.map((e) => `${e.dataset.preset}:${e.getAttribute("aria-pressed")}`));
+      check("the preset strip offers five presets, breakout current on a first visit", presets.length === 5 && presets[0] === "breakout:true", presets.join(" "));
+      const labs = await labsOf(page);
+      check("a first visit opens the breakout preset's three labs", labs.map((l) => l.id).join() === "meridian,kestrel,halcyon", labs.map((l) => l.id).join());
+
+      check("one layer panel, five layer inputs", (await page.locator("input[data-layer]").count()) === 5);
+      check("the panel starts on the first lab", (await page.locator("form[data-lab]").getAttribute("data-lab")) === "meridian");
+      await page.locator('[data-lab-tab="kestrel"]').click();
+      check("the lab selector changes data-lab", (await page.locator("form[data-lab]").getAttribute("data-lab")) === "kestrel");
+      check("still one set of layer inputs", (await page.locator("input[data-layer]").count()) === 5);
+      const net = (await labsOf(page))[1].layers.network;
+      await page.locator('input[data-layer="network"]').setChecked(!net, { force: true });
+      await page.waitForFunction((n) => window.__swarm.box.labs[1].layers.network !== n, net, { timeout: 5_000 });
+      const after = await labsOf(page);
+      check("a flip on KESTREL reaches KESTREL only", after[1].layers.network === !net && after[0].layers.network === labs[0].layers.network && after[2].layers.network === labs[2].layers.network);
+
+      await page.locator('[data-preset="air-gapped"]').click();
+      await page.waitForFunction(() => window.__swarm.box.links.length === 0 && window.__swarm.box.labs.length === 3, null, { timeout: 10_000 });
+      check("a preset click loads it (air gapped has no links)", (await page.locator('[data-preset="air-gapped"]').getAttribute("aria-pressed")) === "true");
+
+      await page.locator("[data-edit-world]").click();
+      await page.locator("[data-add-lab]").click();
+      await page.waitForFunction(() => window.__swarm.box.labs.length === 4, null, { timeout: 10_000 });
+      check("Edit world adds a lab", true, "4 labs");
+      await page.locator('[data-remove-lab="orrery"]').click();
+      await page.waitForFunction(() => window.__swarm.box.labs.length === 3, null, { timeout: 10_000 });
+      check("and removes it again", true, "3 labs");
+
+      await page.locator('[data-lab-tab="halcyon"]').click();
+      const before = (await labsOf(page))[2].layers.sandbox;
+      await page.locator('input[data-layer="sandbox"]').setChecked(!before, { force: true });
+      await page.waitForFunction((b) => window.__swarm.box.labs[2].layers.sandbox !== b, before, { timeout: 5_000 });
+      await page.locator("[data-copy-link]").click();
+      await page.locator("[data-share-status]").filter({ hasText: /\w/ }).waitFor({ timeout: 5_000 });
+      const shared = await page.evaluate(() => window.location.pathname + window.location.search);
+      const wanted = layerSig(await labsOf(page));
+      check("Copy link puts the scenario in the address bar", shared.includes("b=halcyon"), shared.slice(0, 80));
+      const second = await openPage(browser, shared);
+      try {
+        await waitForFrames(second.page, "box");
+        const got = layerSig(await labsOf(second.page));
+        check("loading the shared link restores the scenario", got === wanted, `${wanted} vs ${got}`);
+        check("the restored page logged no errors", second.problems.length === 0, second.problems.join(" | "));
+      } finally {
+        await second.context.close();
+      }
+
+      await page.locator('[data-mode="agent"]').click();
+      await page.locator("[data-card]").first().click();
+      await page.locator('[data-turn-log] [data-turn="1"]').waitFor({ timeout: 5_000 });
+      check("one agent-mode card played puts a line in the turn log", true, (await page.locator('[data-turn="1"]').innerText()).replace(/\s+/g, " ").slice(0, 100));
+      await page.locator('[data-mode="defend"]').click();
+      await page.locator("[data-defender-score]").waitFor({ timeout: 5_000 });
+      check("defend mode shows a score", true, await page.locator("[data-defender-score]").innerText());
+      check("/box logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
+    } finally {
+      await context.close();
+    }
+  }
+
+  /** The breakout shot: markers, cards, the 1 to 9 keys, a branch, and the replay with a layer on. */
+  async function stepDebrief(browser) {
+    console.log("-- 7. markers, cards and branches");
+    const { context, page, problems } = await openPage(browser, "/box?shot=breakout");
+    try {
+      await page.waitForFunction(() => window.__swarm?.box?.settled === true, null, { timeout: READY_TIMEOUT_MS });
+      await page.waitForFunction(() => window.__swarm.box.markers.length > 0 && window.__swarm.box.markers.every((m) => m.title), null, { timeout: 30_000 });
+      const markers = (await box(page)).markers;
+      check("the breakout shot numbers its steps", markers.length >= 2, markers.map((m) => `${m.n}:${m.title}`).join(" | "));
+      await page.locator('[data-step-marker="1"]:visible').click();
+      const cardOne = page.locator('[data-marker-card="1"]');
+      await cardOne.waitFor({ timeout: 5_000 });
+      const text = await cardOne.innerText();
+      check("a marker click opens its card with a verdict", /WOULD HAVE STOPPED IT|PASSED|OFF|REFUSED|HELD/i.test(text) && (await cardOne.locator("[data-verdict]").count()) > 0, text.replace(/\s+/g, " ").slice(0, 120));
+      await page.keyboard.press("2");
+      await page.locator('[data-marker-card="2"]').waitFor({ timeout: 5_000 });
+      check("the key 2 opens card 2", true);
+      await page.keyboard.press("Escape");
+      await page.locator("[data-marker-card]").waitFor({ state: "detached", timeout: 5_000 });
+      check("Escape closes the card", true);
+
+      await page.locator('[data-timeline-marker="1"]').click();
+      // The pin rewound the run for real: the engine is off the head and "Back to live" returns to it.
+      await page.locator("[data-back-to-live]").waitFor({ timeout: 10_000 });
+      const past = await page.evaluate(() => window.__swarm.box.stats.tick);
+      check("a timeline pin rewinds the engine", past < 600, `tick ${past}`);
+      await page.locator("[data-branch]").click();
+      await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
+      const rows = await page.locator("[data-branch-result] tbody tr").allInnerTexts();
+      check("a branch from a marker shows both outcomes side by side", rows.length === 4, rows.join(" / ").replace(/\s+/g, " "));
+
+      // The pin on the timeline opened step 1's card too.
+      const replay = page.locator("[data-replay-with]").first();
+      await replay.waitFor({ timeout: 5_000 });
+      const layer = await replay.getAttribute("data-replay-with");
+      await replay.click();
+      await page.waitForFunction(() => window.__swarm.box.stats.tick < 200 && window.__swarm.box.playing, null, { timeout: 10_000 });
+      const rerun = await box(page);
+      check('"Replay with this switched on" reruns from the start with that layer on', rerun.labs.some((l) => l.layers[layer]), `${layer} on, tick ${rerun.stats.tick}`);
+      check("the breakout shot logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
+    } finally {
+      await context.close();
+    }
+  }
+
+  /** The scene as drawn: no label or button on another, none cut by the slot, every lab wholly inside it. */
+  const checkScene = async (page, where) => {
+    const scene = await measureScene(page);
+    check(`${where}: the scene slot is on the page`, scene.slot !== null);
+    check(`${where}: no scene label or marker button touches another`, scene.clashes.length === 0, scene.clashes.join(", "));
+    check(`${where}: no scene label or marker button is cut by the slot's edge`, scene.cut.length === 0, scene.cut.join(", "));
+    check(`${where}: every lab's ring is wholly inside the scene`, scene.labsCut.length === 0, scene.labsCut.join(", "));
+    return scene;
+  };
+
+  /**
+   * The playground's framing at a desktop and a phone, on the breakout shot: the scene keeps at least
+   * SCENE_MIN_PX of height with a marker's card open and every lab stays in it; on the phone the scene
+   * starts within the first screen and every lab is in frame; nothing on the map overlaps or is cut.
+   * `openPage` fixes the window at 1280x720, so each page is resized once it is up (the slot follows).
+   */
+  async function stepLayout(browser) {
+    console.log("-- 8. layout: the scene's framing at a desktop and a phone");
+    const sized = async (page, width, height) => {
+      await page.waitForFunction(() => window.__swarm?.box?.settled === true, null, { timeout: READY_TIMEOUT_MS });
+      await page.waitForFunction(() => window.__swarm.box.markers.length > 0 && window.__swarm.box.markers.every((m) => m.title), null, { timeout: 30_000 });
+      await page.setViewportSize({ width, height });
+      await page.waitForTimeout(600);
+    };
+    const desktop = await openPage(browser, "/box?shot=breakout");
+    try {
+      await sized(desktop.page, 1440, 900);
+      const before = await checkScene(desktop.page, "desktop");
+      check("desktop: the scene is at least SCENE_MIN_PX tall", (before.slot?.height ?? 0) >= SCENE_MIN_PX, `${Math.round(before.slot?.height ?? 0)} px`);
+      await desktop.page.locator('[data-step-marker="1"]:visible').click();
+      await desktop.page.locator('[data-marker-card="1"]').waitFor({ timeout: 5_000 });
+      await desktop.page.waitForTimeout(900);
+      const after = await checkScene(desktop.page, "desktop with a card open");
+      check("desktop with a card open: the scene keeps at least SCENE_MIN_PX of height", (after.slot?.height ?? 0) >= SCENE_MIN_PX, `${Math.round(after.slot?.height ?? 0)} px`);
+      const names = await desktop.page.locator("[data-lab-name]").evaluateAll((els) => els.map((e) => e.dataset.labName));
+      check("desktop with a card open: every lab is named on the scene", names.length === after.labs.length && after.labs.length === 3, names.join());
+      // A plain wheel over the map scrolls the page down to the card; Ctrl and the wheel zooms the map.
+      const scroller = () =>
+        desktop.page.evaluate(() => {
+          let el = document.querySelector("[data-scene-slot]");
+          while (el && !(el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === "auto")) el = el.parentElement;
+          return el ? el.scrollTop : -1;
+        });
+      // The lower left of the slot: open map, clear of the labs, their text and the numbered buttons.
+      const mid = { x: after.slot.left + after.slot.width * 0.1, y: after.slot.top + after.slot.height * 0.85 };
+      const top0 = await scroller();
+      await desktop.page.mouse.move(mid.x, mid.y);
+      await desktop.page.mouse.wheel(0, 300);
+      await desktop.page.waitForTimeout(400);
+      const top1 = await scroller();
+      const plain = await desktop.page.evaluate(() => window.__swarm.box.camera.mode);
+      check("desktop: a plain wheel over the map scrolls the page and leaves the camera alone", top1 > top0 && plain === "director", `scrollTop ${top0} to ${top1}, camera ${plain}`);
+      // The page has scrolled, so aim again at the same spot of the slot.
+      const moved = await desktop.page.evaluate(() => {
+        const r = document.querySelector("[data-scene-slot]").getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+      });
+      await desktop.page.mouse.move(moved.left + moved.width * 0.1, Math.max(moved.top + moved.height * 0.85, 20));
+      await desktop.page.keyboard.down("Control");
+      await desktop.page.mouse.wheel(0, -200);
+      await desktop.page.keyboard.up("Control");
+      await desktop.page.waitForTimeout(300);
+      const zoomed = await desktop.page.evaluate(() => window.__swarm.box.camera.mode);
+      check("desktop: Ctrl and the wheel over the map zooms it", zoomed === "free", zoomed);
+      check("desktop: no console errors or THREE warnings", desktop.problems.length === 0, desktop.problems.join(" | "));
+    } finally {
+      await desktop.context.close();
+    }
+    const phone = await openPage(browser, "/box?shot=breakout");
+    try {
+      await sized(phone.page, 390, 844);
+      const scene = await checkScene(phone.page, "phone");
+      check("phone: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 844, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 844`);
+      check("phone: every lab is in frame", scene.labs.length === 3 && scene.labsCut.length === 0, scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", "));
+      const tickLeft = await phone.page.locator("[data-counter=tick]").evaluate((e) => Math.round(e.getBoundingClientRect().left));
+      check("phone: the counters start at the left edge", tickLeft < 40, `TICK at x=${tickLeft}`);
+      check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
+    } finally {
+      await phone.context.close();
+    }
+  }
+
+  return [stepBox, stepPlayground, stepDebrief, stepWebGL, stepLayout];
+}
+
+// --- `node scripts/smoke-box.mjs [--port=3134] [--only=layout]`: only Act 2's steps (or the steps whose name has `--only`'s text), against the production build ---
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const { chromium } = await import("playwright");
+  const { ROOT, startDevServer, stopDevServer, waitForServer } = await import("./lib/dev-server.mjs");
+  const port = Number((process.argv.find((a) => a.startsWith("--port=")) ?? "--port=3134").slice(7));
+  const base = `http://localhost:${port}`;
+  const only = (process.argv.find((a) => a.startsWith("--only=")) ?? "--only=").slice(7).toLowerCase();
+  const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
+  const check = (label, ok, detail = "") => {
+    if (!ok) throw new Error(`${label}${detail ? ` (${detail})` : ""}`);
+    console.log(`PASS  ${label}${detail ? ` (${detail})` : ""}`);
+  };
+  const openPage = async (browser, route) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    const problems = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") problems.push(m.text());
+      else if (m.text().includes("THREE.")) problems.push(`warning: ${m.text()}`);
+    });
+    page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+    const response = await page.goto(`${base}${route}`, { waitUntil: "load" });
+    return { context, page, problems, response };
+  };
+  if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
+    console.error("FAIL  no production build: run `npm run build` first");
+    process.exit(1);
+  }
+  let code = 1;
+  const server = startDevServer(port, "start");
+  try {
+    await waitForServer(base);
+    const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS });
+    try {
+      for (const step of boxSteps({ check, openPage })) if (step.name.toLowerCase().includes(only)) await step(browser);
+    } finally {
+      await browser.close();
+    }
+    console.log("BOX SMOKE OK");
+    code = 0;
+  } catch (err) {
+    console.error(`box smoke failed: ${err.message}`);
+  } finally {
+    stopDevServer(server);
+  }
+  process.exit(code);
 }

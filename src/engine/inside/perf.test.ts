@@ -27,10 +27,18 @@ function capTrace(): SessionTrace {
   return { version: 1, source: "upload", label: "cap", duration: 200, agents, events, truncated: false };
 }
 
-const time = (fn: () => void) => {
-  const start = performance.now();
-  fn();
-  return performance.now() - start;
+/**
+ * The best of five runs: one GC pause or a busy CI neighbour slows a single run (the nebula plan
+ * read 61 ms once on a runner), while a real regression slows every one.
+ */
+const time = (fn: () => void, runs = 5) => {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = performance.now();
+    fn();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
 };
 
 describe("a cap-sized trace stays responsive", () => {

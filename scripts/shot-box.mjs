@@ -157,7 +157,7 @@ try {
   console.log(`  markers: ${info.labels.markers.join(" | ") || "(none)"}`);
   console.log(`  trail: ${info.labels.trail.join(" | ") || "(none)"}; plotted ${info.labels.points}`);
   if (info.labels.labNames.length) {
-    console.log(`  labs: ${info.labels.labNames.join(" | ").replace(/s+/g, " ")}`);
+    console.log(`  labs: ${info.labels.labNames.join(" | ").replace(/\s+/g, " ")}`);
     console.log(`  links: ${info.labels.linkNames.join(" | ") || "(none)"}; outside: ${info.labels.outside.join(" | ") || "(none)"}`);
     console.log(`  steps: ${info.labels.stepMarkers.join(" ") || "(none)"}; camera ${info.camera?.mode}, focus ${info.camera?.focus ?? "none"}`);
   }

@@ -3,7 +3,6 @@ import { presetScenario } from "@/lib/box/presets";
 import { scenarioFromParams } from "@/lib/box/share";
 import {
   addLab,
-  applyFlip,
   bestScore,
   firstVisitParams,
   linkLabs,
@@ -13,9 +12,10 @@ import {
   removeLab,
   setCast,
   setupLabel,
+  spreadLine,
+  spreadPoints,
   shareQuery,
   unlinkLabs,
-  type Flips,
 } from "./playground";
 
 describe("firstVisitParams", () => {
@@ -80,20 +80,23 @@ describe("setupLabel", () => {
   });
 });
 
-describe("applyFlip", () => {
-  it("logs a change only when the layer actually changes", () => {
-    const scenario = presetScenario("breakout");
-    let flips: Flips = { scenario, list: [] };
-    flips = applyFlip(flips, scenario, 10, "meridian", "sandbox", true, true);
-    expect(flips.list).toHaveLength(0);
-    flips = applyFlip(flips, scenario, 10, "meridian", "sandbox", false, true);
-    expect(flips.list).toEqual([{ tick: 10, lab: "meridian", layer: "sandbox", on: false }]);
+describe("spreadPoints", () => {
+  it("gives four crowded points room of their own", () => {
+    const out = spreadPoints([{ x: 100, y: 100 }, { x: 104, y: 101 }, { x: 100, y: 100 }, { x: 108, y: 103 }], 30);
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) expect(Math.hypot(out[i].x - out[j].x, out[i].y - out[j].y)).toBeGreaterThanOrEqual(29.5);
   });
-  it("starts a fresh log for a new scenario", () => {
-    const a = presetScenario("breakout");
-    const b = presetScenario("breakout");
-    const flips = applyFlip({ scenario: a, list: [] }, a, 5, "kestrel", "audit", false, true);
-    expect(applyFlip(flips, b, 0, "kestrel", "sandbox", false, true).list).toHaveLength(1);
+  it("leaves points that are already apart where they are", () => {
+    const pts = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+    expect(spreadPoints(pts, 30)).toEqual(pts);
+  });
+});
+
+describe("spreadLine", () => {
+  it("keeps ordered positions apart and inside the bounds", () => {
+    const out = spreadLine([10, 11, 12, 300], 26, 12, 290);
+    for (let i = 1; i < out.length; i++) expect(out[i] - out[i - 1]).toBeGreaterThanOrEqual(26);
+    expect(out[0]).toBeGreaterThanOrEqual(12);
+    expect(out[3]).toBeLessThanOrEqual(290);
   });
 });
 

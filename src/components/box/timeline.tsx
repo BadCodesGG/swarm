@@ -1,48 +1,78 @@
 "use client";
 
-import { useState } from "react";
-import type { MarkerView } from "@/engine/box/overlay";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { clock, LAYER_NAME } from "@/engine/box/explain";
 import { compareBranch, snapshotWorld, type BranchOutcome } from "@/lib/box/branch";
 import { LAYER_ORDER, type LayerId } from "@/lib/box/types";
 import type { World } from "@/lib/box/world";
-import { LAB_NAME, type LabId, type Scenario } from "@/lib/box/world-types";
+import { LAB_NAME, type BreakoutStep, type LabId, type Scenario } from "@/lib/box/world-types";
+import { spreadLine } from "./playground";
 import { button } from "./toolbar";
 
+/** A step as the timeline remembers it, so a rewound view (which has not reached it yet) still shows it. */
+export interface Pin {
+  n: number;
+  tick: number;
+  lab: LabId;
+  step: BreakoutStep | null;
+}
+
+/** A pin's width on the timeline, and the gap kept between two. */
+const PIN = 26;
+
 /**
- * The run's ticks as a scrubber, with the numbered markers pinned on it. Dragging it rewinds the
- * debrief (the numbers, the chat and the branch below) to that tick; "Back to live" lets go.
+ * The run's ticks as a scrubber, with the numbered markers pinned on it. Dragging it seeks the scene
+ * to that tick (the engine replays to it and stops advancing); "Back to live" returns to the head.
+ * `children` is the run controls, which sit on the same row.
  */
 export function Timeline({
-  tick,
-  cursor,
+  at,
+  head,
+  live,
   markers,
   selected,
-  onCursor,
+  onSeek,
+  onLive,
   onPick,
+  children,
 }: {
-  tick: number;
-  cursor: number | null;
-  markers: readonly MarkerView[];
+  at: number;
+  head: number;
+  live: boolean;
+  markers: readonly Pin[];
   selected: number | null;
-  onCursor(t: number | null): void;
+  onSeek(t: number): void;
+  onLive(): void;
   onPick(n: number): void;
+  children?: ReactNode;
 }) {
-  const max = Math.max(tick, 1);
-  const at = cursor ?? tick;
-  const shown = markers.filter((m) => m.shown && m.tick <= max);
+  const max = Math.max(head, 1);
+  const track = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(600);
+  useEffect(() => {
+    const el = track.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const shown = [...markers].sort((a, b) => a.tick - b.tick);
+  const lo = PIN / 2;
+  const hi = Math.max(lo, width - PIN / 2);
+  const xs = spreadLine(shown.map((m) => lo + (m.tick / max) * (hi - lo)), PIN + 2, lo, hi);
   return (
-    <section aria-label="Timeline" className="flex flex-col gap-1.5 rounded-[14px] border border-panel-border bg-panel px-3.5 py-2.5" data-timeline>
-      <div className="flex items-center justify-between gap-2 font-mono text-[11px] text-label">
-        <span>
-          {cursor === null ? "LIVE" : "REWOUND"} <span className="text-ink">T+{clock(at)}</span> <span className="text-faint">tick {at}</span>
+    <section aria-label="Timeline" className="flex flex-col gap-1 rounded-[14px] border border-panel-border bg-panel px-3.5 py-2.5" data-timeline>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {children}
+        <span className="font-mono text-[11px] text-label">
+          {live ? "LIVE" : "REWOUND"} <span className="text-ink">T+{clock(at)}</span> <span className="text-faint">tick {at}</span>
         </span>
-        <button type="button" disabled={cursor === null} onClick={() => onCursor(null)} className={`${button} min-h-9 text-xs`} data-back-to-live>
+        <button type="button" disabled={live} onClick={onLive} className={`${button} ml-auto min-h-9 text-xs`} data-back-to-live>
           Back to live
         </button>
       </div>
-      <div className="relative h-7" aria-label="Markers on the timeline" role="group">
-        {shown.map((m) => (
+      <div ref={track} className="relative h-7" role="group" aria-label="Markers on the timeline">
+        {shown.map((m, i) => (
           <button
             key={m.n}
             type="button"
@@ -51,13 +81,13 @@ export function Timeline({
             aria-label={`Marker ${m.n} at tick ${m.tick}`}
             onClick={() => {
               // One tick before the step: a layer switched on at the step's own tick would be too late.
-              onCursor(Math.max(0, m.tick - 1));
+              onSeek(Math.max(0, m.tick - 1));
               onPick(m.n);
             }}
-            className={`absolute top-0 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center rounded-full border px-1 font-mono text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none ${
+            className={`absolute top-0.5 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border font-mono text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none ${
               selected === m.n ? "border-ink bg-escape text-ground" : "border-escape bg-ground text-escape-text"
             }`}
-            style={{ left: `${(m.tick / max) * 100}%` }}
+            style={{ left: xs[i] }}
           >
             {m.n}
           </button>
@@ -69,13 +99,14 @@ export function Timeline({
         max={max}
         value={Math.min(at, max)}
         aria-label="Rewind to a tick"
-        aria-valuetext={`tick ${at}, ${cursor === null ? "live" : "rewound"}`}
+        aria-valuetext={`tick ${at}, ${live ? "live" : "rewound"}`}
         data-scrubber-box
         onChange={(e) => {
           const v = Number(e.target.value);
-          onCursor(v >= max ? null : v);
+          if (v >= max) onLive();
+          else onSeek(v);
         }}
-        className="m-0 h-7 w-full cursor-pointer accent-layer-2"
+        className="m-0 h-6 w-full cursor-pointer accent-layer-2"
       />
     </section>
   );

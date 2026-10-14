@@ -46,7 +46,7 @@ export function MarkerCard({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-mono text-[11px] tracking-[0.12em] text-escape-text">
-          STEP {n} / {step ? step.where : "WORKING IT OUT"} / T+{clock(tick)}
+          STEP {n} / {step ? step.where : "WORKING IT OUT"} / T+{clock(tick)}{step?.kind === "held" ? " / HELD" : ""}
         </span>
         <button type="button" onClick={close} className={`${button} min-h-9 text-xs`} data-close-card>
           Close
@@ -56,13 +56,20 @@ export function MarkerCard({
         <>
           <h3 className="m-0 text-base font-bold tracking-[-0.01em] text-ink">{step.title}</h3>
           <p className="m-0 text-xs leading-snug text-muted">{step.body}</p>
-          <div className="flex flex-col gap-1 rounded-lg bg-white/[0.04] px-3 py-2">
-            <span className="font-mono text-[10px] tracking-[0.14em] text-haiku">WOULD HAVE STOPPED IT</span>
-            <span className="text-sm font-semibold text-body" data-stopped-by>
-              {step.stoppedBy.length > 0 ? step.stoppedBy.map((l) => LAYER_NAME[l]).join(", ") : "No single layer."}
-            </span>
-            <span className="text-xs text-label">{step.stop}</span>
-          </div>
+          {step.verdict ? (
+            <p className="m-0 font-mono text-[11px] text-label" data-verdict={step.verdict.result}>
+              {step.verdict.text}
+            </p>
+          ) : null}
+          {step.kind === "held" ? null : (
+            <div className="flex flex-col gap-1 rounded-lg bg-white/[0.04] px-3 py-2">
+              <span className="font-mono text-[10px] tracking-[0.14em] text-haiku">WOULD HAVE STOPPED IT</span>
+              <span className="text-sm font-semibold text-body" data-stopped-by>
+                {step.stoppedBy.length > 0 ? step.stoppedBy.map((l) => LAYER_NAME[l]).join(", ") : "No single layer."}
+              </span>
+              <span className="text-xs text-label">{step.stop}</span>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {step.stoppedBy.map((l) => (
               <button key={l} type="button" data-replay-with={l} onClick={() => onReplayWith(l)} className={button}>

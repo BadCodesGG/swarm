@@ -30,8 +30,10 @@ export function TrialsPlot({
   const segments = vertices.slice(1).map((v, i): Segment => [vertices[i], v]);
   const label = here ? placeLabel(here, segments, others.map((p) => toPlot(p.usefulness, p.safety))) : null;
   const dots = others.map((p) => toPlot(p.usefulness, p.safety));
+  // Each setup is a number on the plot and a name in the key under it, so no name has to fit beside its dot.
+  const number = (p: PlotPoint) => points.indexOf(p) + 1;
   const tags = placeTags(
-    others.filter((p) => labels[p.key]).map((p) => ({ key: p.key, text: labels[p.key], at: toPlot(p.usefulness, p.safety) })),
+    others.map((p) => ({ key: p.key, text: String(number(p)), at: toPlot(p.usefulness, p.safety) })),
     segments,
     dots,
     label ? [label.box] : [],
@@ -62,7 +64,7 @@ export function TrialsPlot({
             return <circle key={p.key} cx={x} cy={y} r="4" data-plot-point />;
           })}
         </g>
-        <g className="font-mono" fontSize="8.5" fill="#a7b1c2" style={{ paintOrder: "stroke", stroke: "#0c101c", strokeWidth: 3 }}>
+        <g className="font-mono" fontSize="9" fill="#a7b1c2" style={{ paintOrder: "stroke", stroke: "#0c101c", strokeWidth: 3 }}>
           {tags.map((t) => (
             <text key={t.key} x={t.x} y={t.y} textAnchor={t.anchor} data-plot-tag>
               {t.text}
@@ -89,13 +91,17 @@ export function TrialsPlot({
         ) : null}
       </svg>
       {points.length ? (
-        <ul className="sr-only" aria-label="Plotted setups">
+        <ol className="m-0 flex list-none flex-wrap gap-x-3 gap-y-0.5 p-0 font-mono text-[10px] text-label" aria-label="Plotted setups" data-plot-key>
           {points.map((p) => (
-            <li key={p.key}>
-              {labels[p.key] ?? "setup"}: keeps {pct(p.usefulness)} of the work, stops escapes in {pct(p.safety)} of trials
+            <li key={p.key} className={p === current ? "text-ink" : undefined}>
+              <span className="text-faint">{number(p)}</span> {labels[p.key] ?? "setup"}
+              {p === current ? " (this setup)" : ""}
+              <span className="sr-only">
+                : keeps {pct(p.usefulness)} of the work, stops escapes in {pct(p.safety)} of trials
+              </span>
             </li>
           ))}
-        </ul>
+        </ol>
       ) : null}
     </section>
   );

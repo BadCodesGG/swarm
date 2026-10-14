@@ -87,7 +87,7 @@ export function WorldBuilder({
               type="button"
               disabled={ids.length <= 1}
               data-remove-lab={l.id}
-              aria-label={`Remove ${LAB_NAME[l.id]}`}
+              aria-label={`Remove ${LAB_NAME[l.id]} and restart`}
               onClick={() => onRemove(l.id)}
               className={`${button} min-w-11 rounded-l-none border-l-0 px-2`}
             >
@@ -97,7 +97,7 @@ export function WorldBuilder({
         ))}
         <li>
           <button type="button" disabled={ids.length >= MAX_LABS} data-add-lab onClick={onAdd} className={button}>
-            Add a lab
+            Add a lab and restart
           </button>
         </li>
       </ul>
@@ -110,7 +110,7 @@ export function WorldBuilder({
               <span>
                 {LINK_LABEL[k.kind]}: {k.labs.map((id) => LAB_NAME[id]).join(", ")}
               </span>
-              <button type="button" data-unlink={i} onClick={() => onUnlink(i)} className={`${button} min-h-9 text-xs`} aria-label={`Unlink ${LINK_LABEL[k.kind]} between ${k.labs.map((id) => LAB_NAME[id]).join(" and ")}`}>
+              <button type="button" data-unlink={i} onClick={() => onUnlink(i)} className={`${button} min-h-9 text-xs`} aria-label={`Unlink ${LINK_LABEL[k.kind]} between ${k.labs.map((id) => LAB_NAME[id]).join(" and ")} and restart`}>
                 Unlink
               </button>
             </li>
@@ -139,7 +139,7 @@ export function WorldBuilder({
             ))}
           </select>
           <button type="button" data-link-labs disabled={ids.length < 2 || from === to} onClick={() => onLink(kind, from, to)} className={button}>
-            Link
+            Link and restart
           </button>
         </div>
       </fieldset>

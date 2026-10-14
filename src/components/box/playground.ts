@@ -7,8 +7,8 @@
 import { DEFAULT_CAST, validCast } from "@/lib/box/cast";
 import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
 import { scenarioToParams } from "@/lib/box/share";
-import type { BoxConfig, LayerId } from "@/lib/box/types";
-import { LAB_IDS, PRESET_IDS, type Cast, type Flip, type InterceptLine, type LabId, type LinkKind, type Preset, type Scenario } from "@/lib/box/world-types";
+import type { BoxConfig } from "@/lib/box/types";
+import { LAB_IDS, PRESET_IDS, type Cast, type InterceptLine, type LabId, type LinkKind, type Preset, type Scenario } from "@/lib/box/world-types";
 
 /** Parameters that ask for one particular run; with none of them the visit is a first visit. */
 const ASKS = ["seed", "preset", "shot", "labs", "scenario", "b", "v"];
@@ -103,17 +103,55 @@ export function setupLabel(s: Scenario, names: Record<string, string>): string {
   return label;
 }
 
-/** The layer changes the visitor has made to the running world, so its past can be rebuilt exactly. */
-export interface Flips {
-  scenario: Scenario;
-  list: Flip[];
+/** A point on the screen. */
+export interface XY {
+  x: number;
+  y: number;
 }
 
-/** Logs a change at `tick` when the layer's state really changes; a new scenario starts a new log. */
-export function applyFlip(flips: Flips, scenario: Scenario, tick: number, lab: LabId, layer: LayerId, on: boolean, was: boolean): Flips {
-  const base = flips.scenario === scenario ? flips : { scenario, list: [] };
-  if (was === on) return base;
-  return { scenario, list: [...base.list, { tick, lab, layer, on }] };
+/**
+ * Pushes points apart until none is closer than `min` to another (or `rounds` run out), so buttons
+ * that sit on one trail each keep a hit target of their own. Order-stable and pure.
+ */
+export function spreadPoints(points: readonly XY[], min: number, rounds = 60): XY[] {
+  const p = points.map((q) => ({ ...q }));
+  for (let r = 0; r < rounds; r++) {
+    let moved = false;
+    for (let i = 0; i < p.length; i++) {
+      for (let j = i + 1; j < p.length; j++) {
+        let dx = p[j].x - p[i].x;
+        let dy = p[j].y - p[i].y;
+        let d = Math.hypot(dx, dy);
+        if (d >= min) continue;
+        if (d < 0.01) {
+          // On top of each other: split along an angle that depends on the pair.
+          const a = (i * 7 + j * 3) * 0.9;
+          dx = Math.cos(a);
+          dy = Math.sin(a);
+          d = 1;
+        }
+        const push = (min - d) / 2 + 0.01;
+        p[i].x -= (dx / d) * push;
+        p[i].y -= (dy / d) * push;
+        p[j].x += (dx / d) * push;
+        p[j].y += (dy / d) * push;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return p;
+}
+
+/** The same along a line: positions at least `min` apart, inside `lo`..`hi`, in the given order of `xs` (ascending). */
+export function spreadLine(xs: readonly number[], min: number, lo: number, hi: number): number[] {
+  const out = xs.map((x) => Math.min(hi, Math.max(lo, x)));
+  for (let i = 1; i < out.length; i++) out[i] = Math.max(out[i], out[i - 1] + min);
+  for (let i = out.length - 1; i >= 0; i--) {
+    const cap = i === out.length - 1 ? hi : out[i + 1] - min;
+    out[i] = Math.min(out[i], cap);
+  }
+  return out;
 }
 
 /** The newest line not yet spoken, once `gap` ms have passed since the last one; null otherwise. */

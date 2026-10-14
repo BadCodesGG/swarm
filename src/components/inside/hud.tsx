@@ -67,6 +67,8 @@ function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: 
         app.seek(tl.toTrace(Math.min(Math.max(pb, 0), tl.playbackDuration)));
       } else if (e.key === "a" || e.key === "A") {
         onCycle(e.shiftKey ? -1 : 1);
+      } else if (e.key === "d" || e.key === "D") {
+        app.resumeDirector();
       } else if (e.key >= "1" && e.key <= String(RATES.length)) {
         app.setRate(RATES[Number(e.key) - 1]);
       } else return;

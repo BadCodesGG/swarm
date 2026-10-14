@@ -4,9 +4,9 @@
  */
 
 import { Mesh, type Object3D } from "three/webgpu";
-import { attribute, color, cos, exp, float, mix, smoothstep, sin, vec3, vec4 } from "three/tsl";
-import { STATION_RADIUS, STATIONS, newPose, stationPos } from "../layout";
-import { coverage, dynamicAttribute, ribbonGeometry, ribbonMaterial, spriteGeometry, spriteMaterial, type InsideUniforms } from "./common";
+import { attribute, color, exp, float, mix, smoothstep, vec4 } from "three/tsl";
+import { STATIONS, newPose, stationPos } from "../layout";
+import { coverage, dynamicAttribute, spriteGeometry, spriteMaterial } from "./common";
 
 const DISC_PX = 9;
 
@@ -16,30 +16,7 @@ export interface Stations {
   dispose(): void;
 }
 
-export function createStations(parent: Object3D, u: InsideUniforms): Stations {
-  // The ring: a closed curve through every station.
-  const ringGeometry = ribbonGeometry(160);
-  ringGeometry.instanceCount = 1;
-  const ringMaterial = ribbonMaterial(
-    u,
-    (s) => {
-      const a = s.mul(Math.PI * 2);
-      return {
-        at: vec3(cos(a).mul(STATION_RADIUS), sin(a).mul(STATION_RADIUS), 0),
-        tangent: vec3(sin(a).negate(), cos(a), 0),
-        widthPx: float(1.2),
-      };
-    },
-    (_s, across, half) => {
-      const a = coverage(across, half);
-      return vec4(color(0x1b2340).mul(a).mul(1.25), a);
-    },
-  );
-  const ring = new Mesh(ringGeometry, ringMaterial);
-  ring.frustumCulled = false;
-  ring.renderOrder = 10;
-  parent.add(ring);
-
+export function createStations(parent: Object3D): Stations {
   const geometry = spriteGeometry();
   const aSt = dynamicAttribute(STATIONS.length, 4);
   const p = newPose();
@@ -73,10 +50,7 @@ export function createStations(parent: Object3D, u: InsideUniforms): Stations {
       aSt.needsUpdate = true;
     },
     dispose() {
-      parent.remove(ring);
       parent.remove(mesh);
-      ringGeometry.dispose();
-      ringMaterial.dispose();
       geometry.dispose();
       material.dispose();
     },

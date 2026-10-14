@@ -108,7 +108,7 @@ export function overviewBounds(frames: readonly LabFrame[]): Box {
 }
 /** World units kept under a lab for its name, and round a trail's end for its marker and the OUTSIDE tag. */
 const NAME_ROOM = 40;
-const TRAIL_ROOM = { x: 110, y: 30 } as const;
+const TRAIL_ROOM = { x: 130, y: 30 } as const;
 
 export const centroid = (points: readonly Point[]): Point => ({
   x: points.reduce((n, p) => n + p.x, 0) / Math.max(1, points.length),

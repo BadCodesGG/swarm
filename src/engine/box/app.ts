@@ -74,7 +74,7 @@ import { exitHeading, labFrames, linkShapes, outerRadius, pointAlong, routePoint
 export type { Frame } from "./view";
 
 /** Where each escape sub-step sits between the broken outer ring and the trail's far end, as a fraction. */
-const BEAT_AT = [0.08, 0.36, 0.64, 0.92] as const;
+const BEAT_AT = [0.06, 0.31, 0.56, 0.8] as const;
 /** World units each sub-step's button sits off the trail, alternating sides so the four never touch. */
 const BEAT_OFF = 40;
 

@@ -11,7 +11,7 @@ import { button, iconButton, segment, segmentItem } from "./toolbar";
 type Tab = "story" | "feed";
 
 /** A step's verdict in one word, coloured by what it means and never by colour alone. */
-function verdictOf(step: BreakoutStep | null, kind: Pin["kind"]): { text: string; tone: string } {
+export function verdictOf(step: BreakoutStep | null, kind: Pin["kind"]): { text: string; tone: string } {
   const r = step?.verdict?.result;
   if (r === "passed") return { text: "PASSED", tone: "text-warn" };
   if (r === "off") return { text: "OFF", tone: "text-escape-text" };
@@ -42,7 +42,7 @@ function Summary({ labs }: { labs: readonly WorldLabSnapshot[] }) {
   );
 }
 
-function StepBody({ pin, onReplayWith }: { pin: Pin; onReplayWith(lab: LabId, layer: LayerId): void }) {
+export function StepBody({ pin, onReplayWith }: { pin: Pin; onReplayWith(lab: LabId, layer: LayerId): void }) {
   const { step } = pin;
   if (!step) return <p className="m-0 text-[13px] leading-normal text-label">Replaying the run with each layer on, one at a time, to see which would have stopped it.</p>;
   return (

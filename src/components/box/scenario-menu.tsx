@@ -59,9 +59,9 @@ export function ScenarioMenu({ current, editing, onPick, onEdit }: { current: Pr
         aria-expanded={open}
         aria-controls={id}
         data-scenario-menu
-        className={`${button} gap-2.5`}
+        className={`${button} gap-2.5 max-[914px]:shrink-0 max-[914px]:gap-1.5`}
       >
-        <span className="font-mono text-[10px] tracking-[0.14em] text-faint uppercase">Scenario</span>
+        <span className="font-mono text-[10px] tracking-[0.14em] text-faint uppercase max-[914px]:sr-only">Scenario</span>
         <span className="font-semibold text-ink-strong">{current ? PRESET_LABEL[current] : "Your own"}</span>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`}>
           <path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

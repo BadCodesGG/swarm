@@ -11,6 +11,8 @@ export function DefencesRail({
   cast,
   castOf,
   onOpenResults,
+  sheet = false,
+  lead,
 }: {
   tabs: ReactNode;
   children: ReactNode;
@@ -18,10 +20,18 @@ export function DefencesRail({
   cast: ReactNode;
   castOf: string;
   onOpenResults(): void;
+  /** In the phone's Defences sheet: no frame or heading of its own, and `lead` (the Defend card) above the layers. */
+  sheet?: boolean;
+  lead?: ReactNode;
 }) {
   return (
-    <aside aria-label="Defences" className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-4" data-defences-rail>
-      <span className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">Defences</span>
+    <aside
+      aria-label="Defences"
+      className={sheet ? "flex flex-col gap-3" : "flex min-h-0 flex-col gap-3 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-4"}
+      data-defences-rail
+    >
+      {sheet ? null : <span className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">Defences</span>}
+      {lead}
       {tabs}
       {children}
       {builder}

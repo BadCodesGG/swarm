@@ -22,16 +22,20 @@ import { CastPanel, LabTabs, WorldBuilder } from "./lab-panels";
 import { buildLanes } from "./lanes";
 import { OutsidePanel } from "./outside-panel";
 import { Panel } from "./panel";
+import { PhoneTabs, type PanelTab } from "./phone-tabs";
 import { settingsKey } from "./plot";
 import { AgentCard } from "./play-panels";
 import { addLab, currentScenario, linkLabs, presetOf, removeLab, setCast, shareQuery, stepAfter, unlinkLabs } from "./playground";
 import { BranchedPill, ResultsView } from "./results-view";
 import { ScenarioMenu } from "./scenario-menu";
 import { RingLegend, SceneLabels } from "./scene-labels";
+import { Sheet } from "./sheet";
+import { StepCard } from "./step-card";
 import { StoryRail } from "./story-rail";
 import { Timeline, type Pin } from "./timeline";
 import { ModeSwitch, ShareButton, type Mode } from "./toolbar";
 import { useBoxOverlay, useBoxSnapshot } from "./use-box";
+import { usePhone } from "./use-phone";
 import { isResultsQuery, withResultsView } from "./view";
 import { isAbort, useTrials } from "./use-trials";
 import { useWorldAt } from "./use-world-at";
@@ -51,8 +55,9 @@ type ThresholdKey = "monitorThreshold" | "auditBudget";
  * Everything over the Box canvas, as a layout shell. On a desktop the first screen is the top bar
  * and three columns: the story (or the mode's own card) on the left, the scene with the timeline
  * under it in the centre, the defences on the right; the results sit below. The engine draws into the
- * scene slot's rect (`app.setFrame`). On a phone and tablet the scene comes first and the rest stacks
- * under it. Trials run off the main thread.
+ * scene slot's rect (`app.setFrame`). At 914 px and under (a phone, a tablet held upright) the scene
+ * comes first, then the timeline and the current step; the defences and the feed open as bottom sheets
+ * from a tab bar that also leads to the results. Trials run off the main thread.
  */
 export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean }) {
   const [snap, refresh] = useBoxSnapshot(app);
@@ -64,6 +69,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const shown = world.labs.find((l) => l.id === shownId) ?? world.labs[0];
   const [mode, setMode] = useState<Mode>("watch");
   const [editing, setEditing] = useState(false);
+  const phone = usePhone();
+  // The phone's bottom sheet, if one is up.
+  const [sheet, setSheet] = useState<"defences" | "feed" | null>(null);
   // The Defend budget: from the link that opened the page, then the card's slider.
   const [budget, setBudget] = useState(() => budgetFromParams(new URLSearchParams(window.location.search)));
   const [textScale, setTextScale] = useState(1);
@@ -299,6 +307,8 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     const original = branched?.original ?? { scenario: base, flips: app.flips(), head: tl.head };
     app.loadScenario(base, { flips: forkFlips(app.flips(), at, { lab, layer, on: true }), tick: at });
     app.play();
+    // The map was zoomed on a lab when the page left it: frame every lab again.
+    if (base.labs.length > 1) app.camera.overview();
     setBranched({ at, original });
     closeResults();
   };
@@ -307,6 +317,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     const { scenario: sc, flips: fl, head } = branched.original;
     app.loadScenario(sc, { flips: fl, tick: head });
     app.play();
+    if (sc.labs.length > 1) app.camera.overview();
     setBranched(null);
   };
   /** "Keep this change": the layer goes on now, in the live run. */
@@ -325,6 +336,16 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         ? { label: "Play", node: <AgentCard lab={shown.id} config={shown.config} seed={snap.seed} /> }
         : null;
 
+  const feed = (
+    <>
+      <EventLog log={tally.log} caught={tally.caughtTotal} escaped={tally.escaped} />
+      <InterceptPanel lines={world.intercept} />
+      <OutsidePanel escaped={tally.escaped} />
+    </>
+  );
+
+  const lead = !multi && escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={(layer) => rerunWith(shown.id, layer)} /> : null;
+
   const story = (
     <StoryRail
       presetName={preset ? PRESET_LABEL[preset] : null}
@@ -335,15 +356,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
       onClose={() => app.selectStep(null)}
       onStep={walk}
       onReplayWith={rerunWith}
-      lead={!multi && escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={(layer) => rerunWith(shown.id, layer)} /> : null}
+      lead={lead}
       primary={primary}
-      feed={
-        <>
-          <EventLog log={tally.log} caught={tally.caughtTotal} escaped={tally.escaped} />
-          <InterceptPanel lines={world.intercept} />
-          <OutsidePanel escaped={tally.escaped} />
-        </>
-      }
+      feed={feed}
     />
   );
 
@@ -364,7 +379,12 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         ) : null
       }
       castOf={shown.name}
-      onOpenResults={openResults}
+      onOpenResults={() => {
+        setSheet(null);
+        openResults();
+      }}
+      sheet={phone}
+      lead={phone && mode === "defend" ? <DefendCard sheet world={viewWorld} flips={flips} budget={budget} onBudget={setBudget} /> : null}
       cast={
         <CastPanel
           key={`${shown.id}|${JSON.stringify(castOf)}`}
@@ -405,9 +425,29 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     </DefencesRail>
   );
 
+  // The phone's step card: the open step, else the first, and previous and next from there.
+  const steps = [...pins].sort((a, b) => a.n - b.n);
+  const currentN = world.selected ?? steps[0]?.n ?? null;
+  const currentPin = steps.find((p) => p.n === currentN) ?? null;
+  const walkCard = (dir: 1 | -1) => {
+    const ns = app
+      .overlay()
+      .markers.filter((m) => m.shown)
+      .map((m) => m.n);
+    const n = stepAfter(ns, currentN, dir);
+    if (n !== null) app.selectStep(n);
+  };
+  const activeTab: PanelTab = sheet ?? (view === "results" ? "results" : "story");
+  const onTab = (tab: PanelTab) => {
+    if (tab === "defences" || tab === "feed") setSheet(tab);
+    else if (tab === "results") openResults();
+    else if (view === "results") closeResults();
+  };
+  const tabEl = (tab: PanelTab) => () => document.querySelector<HTMLElement>(`[data-phone-tab="${tab}"]`);
+
   const centre = (
     // The scene fills the column less the timeline, and never drops under 400 px (scripts/smoke-box.mjs checks it).
-    <div className="flex min-h-0 min-w-0 flex-col gap-3 max-[914px]:order-first min-[915px]:max-[1099px]:min-h-[max(600px,calc(100vh-120px))]">
+    <div className="flex min-h-0 min-w-0 flex-col gap-3 min-[915px]:max-[1099px]:min-h-[max(600px,calc(100vh-120px))]">
       <div ref={slot} className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[914px]:aspect-[760/560] min-[915px]:min-h-[400px] min-[915px]:flex-1" data-scene-slot>
         {multi ? (
           <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} />
@@ -436,13 +476,14 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         }}
         onRunTrials={trials.run}
         onBranch={openBranch}
+        compact={phone}
       />
     </div>
   );
 
   return (
     <div
-      className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink"
+      className={`absolute inset-0 overflow-x-hidden overflow-y-auto max-[914px]:pb-[calc(4.5rem+env(safe-area-inset-bottom))] ${sheet ? "max-[914px]:overflow-y-hidden" : ""} bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink`}
       data-plot-ready={trials.plotReady ? "true" : "false"}
       ref={root}
     >
@@ -470,10 +511,18 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
               </>
             }
           />
-          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[640px]:px-3.5 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
-            {story}
+          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[914px]:gap-3 max-[914px]:px-4 max-[914px]:pt-3 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
+            {phone ? null : story}
             {centre}
-            <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
+            {phone ? (
+              mode === "agent" && primary ? (
+                primary.node
+              ) : (
+                <StepCard steps={steps} current={currentPin} open={world.selected !== null} lead={lead} onStep={walkCard} onReplayWith={rerunWith} />
+              )
+            ) : (
+              <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
+            )}
           </div>
         </div>
       </div>
@@ -494,6 +543,21 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         onWatch={watchBranch}
         onKeep={keepChange}
       />
+      {phone ? (
+        <>
+          <PhoneTabs active={activeTab} onTab={onTab} />
+          {sheet === "defences" ? (
+            <Sheet title="Defences" hook="defences" onClose={() => setSheet(null)} returnFocus={tabEl("defences")}>
+              {defences}
+            </Sheet>
+          ) : null}
+          {sheet === "feed" ? (
+            <Sheet title="Feed" hook="feed" onClose={() => setSheet(null)} returnFocus={tabEl("feed")}>
+              {feed}
+            </Sheet>
+          ) : null}
+        </>
+      ) : null}
       <CountsStatus caught={tally.caughtTotal} escaped={tally.escaped} />
       <p role="status" className="sr-only" data-status="trials">
         {trials.said}

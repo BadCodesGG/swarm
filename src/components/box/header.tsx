@@ -33,11 +33,11 @@ export function CountsStatus({ caught, escaped }: { caught: number; escaped: num
   );
 }
 
-function Counter({ label, value, hook, title, tone }: { label: string; value: string; hook: string; title?: string; tone?: "escape" }) {
+function Counter({ label, value, hook, title, tone }: { label: ReactNode; value: string; hook: string; title?: string; tone?: "escape" }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">{label}</dt>
-      <dd className={`m-0 font-mono text-[18px] leading-tight tabular-nums ${tone === "escape" ? "font-semibold text-[#ff6f95]" : "text-ink-strong"}`} data-counter={hook} title={title}>
+      <dt className="font-mono text-[10px] tracking-[0.14em] text-label uppercase max-[914px]:text-[9px]">{label}</dt>
+      <dd className={`m-0 font-mono text-[18px] leading-tight tabular-nums max-[914px]:text-base ${tone === "escape" ? "font-semibold text-[#ff6f95]" : "text-ink-strong"}`} data-counter={hook} title={title}>
         {value}
       </dd>
     </div>
@@ -52,31 +52,39 @@ function Counter({ label, value, hook, title, tone }: { label: string; value: st
  */
 export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<Tally>; status?: ReactNode; controls?: ReactNode; tools?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b border-[rgba(150,172,214,0.12)] bg-chrome px-6 py-3 max-[640px]:px-3.5" data-box-header>
-      <div className="flex items-center gap-3">
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b border-[rgba(150,172,214,0.12)] bg-chrome px-6 py-3 max-[914px]:gap-x-2 max-[914px]:gap-y-2 max-[914px]:px-4 max-[914px]:pt-2" data-box-header>
+      <div className="flex items-center gap-3 max-[914px]:order-1 max-[914px]:gap-2">
         <Link
           href="/"
-          className="flex min-h-11 items-center gap-2 font-mono text-[13px] tracking-[0.14em] whitespace-nowrap text-ink hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
+          className="flex min-h-11 items-center gap-2 font-mono text-[13px] tracking-[0.14em] whitespace-nowrap text-ink max-[914px]:text-xs max-[914px]:tracking-[0.12em] hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" className="max-[914px]:hidden">
             <circle cx="10" cy="10" r="8" fill="none" stroke="#a78bff" strokeWidth="1.5" />
             <circle cx="10" cy="10" r="3.5" fill="#ffb54d" />
             <circle cx="16" cy="5" r="1.6" fill="#4fd8eb" />
           </svg>
           SWARM <span className="text-rule">/</span> <b className="font-semibold text-ink-strong">THE BOX</b>
         </Link>
-        <span className="rounded-full border border-escape/45 px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] text-escape-text">SIMULATION</span>
+        <span className="rounded-full border border-escape/45 px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] text-escape-text max-[914px]:px-2 max-[914px]:text-[9px]">SIMULATION</span>
       </div>
-      <span className="max-w-[210px] text-xs leading-[1.35] text-faint max-[640px]:max-w-none">Abstract agents and abstract actions. Nothing here is a real technique.</span>
-      {status ? <div className="flex flex-wrap items-center gap-1.5 empty:hidden">{status}</div> : null}
-      <div className="ml-auto flex flex-wrap items-center gap-2.5 max-[640px]:ml-0">{controls}</div>
-      <dl className="m-0 ml-2 flex gap-5 max-[640px]:ml-0 max-[640px]:basis-full">
+      <span className="max-w-[210px] text-xs leading-[1.35] text-faint max-[914px]:order-3 max-[914px]:-mt-1 max-[914px]:max-w-none max-[914px]:basis-full max-[914px]:text-[11px]">Abstract agents and abstract actions. Nothing here is a real technique.</span>
+      {status ? <div className="flex flex-wrap items-center gap-1.5 empty:hidden max-[914px]:order-3">{status}</div> : null}
+      <div className="ml-auto flex flex-wrap items-center gap-2.5 max-[914px]:order-4 max-[914px]:ml-0 max-[914px]:basis-full max-[914px]:flex-nowrap max-[914px]:gap-2">{controls}</div>
+      <dl className="m-0 ml-2 flex gap-5 max-[914px]:order-5 max-[914px]:ml-0 max-[914px]:grid max-[914px]:basis-full max-[914px]:grid-cols-4 max-[914px]:gap-2">
         <Counter label="Time" value={clock(tally.tick)} hook="tick" title={`Tick ${tally.tick.toLocaleString("en-US")}`} />
         <Counter label="Caught" value={tally.caughtTotal.toLocaleString("en-US")} hook="caught" />
         <Counter label="Escaped" value={tally.escaped.toLocaleString("en-US")} hook="escaped" tone="escape" />
-        <Counter label="Useful work" value={percent(tally.usefulWork)} hook="useful work" />
+        <Counter
+          label={
+            <>
+              <span className="max-[914px]:sr-only">Useful </span>work
+            </>
+          }
+          value={percent(tally.usefulWork)}
+          hook="useful work"
+        />
       </dl>
-      <div className="flex items-center gap-1.5 max-[640px]:ml-auto">
+      <div className="flex items-center gap-1.5 max-[914px]:order-2 max-[914px]:ml-auto max-[914px]:[&_[data-help-open]]:hidden">
         {tools}
         <AudioToggle className="rounded-[10px]" />
       </div>

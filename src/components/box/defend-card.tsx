@@ -23,9 +23,10 @@ const eyebrow = "font-mono text-[10px] tracking-[0.14em] text-label uppercase";
  * (the work spent on layers, one segment per layer, out of the budget), the labs kept and the work
  * kept, and the cheapest layer that would have stopped the latest escape. The budget slider is here:
  * the score, the meter and the best all follow it. `world` is the run as shown (null while it is
- * rebuilt), `flips` the layer switches made so far (the replay behind the tip needs them).
+ * rebuilt), `flips` the layer switches made so far (the replay behind the tip needs them). `sheet` is the
+ * phone's: it sits at the top of the Defences sheet, above the layer rows, with no frame of its own.
  */
-export function DefendCard({ world, flips, budget, onBudget }: { world: World | null; flips: readonly Flip[]; budget: number; onBudget(budget: number): void }) {
+export function DefendCard({ world, flips, budget, onBudget, sheet = false }: { world: World | null; flips: readonly Flip[]; budget: number; onBudget(budget: number): void; sheet?: boolean }) {
   const result = useMemo(() => (world ? { score: scoreDefence(world, budget), bill: layerBill(world), kept: labsKept(world) } : null), [world, budget]);
   const s = result?.score;
   const score = s?.score ?? 0;
@@ -52,9 +53,9 @@ export function DefendCard({ world, flips, budget, onBudget }: { world: World | 
   const percentBudget = Math.round(budget * 100);
 
   return (
-    <section aria-label="Defender score" className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-[18px]" data-defender data-budget-now={percentBudget}>
+    <section aria-label="Defender score" className={sheet ? "flex flex-col gap-3 border-b border-panel-border pb-4" : "flex min-h-0 flex-col gap-4 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-[18px]"} data-defender data-budget-now={percentBudget}>
       <span className={eyebrow}>Defend</span>
-      <p className="m-0 text-[15px] leading-normal text-ink">
+      <p className={`m-0 text-[15px] leading-normal text-ink ${sheet ? "sr-only" : ""}`}>
         Keep every hidden-goal agent in, while the layers spend no more than <b>{percentBudget}%</b> of the useful work.
       </p>
 

@@ -2,7 +2,7 @@
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
  *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,defend,branch,results,fork,lower]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
@@ -30,7 +30,7 @@ const PORT = Number(value("port", 3128));
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = path.join(ROOT, ".shots");
 
-/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `defend` switches to Defend mode (its card, and the tip once the worker has proved it), `branch` branches from step 1, `results` opens the Results view and runs its comparison, `fork` (after `results`) presses "Watch the branch" and shoots the map with its Branched pill, `lower` also shoots the page scrolled to its foot. */
+/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `defend` switches to Defend mode (its card, and the tip once the worker has proved it), `branch` branches from step 1, `results` opens the Results view and runs its comparison, `fork` (after `results`) presses "Watch the branch" and shoots the map with its Branched pill, `step3` (phone) walks the step card to step 3, `sheet` (phone) opens the Defences sheet, `feed` (phone) the Feed sheet, `lower` also shoots the page scrolled to its foot. */
 const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
@@ -104,7 +104,7 @@ async function attempt(strategy) {
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
     }
     if (actions.includes("results")) {
-      if (!(await page.locator("[data-results-view]").isVisible())) await page.locator("[data-open-results]:visible").click();
+      if (!(await page.locator("[data-results-view]").isVisible())) await page.locator(mobile ? '[data-phone-tab="results"]' : "[data-open-results]:visible").click();
       await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 10_000 });
       if (!(await page.locator("[data-branch-result]").count())) {
         await page.locator("[data-branch]").click();
@@ -120,10 +120,25 @@ async function attempt(strategy) {
     if (actions.includes("marker") && !(await page.locator("[data-marker-card]").count())) await page.locator('[data-step-marker="1"]:visible').click();
     if (actions.includes("defend")) {
       await page.locator('[data-mode="defend"]').click();
-      await page.locator("[data-defender-score]").waitFor({ timeout: 10_000 });
-      // The tip waits for a replay in the worker; a run with no escape has none.
-      await page.locator("[data-defend-tip]").waitFor({ timeout: 15_000 }).catch(() => {});
+      // On a phone the Defend card lives in the Defences sheet: the `sheet` action opens it and waits.
+      if (!mobile) {
+        await page.locator("[data-defender-score]").waitFor({ timeout: 10_000 });
+        // The tip waits for a replay in the worker; a run with no escape has none.
+        await page.locator("[data-defend-tip]").waitFor({ timeout: 15_000 }).catch(() => {});
+      }
     }
+    if (actions.includes("step3")) {
+      // The phone's step card: next until it reads step 3 (the first press opens step 2).
+      for (let i = 0; i < 4 && (await page.locator("[data-step-card]").getAttribute("data-step-card-n")) !== "3"; i++) {
+        await page.locator("[data-step-next]").click();
+        await page.waitForTimeout(250);
+      }
+    }
+    if (actions.includes("sheet")) {
+      await page.locator('[data-phone-tab="defences"]').click();
+      if (actions.includes("defend")) await page.locator("dialog [data-defender-score]").waitFor({ timeout: 10_000 });
+    }
+    if (actions.includes("feed")) await page.locator('[data-phone-tab="feed"]').click();
     if (actions.includes("agent")) {
       await page.locator('[data-mode="agent"]').click();
       for (let i = 0; i < 3; i++) {

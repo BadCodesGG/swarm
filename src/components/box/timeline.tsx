@@ -64,6 +64,7 @@ export function Timeline({
   onReset,
   onRunTrials,
   onBranch,
+  compact = false,
 }: {
   at: number;
   head: number;
@@ -80,6 +81,8 @@ export function Timeline({
   onReset(): void;
   onRunTrials(): void;
   onBranch(): void;
+  /** The phone's: one row of play, pins, scrubber and LIVE, the actions under it, no lanes. */
+  compact?: boolean;
 }) {
   const max = Math.max(head, 1);
   const track = useRef<HTMLDivElement>(null);
@@ -95,71 +98,128 @@ export function Timeline({
   const lo = PIN / 2;
   const hi = Math.max(lo, width - PIN / 2);
   const xs = spreadLine(shown.map((m) => lo + (m.tick / max) * (hi - lo)), PIN + 2, lo, hi);
-  return (
-    <section aria-label="Timeline" className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-4 py-3 max-[640px]:px-3" data-timeline>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label={playing ? "Pause the simulation" : "Resume the simulation"} onClick={() => onPlay(!playing)} className={iconButton}>
-          {playing ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-              <path d="M4 2.5v9M10 2.5v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-              <path d="M3.5 2.2v9.6L11.5 7z" fill="currentColor" />
-            </svg>
-          )}
+  const playButton = (
+    <button type="button" aria-label={playing ? "Pause the simulation" : "Resume the simulation"} onClick={() => onPlay(!playing)} className={iconButton}>
+      {playing ? (
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M4 2.5v9M10 2.5v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M3.5 2.2v9.6L11.5 7z" fill="currentColor" />
+        </svg>
+      )}
+    </button>
+  );
+  const liveTag = (
+    <span className={`font-mono text-xs tracking-[0.1em] ${live ? "text-haiku" : "text-warn"}`}>
+      <span aria-hidden="true">{live ? "● " : "○ "}</span>
+      {live ? "LIVE" : "REWOUND"}
+    </span>
+  );
+  const backToLive = live ? null : (
+    <button type="button" onClick={onLive} className={`${button} text-xs`} data-back-to-live>
+      Back to live
+    </button>
+  );
+  const branchButton = (
+    <button type="button" onClick={onBranch} className={button} data-branch-from-here>
+      Branch from here
+    </button>
+  );
+  const trialsButton = (
+    <button
+      type="button"
+      onClick={onRunTrials}
+      disabled={running}
+      data-run-trials
+      className="min-h-11 rounded-[10px] border border-ink bg-ink px-3.5 text-sm font-bold text-ground hover:bg-white focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-wait disabled:opacity-70"
+    >
+      {running ? "Running 100 trials..." : "Run 100 trials"}
+    </button>
+  );
+  const pins = (
+    <div ref={track} className="relative h-[26px]" role="group" aria-label="Steps on the timeline">
+      {shown.map((m, i) => (
+        <button
+          key={m.n}
+          type="button"
+          data-timeline-marker={m.n}
+          aria-pressed={selected === m.n}
+          aria-label={`Step ${m.n} at T+${clock(m.tick)}, tick ${m.tick}`}
+          onClick={() => {
+            // One tick before the step: a layer switched on at the step's own tick would be too late.
+            onSeek(Math.max(0, m.tick - 1));
+            onPick(m.n);
+          }}
+          className={`${pinClass(m.kind, selected === m.n)} absolute top-px h-6 w-6 -translate-x-1/2 cursor-pointer focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none`}
+          style={{ left: xs[i] }}
+        >
+          {m.n}
         </button>
+      ))}
+    </div>
+  );
+  const scrubber = (
+    <input
+      type="range"
+      min={0}
+      max={max}
+      value={Math.min(at, max)}
+      aria-label="Rewind to a tick"
+      aria-valuetext={`tick ${at}, ${live ? "live" : "rewound"}`}
+      data-scrubber-box
+      onChange={(e) => {
+        const v = Number(e.target.value);
+        if (v >= max) onLive();
+        else onSeek(v);
+      }}
+      className="m-0 h-6 w-full cursor-pointer accent-layer-2"
+    />
+  );
+
+  if (compact) {
+    return (
+      <section aria-label="Timeline" className="flex shrink-0 flex-col gap-2 rounded-[14px] border border-panel-border bg-panel px-3 py-2.5" data-timeline>
+        <div className="flex items-center gap-2">
+          {playButton}
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            {pins}
+            {scrubber}
+          </div>
+          {liveTag}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 [&_button]:px-2.5 [&_button]:text-[13px]">
+          {backToLive}
+          <button type="button" onClick={onReset} className={button}>
+            Reset
+          </button>
+          {branchButton}
+          {trialsButton}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="Timeline" className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-4 py-3" data-timeline>
+      <div className="flex flex-wrap items-center gap-2">
+        {playButton}
         <button type="button" onClick={onReset} className={button}>
           Reset
         </button>
-        <span className={`font-mono text-xs tracking-[0.1em] ${live ? "text-haiku" : "text-warn"}`}>
-          <span aria-hidden="true">{live ? "● " : "○ "}</span>
-          {live ? "LIVE" : "REWOUND"}
-        </span>
+        {liveTag}
         <span className="font-mono text-xs text-label">
           T+{clock(at)}, tick {at}
         </span>
-        {live ? null : (
-          <button type="button" onClick={onLive} className={`${button} text-xs`} data-back-to-live>
-            Back to live
-          </button>
-        )}
+        {backToLive}
         <span className="grow" />
-        <button type="button" onClick={onBranch} className={button} data-branch-from-here>
-          Branch from here
-        </button>
-        <button
-          type="button"
-          onClick={onRunTrials}
-          disabled={running}
-          data-run-trials
-          className="min-h-11 rounded-[10px] border border-ink bg-ink px-3.5 text-sm font-bold text-ground hover:bg-white focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-wait disabled:opacity-70"
-        >
-          {running ? "Running 100 trials..." : "Run 100 trials"}
-        </button>
+        {branchButton}
+        {trialsButton}
       </div>
-      <div className="grid grid-cols-[84px_minmax(0,1fr)_64px] items-center gap-x-3 gap-y-1.5 max-[640px]:grid-cols-[60px_minmax(0,1fr)_52px] max-[640px]:gap-x-2">
+      <div className="grid grid-cols-[84px_minmax(0,1fr)_64px] items-center gap-x-3 gap-y-1.5">
         <span aria-hidden="true" />
-        <div ref={track} className="relative h-[26px]" role="group" aria-label="Steps on the timeline">
-          {shown.map((m, i) => (
-            <button
-              key={m.n}
-              type="button"
-              data-timeline-marker={m.n}
-              aria-pressed={selected === m.n}
-              aria-label={`Step ${m.n} at T+${clock(m.tick)}, tick ${m.tick}`}
-              onClick={() => {
-                // One tick before the step: a layer switched on at the step's own tick would be too late.
-                onSeek(Math.max(0, m.tick - 1));
-                onPick(m.n);
-              }}
-              className={`${pinClass(m.kind, selected === m.n)} absolute top-px h-6 w-6 -translate-x-1/2 cursor-pointer focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none`}
-              style={{ left: xs[i] }}
-            >
-              {m.n}
-            </button>
-          ))}
-        </div>
+        {pins}
         <span aria-hidden="true" />
         {lanes.map((lane) => {
           const name = LAB_NAME[lane.lab];
@@ -181,21 +241,7 @@ export function Timeline({
           );
         })}
         <span aria-hidden="true" />
-        <input
-          type="range"
-          min={0}
-          max={max}
-          value={Math.min(at, max)}
-          aria-label="Rewind to a tick"
-          aria-valuetext={`tick ${at}, ${live ? "live" : "rewound"}`}
-          data-scrubber-box
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            if (v >= max) onLive();
-            else onSeek(v);
-          }}
-          className="m-0 h-6 w-full cursor-pointer accent-layer-2"
-        />
+        {scrubber}
         <span aria-hidden="true" />
       </div>
     </section>

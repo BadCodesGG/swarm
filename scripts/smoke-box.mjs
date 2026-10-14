@@ -17,7 +17,9 @@
  *      "Replay with this switched on" reruns with that layer on.
  *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
  *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
- *      is within the first screen and every lab is in frame.
+ *      is within the first screen and every lab is in frame, the bottom tab bar offers Story, Defences,
+ *      Results and Feed, Defences opens a dialog sheet with the layer switches that Escape closes with focus
+ *      back on its tab, and the step card's next button moves to step 2.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
@@ -405,6 +407,30 @@ export function boxSteps({ check, openPage, software = false }) {
       check("phone: every lab is in frame", scene.labs.length === 3 && scene.labsCut.length === 0, scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", "));
       const tickLeft = await phone.page.locator("[data-counter=tick]").evaluate((e) => Math.round(e.getBoundingClientRect().left));
       check("phone: the counters start at the left edge", tickLeft < 40, `TICK at x=${tickLeft}`);
+
+      const tabs = phone.page.locator('nav[aria-label="Panels"]');
+      const tabNames = await tabs.locator("button").allInnerTexts();
+      const tabBox = await tabs.boundingBox();
+      check("phone: the tab bar shows four tabs at the foot of the window", tabNames.join() === "Story,Defences,Results,Feed" && !!tabBox && Math.round(tabBox.y + tabBox.height) === 844, `${tabNames.join()} bottom ${Math.round((tabBox?.y ?? 0) + (tabBox?.height ?? 0))}`);
+      check("phone: Story is the current tab", (await tabs.locator('[aria-current="page"]').innerText()) === "Story");
+      check("phone: every tab is at least 44 px tall", (await tabs.locator("button").evaluateAll((els) => els.every((e) => e.getBoundingClientRect().height >= 44))) === true);
+
+      await tabs.locator('[data-phone-tab="defences"]').click();
+      const sheet = phone.page.locator('dialog[open][role="dialog"][aria-modal="true"]');
+      await sheet.waitFor({ timeout: 5_000 });
+      check("phone: Defences opens a dialog sheet holding the five layer switches", (await sheet.locator("input[data-layer]").count()) === 5 && (await sheet.getAttribute("aria-labelledby")) !== null, await sheet.locator("h2").first().innerText());
+      check("phone: focus moves into the sheet", await sheet.evaluate((d) => d.contains(document.activeElement)));
+      check("phone: Defences is the current tab while its sheet is up", (await tabs.locator('[aria-current="page"]').innerText()) === "Defences");
+      await phone.page.keyboard.press("Escape");
+      await sheet.waitFor({ state: "detached", timeout: 5_000 });
+      check("phone: Escape closes the sheet and focus returns to the Defences tab", (await phone.page.evaluate(() => document.activeElement?.getAttribute("data-phone-tab"))) === "defences");
+
+      const card = phone.page.locator("[data-step-card]");
+      const first = await card.getAttribute("data-step-card-n");
+      await card.locator("[data-step-next]").click();
+      await phone.page.waitForFunction((n) => document.querySelector("[data-step-card]")?.getAttribute("data-step-card-n") !== n, first, { timeout: 5_000 });
+      const second = await card.getAttribute("data-step-card-n");
+      check("phone: the step card's next button moves from step 1 to step 2", first === "1" && second === "2" && /Step 2 of \d+/i.test(await card.innerText()), `${first} -> ${second}`);
       check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
     } finally {
       await phone.context.close();

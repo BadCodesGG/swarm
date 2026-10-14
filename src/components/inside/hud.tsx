@@ -1,18 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
-import { cycleAgent } from "@/engine/inside/layout";
+import { cycleAgent, type StationCategory } from "@/engine/inside/layout";
 import AudioToggle from "@/components/audio-toggle";
+import { BankBar, BankPanels } from "./bank";
 import { Counters } from "./counters";
 import { AgentBar, DetailCard } from "./detail-card";
 import { KeyPanel } from "./key-panel";
+import { CopyMoment, useMomentSync } from "./moment";
 import { NowPanel } from "./now-panel";
 import { RATES } from "./rates";
+import { RecapCard, useRecapVisible } from "./recap-card";
+import { Roster } from "./roster";
 import { Timeline } from "./scrubber";
 import { SourceSwitcher } from "./source-switcher";
-import { useNarrow, useSelection } from "./use-engine";
+import { StageStrip } from "./stage-strip";
+import { StationPanel } from "./station-panel";
+import { useMedia, useNarrow, useSelection, useStation } from "./use-engine";
 
 /** Fraction of the playback axis one Left / Right press moves. */
 const STEP = 0.02;
@@ -40,7 +46,7 @@ const UPLOAD = (
 const linkRing = "outline-none focus-visible:ring-2 focus-visible:ring-layer-1";
 
 /**
- * Space, Left / Right, 1 / 2 / 3, A / Shift+A (next and previous agent) and Escape (close the card),
+ * Space, Left / Right, 1 / 2 / 3, A / Shift+A (next and previous agent) and Escape (close the station panel or the card),
  * unless the key belongs to the control that has focus. While a modal sheet is open only Escape
  * works: the rest belong to the controls under it.
  */
@@ -79,10 +85,20 @@ function useShortcuts(app: InsideApp, onCycle: (dir: 1 | -1) => void, onEscape: 
   }, [app, onCycle, onEscape, modal]);
 }
 
+/** The small viewports where the instrument bank starts collapsed to one row. */
+const SMALL = "(max-width: 1099px), (max-height: 819px)";
+
 /** The Act 1 HUD over the canvas; a stacked layout on a phone. */
 export function Hud({ app }: { app: InsideApp }) {
   const narrow = useNarrow();
+  const small = useMedia(SMALL);
   const selected = useSelection(app);
+  const station = useStation(app);
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const [bankPref, setBankPref] = useState<boolean | null>(null);
+  const bankOpen = bankPref ?? (!narrow && !small);
+  const bankId = useId();
+  const [recapShown, dismissRecap] = useRecapVisible(app);
   const [sheetOpen, setSheetOpen] = useState(false);
   // A cleared selection (a source switch, say) closes the sheet, so it does not pop back with the next pick.
   const [sheetSelection, setSheetSelection] = useState(selected);
@@ -94,14 +110,21 @@ export function Hud({ app }: { app: InsideApp }) {
   const sheetShown = narrow && selected >= 0 && sheetOpen;
   const [announced, setAnnounced] = useState("");
   const slot = useRef<HTMLDivElement>(null);
-  const header = useRef<HTMLElement>(null);
+  const top = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
-  const timeline = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
   const nextAgent = useRef<HTMLButtonElement>(null);
   const agentBar = useRef<HTMLButtonElement>(null);
-  /** Where focus goes when the card closes: the control that had it when the keyboard picked an agent. */
+  /** Where focus goes when the card or station panel closes: the control that had it when it opened. */
   const returnTo = useRef<HTMLElement | null>(null);
+
+  useMomentSync(app);
+
+  const remember = () => {
+    const active = document.activeElement;
+    returnTo.current = active instanceof HTMLElement && active !== document.body ? active : null;
+  };
 
   const cycle = useCallback(
     (dir: 1 | -1) => {
@@ -121,11 +144,16 @@ export function Hud({ app }: { app: InsideApp }) {
     requestAnimationFrame(() => (back?.isConnected ? back : nextAgent.current)?.focus());
   }, []);
 
-  /** Escape closes the phone's sheet, else the card. False when there was nothing to close. */
+  /** Escape closes the phone's sheet, else the station panel, else the card. False when there was nothing to close. */
   const escape = useCallback(() => {
     if (sheetShown) {
       setSheetOpen(false);
       requestAnimationFrame(() => agentBar.current?.focus());
+      return true;
+    }
+    if (app.station()) {
+      app.selectStation(null);
+      refocus();
       return true;
     }
     if (app.selected() < 0) return false;
@@ -142,8 +170,8 @@ export function Hud({ app }: { app: InsideApp }) {
   }, [sheetShown]);
 
   // The phone frames the scene in the band between the counters and the cards; the desktop frames it
-  // between the header, the side panels, the card's column and the timeline, so the station ring and
-  // its labels clear all of them.
+  // between the header and stage strip, the side panels, the card's column and the bank and timeline,
+  // so the station ring and its labels clear all of them (and so does the camera's free frame).
   useEffect(() => {
     const fit = () => {
       if (narrow) {
@@ -153,19 +181,19 @@ export function Hud({ app }: { app: InsideApp }) {
         app.setFrame({ top: r.top, height: r.height });
         return;
       }
-      const h = header.current?.getBoundingClientRect();
+      const h = top.current?.getBoundingClientRect();
       const s = side.current?.getBoundingClientRect();
       const w = row.current?.getBoundingClientRect();
-      const tl = timeline.current?.getBoundingClientRect();
+      const tl = bottom.current?.getBoundingClientRect();
       if (!h || !s || !w || !tl) return;
-      const top = h.bottom + SCENE_GAP;
+      const y = h.bottom + SCENE_GAP;
       const left = s.right + SCENE_GAP;
       const right = Math.max(left + 1, w.right - CARD_COLUMN - SCENE_GAP);
-      app.setFrame({ top, height: Math.max(1, tl.top - SCENE_GAP - top), left, width: right - left, fit: "stations" });
+      app.setFrame({ top: y, height: Math.max(1, tl.top - SCENE_GAP - y), left, width: right - left, fit: "stations" });
     };
     fit();
     const ro = new ResizeObserver(fit);
-    for (const el of [slot.current, header.current, side.current, row.current, timeline.current]) if (el) ro.observe(el);
+    for (const el of [slot.current, top.current, side.current, row.current, bottom.current]) if (el) ro.observe(el);
     return () => {
       ro.disconnect();
       app.setFrame(null);
@@ -177,10 +205,34 @@ export function Hud({ app }: { app: InsideApp }) {
     refocus();
   };
 
+  const openStation = (key: StationCategory) => {
+    remember();
+    app.selectStation(key);
+  };
+  const closeStation = () => {
+    app.selectStation(null);
+    refocus();
+  };
+
   const status = (
     <p role="status" className="sr-only">
       {announced}
     </p>
+  );
+
+  const rosterToggle = (
+    <button
+      type="button"
+      data-roster-toggle
+      aria-expanded={rosterOpen}
+      aria-controls="roster-panel"
+      onClick={() => setRosterOpen((o) => !o)}
+      className={`pointer-events-auto flex min-h-8 shrink-0 items-center gap-1.5 rounded-md border bg-panel px-2.5 font-mono text-[10px] tracking-[0.14em] outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1 ${
+        rosterOpen ? "border-opus/45 text-warn" : "border-panel-border text-label"
+      }`}
+    >
+      ROSTER
+    </button>
   );
 
   if (narrow) {
@@ -204,6 +256,7 @@ export function Hud({ app }: { app: InsideApp }) {
         </header>
         <SourceSwitcher app={app} narrow />
         <Counters app={app} compact />
+        <StageStrip app={app} compact />
         {/* The design's 300 px scene band. It takes spare height up to 340 px, so the cards sit under the
             ring and the scrubber stays at the bottom as on the board; it gives way first on a short screen. */}
         <div ref={slot} className="max-h-[340px] min-h-[200px] flex-[1_1_300px]" aria-hidden="true" />
@@ -218,8 +271,28 @@ export function Hud({ app }: { app: InsideApp }) {
         >
           Select the next agent (A)
         </button>
+        {rosterOpen ? (
+          <div id="roster-panel" className="flex max-h-[38vh] min-h-0 flex-col">
+            <Roster app={app} onClose={() => setRosterOpen(false)} />
+          </div>
+        ) : null}
+        {station ? (
+          <div className="pointer-events-auto max-h-[34vh] min-h-0 overflow-y-auto rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.9)] p-3.5">
+            <StationPanel app={app} station={station} sheet onClose={closeStation} />
+          </div>
+        ) : null}
+        {recapShown ? <RecapCard app={app} sheet onClose={dismissRecap} /> : null}
         {selected >= 0 ? <AgentBar ref={agentBar} app={app} id={selected} expanded={sheetOpen} onToggle={() => setSheetOpen((o) => !o)} /> : null}
         <div className="grow" aria-hidden="true" />
+        <BankBar app={app} open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId}>
+          {rosterToggle}
+          <CopyMoment app={app} compact />
+        </BankBar>
+        {bankOpen ? (
+          <div className="max-h-[36vh] overflow-y-auto">
+            <BankPanels app={app} narrow id={bankId} onStation={openStation} />
+          </div>
+        ) : null}
         <Timeline app={app} narrow />
         </div>
         {sheetShown ? (
@@ -248,37 +321,61 @@ export function Hud({ app }: { app: InsideApp }) {
     );
   }
 
+  const rightColumn = recapShown || station || selected >= 0;
+
   return (
-    <div className="pointer-events-none absolute inset-0 grid min-h-[640px] grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-6 py-5 font-sans text-ink">
-      <header ref={header} className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2.5 pr-2 font-mono text-[13px] tracking-[0.12em] text-label hover:text-white ${linkRing}`}>
-          {LOGO}
-          <span>
-            SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">INSIDE</span>
-          </span>
-        </Link>
-        <SourceSwitcher app={app} narrow={false} />
-        <Link
-          href="/inside/load"
-          className={`pointer-events-auto flex min-h-11 items-center gap-2 rounded-xl border border-opus/45 bg-opus/8 px-4 text-sm font-semibold text-warn ${linkRing}`}
-        >
-          {UPLOAD}
-          Load your session
-        </Link>
-        <div className="grow" />
-        <Counters app={app} />
-        <AudioToggle />
-      </header>
+    <div className="pointer-events-none absolute inset-0 grid min-h-[640px] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 px-6 py-5 font-sans text-ink">
+      <div ref={top} className="flex flex-col gap-2">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2.5 pr-2 font-mono text-[13px] tracking-[0.12em] text-label hover:text-white ${linkRing}`}>
+            {LOGO}
+            <span>
+              SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">INSIDE</span>
+            </span>
+          </Link>
+          <SourceSwitcher app={app} narrow={false} />
+          <Link
+            href="/inside/load"
+            className={`pointer-events-auto flex min-h-11 items-center gap-2 rounded-xl border border-opus/45 bg-opus/8 px-4 text-sm font-semibold text-warn ${linkRing}`}
+          >
+            {UPLOAD}
+            Load your session
+          </Link>
+          <div className="grow" />
+          <Counters app={app} />
+          <AudioToggle />
+        </header>
+        <div className="flex items-stretch gap-3">
+          <div className="min-w-0 flex-1">
+            <StageStrip app={app} />
+          </div>
+          {rosterToggle}
+          <CopyMoment app={app} />
+        </div>
+      </div>
 
       <div ref={row} className="flex min-h-0 flex-wrap items-stretch justify-between gap-4">
         <div ref={side} className="flex max-h-full min-h-0 w-[300px] max-w-full flex-col gap-3">
           <NowPanel app={app} narrow={false} />
-          <KeyPanel open={typeof window === "undefined" || window.innerHeight >= 820} />
+          {rosterOpen ? (
+            <div id="roster-panel" className="flex min-h-0 flex-1 flex-col">
+              <Roster app={app} onClose={() => setRosterOpen(false)} />
+            </div>
+          ) : (
+            <KeyPanel open={typeof window === "undefined" || window.innerHeight >= 820} />
+          )}
         </div>
-        {selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
+        {rightColumn ? (
+          <div className="flex max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3">
+            {recapShown ? <RecapCard app={app} onClose={dismissRecap} /> : null}
+            {station ? <StationPanel app={app} station={station} onClose={closeStation} /> : selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
+          </div>
+        ) : null}
       </div>
 
-      <div ref={timeline}>
+      <div ref={bottom} className="flex flex-col gap-2">
+        <BankBar app={app} open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId} />
+        {bankOpen ? <BankPanels app={app} id={bankId} onStation={openStation} /> : null}
         <Timeline app={app} narrow={false} nextAgentRef={nextAgent} onNextAgent={() => cycle(1)} />
       </div>
       {status}

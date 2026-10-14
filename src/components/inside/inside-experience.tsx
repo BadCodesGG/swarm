@@ -4,6 +4,7 @@ import Experience, { type StartOptions } from "@/components/experience";
 import type { InsideApp } from "@/engine/inside/app";
 import { Hud } from "./hud";
 import { InsideLabels } from "./labels";
+import { ReportLine } from "./report-line";
 
 /** The engine (and three) loads only here, on the client, after the capability probe. */
 const start = (canvas: HTMLCanvasElement, opts: StartOptions): Promise<InsideApp> =>
@@ -12,6 +13,7 @@ const start = (canvas: HTMLCanvasElement, opts: StartOptions): Promise<InsideApp
 const overlay = (app: InsideApp) => (
   <>
     <InsideLabels app={app} />
+    {app.params.hud ? <ReportLine app={app} /> : null}
     {app.params.hud ? <Hud app={app} /> : null}
   </>
 );

@@ -4,6 +4,7 @@ import { useCallback, type CSSProperties, type Ref } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { agentInfo, type AgentInfo } from "@/engine/inside/agent-info";
 import { CATEGORY_LABELS, clock, compact, MODEL_NAMES, MODEL_VARS, runClock } from "@/engine/inside/format";
+import { EyeSections } from "./eye-sections";
 import { useEngineSnapshot, useTimeline } from "./use-engine";
 
 /** Bar colours for the most, second and third most used tool categories. */
@@ -103,7 +104,7 @@ export function DetailCard({
       data-detail-card
       style={frame}
       className={`pointer-events-auto flex flex-col gap-3.5 ${
-        sheet ? "" : "box-border w-80 max-w-full self-end rounded-[14px] border bg-[rgba(12,16,28,0.84)] p-[18px] backdrop-blur-[10px]"
+        sheet ? "" : "box-border min-h-0 w-80 max-w-full overflow-y-auto rounded-[14px] border bg-[rgba(12,16,28,0.84)] p-[18px] backdrop-blur-[10px]"
       }`}
     >
       <div className="flex items-start gap-2.5">
@@ -152,11 +153,13 @@ export function DetailCard({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className={sectionLabel}>{orchestrator ? "ITS ROLE" : parent === 0 ? "BRIEF FROM THE ORCHESTRATOR" : "BRIEF FROM ITS PARENT"}</span>
+        <span className={sectionLabel}>{orchestrator ? "ITS ROLE" : "EVERYTHING IT WAS TOLD"}</span>
         <p className="m-0 text-sm leading-normal text-body [overflow-wrap:anywhere]" data-brief>
           {orchestrator ? "The one voice that plans: it reads the prompt, does some work itself and hands the rest to subagents." : info.brief}
         </p>
       </div>
+
+      <EyeSections app={app} id={id} returned={info.state === "returned"} />
 
       <div className="flex flex-col gap-1.5">
         <span className={sectionLabel}>{info.lastCall ? `LAST CALL, ${clock(info.lastCall.t)}` : "LAST CALL"}</span>

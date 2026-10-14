@@ -5,6 +5,7 @@ import type { InsideApp } from "@/engine/inside/app";
 import { clock, idleCutLabel, MODEL_VARS } from "@/engine/inside/format";
 import { axisTicks, barHeight, buildLanes, LANE_BINS, type Lanes } from "@/engine/inside/lanes";
 import type { IdleCut, Timeline } from "@/lib/trace/timeline";
+import { AgentLanes, lanesHeightFor, LaneKey } from "./agent-lanes";
 import { nextRate, RATES, shownRate } from "./rates";
 import { useClock, useEngineSnapshot, useTimeline } from "./use-engine";
 
@@ -134,6 +135,9 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
               {s.label}
             </span>
           ))}
+          <span className="flex items-end text-label" style={{ height: lanesHeightFor(tl) }}>
+            LANES
+          </span>
           <span className="h-[17px]" />
         </div>
       ) : null}
@@ -159,6 +163,7 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
         {laneSpecs.map((s) => (
           <Lane key={s.label} spec={s} played={played} />
         ))}
+        {full ? <AgentLanes tl={tl} /> : null}
         {full ? (
           <div className="relative flex h-[17px] justify-between pt-1 font-mono text-[10px] text-faint" aria-hidden="true">
             {ticks.map((k) => (
@@ -262,6 +267,7 @@ export function Timeline({
             </button>
           ))}
         </div>
+        <LaneKey />
       </div>
 
       <div className="min-w-0 flex-[999_1_480px] self-end pt-4">

@@ -87,3 +87,12 @@ export function useClock(app: InsideApp): ClockSnap {
   }, [app]);
   return useEngineSnapshot(read, sameClock);
 }
+
+/** The selected tool station, or null. Re-renders on the bus's `station` event. */
+export function useStation(app: InsideApp) {
+  return useSyncExternalStore(
+    (notify) => app.bus.on("station", notify),
+    () => app.station(),
+    () => null,
+  );
+}

@@ -12,7 +12,7 @@ const SIZES: { size: SampleSize; label: string }[] = [
 ];
 
 /** Which sample a trace is, from its label ("Sample large, seed 4"); null for an upload. */
-function sampleSize(label: string, source: string): SampleSize | null {
+export function sampleSize(label: string, source: string): SampleSize | null {
   if (source !== "sample") return null;
   return SIZES.find((s) => label.startsWith(`Sample ${s.size}`))?.size ?? null;
 }

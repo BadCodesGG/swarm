@@ -18,14 +18,14 @@ export function radarPoints(values: readonly number[], cx: number, cy: number, r
   });
 }
 
-/** An SVG polyline path through `values` across `w` x `h`, the largest at the top. */
-export function sparkPath(values: readonly number[], w: number, h: number): string {
+/** An SVG polyline path through `values` across `w` x `h` from `top` down, the largest at the top. */
+export function sparkPath(values: readonly number[], w: number, h: number, top = 0): string {
   const max = Math.max(...values, 0);
   const n = values.length;
   return values
     .map((v, i) => {
       const x = n > 1 ? (i / (n - 1)) * w : 0;
-      const y = max > 0 ? h - (v / max) * h : h;
+      const y = top + (max > 0 ? h - (v / max) * h : h);
       return `${i === 0 ? "M" : "L"}${Math.round(x * 10) / 10} ${Math.round(y * 10) / 10}`;
     })
     .join("");
@@ -67,4 +67,11 @@ export function callDuration(seconds: number): string {
 /** Characters in a result: `950`, `12.4k`, or `-` when the trace did not keep it. */
 export function resultSize(size: number | undefined): string {
   return size === undefined ? "-" : compact(size);
+}
+
+/** The share of an agent's lane spent waiting on the human, as a percent string. */
+export function waitingShare(waiting: number, total: number): string {
+  if (!(total > 0) || !(waiting > 0)) return "0%";
+  const p = (waiting / total) * 100;
+  return p < 1 ? "<1%" : `${Math.round(p)}%`;
 }

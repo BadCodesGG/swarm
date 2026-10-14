@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arcPath, callDuration, radarPoints, resultSize, sparkPath, toolRows } from "./charts";
+import { waitingShare, arcPath, callDuration, radarPoints, resultSize, sparkPath, toolRows } from "./charts";
 
 describe("radarPoints", () => {
   it("puts the biggest share on its axis at the radius", () => {
@@ -47,5 +47,14 @@ describe("call formatting", () => {
     expect(resultSize(undefined)).toBe("-");
     expect(resultSize(950)).toBe("950");
     expect(resultSize(12_400)).toBe("12.4k");
+  });
+});
+
+describe("waitingShare", () => {
+  it("rounds, floors tiny shares to <1% and handles nothing", () => {
+    expect(waitingShare(25, 100)).toBe("25%");
+    expect(waitingShare(0.2, 100)).toBe("<1%");
+    expect(waitingShare(0, 100)).toBe("0%");
+    expect(waitingShare(5, 0)).toBe("0%");
   });
 });

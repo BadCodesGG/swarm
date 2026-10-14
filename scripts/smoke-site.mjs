@@ -194,11 +194,12 @@ export async function stepSite(browser, h) {
       check(`help: the ${act} sheet lists its real shortcuts`, expected.every((s) => text.includes(s)), text.slice(0, 120));
       if (act === "inside") {
         const before = await h.inside(page);
-        await page.keyboard.press("Space");
+        // Not Space: on the focused Close button it is that button's own key.
         await page.keyboard.press("2");
+        await page.keyboard.press("a");
         await page.waitForTimeout(250);
         const during = await h.inside(page);
-        check("help: the window shortcuts are off while the sheet is open", during.rate === before.rate, `${before.rate} to ${during.rate}`);
+        check("help: the window shortcuts are off while the sheet is open", during.rate === before.rate && during.selected === before.selected, `${before.rate}/${before.selected} to ${during.rate}/${during.selected}`);
       }
       await page.keyboard.press("?");
       await sheet.waitFor({ state: "detached" });

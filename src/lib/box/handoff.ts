@@ -54,7 +54,7 @@ export function handoffSearch(trace: Pick<SessionTrace, "source" | "agents">): s
 export function parseHandoff(params: URLSearchParams): Handoff | null {
   if (params.get("from") !== "inside") return null;
   const raw = params.get("agents");
-  const count = raw !== null && /^\d{1,6}$/.test(raw) ? clamp(Number(raw), HANDOFF_AGENTS.min, HANDOFF_AGENTS.max) : null;
+  const count = raw !== null && /^\d{1,9}$/.test(raw) ? clamp(Number(raw), HANDOFF_AGENTS.min, HANDOFF_AGENTS.max) : null;
   const asked = (params.get("models") ?? "").split(",").map((s) => s.trim().toLowerCase());
   const models = HANDOFF_MODELS.filter((m) => asked.includes(m));
   if (count === null && models.length === 0) return null;

@@ -42,7 +42,7 @@ describe("parseHandoff", () => {
 
   it("clamps the count", () => {
     expect(parseHandoff(q("from=inside&agents=0"))?.agents).toBe(HANDOFF_AGENTS.min);
-    expect(parseHandoff(q("from=inside&agents=999999"))?.agents).toBe(HANDOFF_AGENTS.max);
+    expect(parseHandoff(q("from=inside&agents=99999999"))?.agents).toBe(HANDOFF_AGENTS.max);
   });
 
   it("drops a malformed count but keeps valid models", () => {

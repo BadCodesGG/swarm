@@ -47,7 +47,7 @@ export function HelpSheet({ act, fallback, onClose, onTour }: { act: ActId; fall
             Replay the tour
           </button>
           <span className="grow" />
-          <button type="button" autoFocus onClick={onClose} className={dialogButton} data-help-close>
+          <button type="button" data-autofocus onClick={onClose} className={dialogButton} data-help-close>
             Close
           </button>
         </div>

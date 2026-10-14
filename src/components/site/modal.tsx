@@ -3,7 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 /**
- * A modal dialog on the native `<dialog>`: it traps Tab, makes the page behind it inert and sits in
+ * A modal dialog on the native `<dialog>`: it traps Tab (wrapping at both ends), makes the page behind it inert and sits in
  * the top layer. Escape calls `onClose`. While it is open no key reaches the act's own window
  * shortcuts (Space, the digits, A and the rest belong to the page under it), and focus goes back to
  * where it was when the dialog closes.
@@ -38,8 +38,19 @@ export function Modal({
     if (!dialog) return;
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!dialog.open) dialog.showModal();
+    // showModal focuses the first control; the dialog names the one it wants.
+    dialog.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Tab") return;
+      if (e.key === "Tab") {
+        // Wrap at the ends: the native trap would let focus out to the browser's own controls.
+        const stops = [...dialog.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]")].filter((el) => !el.hasAttribute("disabled") && el.tabIndex >= 0);
+        const edge = stops[e.shiftKey ? 0 : stops.length - 1];
+        if (stops.length > 0 && (document.activeElement === edge || !dialog.contains(document.activeElement))) {
+          e.preventDefault();
+          stops[e.shiftKey ? stops.length - 1 : 0].focus();
+        }
+        return;
+      }
       if (e.key === closeKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         close.current();

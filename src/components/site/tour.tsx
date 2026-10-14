@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Modal, dialogButton, dialogPrimary } from "./modal";
 import type { ActId } from "./tour-state";
 
@@ -54,7 +54,6 @@ export function Tour({ act, onDone }: { act: ActId; onDone(): void }) {
   const id = useId();
   const step = steps[at];
   const last = at === steps.length - 1;
-  const next = useRef<HTMLButtonElement>(null);
 
   return (
     <Modal labelledBy={`${id}-title`} describedBy={`${id}-body`} onClose={onDone} data-dialog={`tour-${act}`}>
@@ -78,7 +77,7 @@ export function Tour({ act, onDone }: { act: ActId; onDone(): void }) {
               Back
             </button>
           ) : null}
-          <button ref={next} type="button" autoFocus onClick={() => (last ? onDone() : setAt(at + 1))} className={dialogPrimary} data-tour-next>
+          <button type="button" data-autofocus onClick={() => (last ? onDone() : setAt(at + 1))} className={dialogPrimary} data-tour-next>
             {last ? "Start exploring" : "Next"}
           </button>
         </div>

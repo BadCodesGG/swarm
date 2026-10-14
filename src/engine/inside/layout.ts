@@ -503,3 +503,23 @@ export function nearestWithin(points: readonly { id: number; x: number; y: numbe
   }
   return best;
 }
+
+/** What a click landed on: an agent, else a tool station. */
+export type PickHit = { kind: "agent"; id: number } | { kind: "station"; key: StationCategory };
+
+/**
+ * The agent nearest (x, y) within `radius`, else the station nearest within it. Agents win a tie of
+ * reach because a subagent can sit on a station's spot, and the cloud is what the eye is on.
+ */
+export function pickTarget(
+  agents: readonly { id: number; x: number; y: number }[],
+  stations: readonly { id: number; x: number; y: number }[],
+  x: number,
+  y: number,
+  radius: number,
+): PickHit | null {
+  const a = nearestWithin(agents, x, y, radius);
+  if (a !== null) return { kind: "agent", id: a };
+  const s = nearestWithin(stations, x, y, radius);
+  return s === null ? null : { kind: "station", key: STATIONS[s] };
+}

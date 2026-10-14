@@ -13,6 +13,7 @@ import {
   makeFlight,
   nearestWithin,
   newPose,
+  pickTarget,
   ORBIT_RADIUS,
   SPAWN_TIME,
   STATION_RADIUS,
@@ -387,5 +388,25 @@ describe("sceneFraming", () => {
   it("never zooms a desktop frame past the board's scale", () => {
     const f = sceneFraming({ width: 2560, height: 900 }, { top: 0, height: 900, left: 0, width: 2560, fit: "stations" });
     expect(f.pxPerUnit).toBe(100);
+  });
+});
+
+describe("pickTarget", () => {
+  const agents = [{ id: 3, x: 100, y: 100 }];
+  const stations = [
+    { id: 0, x: 110, y: 100 },
+    { id: 7, x: 300, y: 300 },
+  ];
+
+  it("takes the agent when one is in reach, even with a station nearer", () => {
+    expect(pickTarget(agents, stations, 108, 100, 30)).toEqual({ kind: "agent", id: 3 });
+  });
+
+  it("reports the station when no agent is in reach", () => {
+    expect(pickTarget(agents, stations, 295, 296, 30)).toEqual({ kind: "station", key: STATIONS[7] });
+  });
+
+  it("reports nothing in empty space", () => {
+    expect(pickTarget(agents, stations, 600, 600, 30)).toBeNull();
   });
 });

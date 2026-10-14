@@ -26,12 +26,14 @@ import {
   makeFlight,
   nearestWithin,
   newPose,
+  pickTarget,
   sceneFraming,
   agentPose,
   STATION_RADIUS,
   STATIONS,
   stationActivity,
   stationAngle,
+  stationPos,
   stationCounts,
   webProbes,
   type SceneFrame,
@@ -44,8 +46,10 @@ import { createFrameSync, createPlayback } from "./playback";
 import { createAgents } from "./scene/agents";
 import { createBackdrop } from "./scene/backdrop";
 import { createBoundary } from "./scene/boundary";
+import { MAX_ANCHORS, type AgentAnchor, type InsideOverlay, type ProbeLabel, type StationLabel } from "./overlay-api";
 import { createUniforms } from "./scene/common";
 import { createCore } from "./scene/core";
+import { createNebula } from "./scene/nebula";
 import { createParticles } from "./scene/particles";
 import { createPulses } from "./scene/pulses";
 import { createStations } from "./scene/stations";
@@ -59,39 +63,10 @@ export interface InsideEvents {
   prompt: { excerpt: string };
   trace: { trace: SessionTrace };
   select: { agent: number };
+  station: { station: StationCategory | null };
 }
 
-export interface StationLabel {
-  key: StationCategory;
-  x: number;
-  y: number;
-  /** Text anchor as a fraction of the label box: 0 left/top, 1 right/bottom. */
-  ax: number;
-  ay: number;
-  count: number;
-  active: boolean;
-}
-
-export interface ProbeLabel {
-  id: number;
-  x: number;
-  y: number;
-  tool: string;
-  query: string;
-}
-
-/** Screen positions (CSS px) and text the DOM overlay draws over the canvas. */
-export interface InsideOverlay {
-  version: number;
-  /** Screen px per design px (1 at the 1440x900 hero framing). */
-  scale: number;
-  /** Viewport width, CSS px. */
-  width: number;
-  core: { x: number; y: number };
-  boundary: { x: number; y: number };
-  stations: StationLabel[];
-  probes: ProbeLabel[];
-}
+export type { AgentAnchor, InsideOverlay, ProbeLabel, StationLabel } from "./overlay-api";
 
 export interface InsideApp extends ExperienceApp {
   bus: EventBus<InsideEvents>;
@@ -121,6 +96,11 @@ export interface InsideApp extends ExperienceApp {
   /** The part of the canvas the scene is framed in (CSS px), or null for all of it. */
   setFrame(frame: SceneFrame | null): void;
   overlay(): InsideOverlay;
+  /** The tool station under a point of the canvas (CSS px), or null. */
+  pickStation(x: number, y: number): StationCategory | null;
+  /** The selected tool station, or null. Selecting one clears the selected agent, and the reverse. */
+  station(): StationCategory | null;
+  selectStation(key: StationCategory | null): void;
 }
 
 const FOV = 36;
@@ -172,6 +152,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   let particles = createParticles(swarm, u, tier.particleCap);
   const core = createCore(swarm);
   const agents = createAgents(swarm, 64);
+  let nebula = createNebula(swarm, tier.nebula);
   const pulses = createPulses(scene, u);
   const post = createPost(renderer, scene, camera, {
     bloom: { strength: isWebGPU ? 0.75 : 0.6, radius: 0.55, threshold: 0.82 },
@@ -185,6 +166,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   // On "auto" the tier steps down while frames run slow: a smaller particle ring and pixel ratio.
   const quality = adaptQuality(plan, budgetOptions(opts.params));
   let lastFrameAt = -1;
+  /** Real seconds played, for the nebula's slow swirl (fixed-step under `?shot=`). */
+  let realSeconds = 0;
 
   let trace!: SessionTrace;
   let timeline!: Timeline;
@@ -194,6 +177,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   let promptTimes: number[] = [];
   const playback = createPlayback({ duration: 0, toPlayback: (x) => x, toTrace: (x) => x }, { rate: params.rate });
   let selected = -1;
+  let stationSel: StationCategory | null = null;
   /** The visitor closed the card: stop picking one for them until the trace changes. */
   let dismissed = false;
   let followId = -1;
@@ -232,15 +216,27 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
 
   const select = (id: number, byVisitor = true) => {
     if (id === selected) return;
+    if (id >= 0 && stationSel) selectStation(null);
     selected = id;
     if (byVisitor) dismissed = id < 0;
     if (id < 0 || id !== followId) followId = -1;
     bus.emit("select", { agent: id });
   };
 
+  const selectStation = (key: StationCategory | null) => {
+    if (key === stationSel) return;
+    stationSel = key;
+    if (key) select(-1);
+    bus.emit("station", { station: key });
+  };
+
   const setTrace = (next: SessionTrace, startT = 0) => {
     trace = next;
     selected = -1;
+    if (stationSel) {
+      stationSel = null;
+      bus.emit("station", { station: null });
+    }
     dismissed = false;
     followId = -1;
     timeline = buildTimeline(next);
@@ -249,6 +245,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     probes = webProbes(next);
     promptTimes = next.events.filter((e) => e.kind === "prompt").map((e) => e.t);
     agents.setTrace(next);
+    nebula.setTrace(next, params.seed);
     tethers.setTrace(next);
     boundary.setProbes(probes);
     playback.setMap(timeline);
@@ -319,10 +316,43 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     v.project(camera);
     return { x: ((v.x + 1) / 2) * width, y: ((1 - v.y) / 2) * height };
   };
-  let overlay: InsideOverlay = { version: 0, scale: 1, width: 0, core: { x: 0, y: 0 }, boundary: { x: 0, y: 0 }, stations: [], probes: [] };
+  let overlay: InsideOverlay = { version: 0, scale: 1, width: 0, height: 0, frame: { x: 0, y: 0, w: 0, h: 0 }, core: { x: 0, y: 0 }, boundary: { x: 0, y: 0 }, stations: [], probes: [], anchors: [] };
   const activityNow = new Float32Array(STATIONS.length);
+  /** Frames between two publishes of the overlay: React re-renders at about 20 Hz at most. */
+  const OVERLAY_EVERY = 3;
+  let overlayFrame = 0;
+  let overlaySig = "";
+  const anchorPose = newPose();
+
+  /** The orchestrator and the busiest visible clouds by tokens so far, projected. */
+  const anchorsAt = (t: number): AgentAnchor[] => {
+    const found: { id: number; tokens: number }[] = [];
+    for (let i = 1; i < trace.agents.length; i++) {
+      if (nebula.radiusOf(i) > 0) found.push({ id: i, tokens: nebula.tokensAt(i, t) });
+    }
+    found.sort((p, q) => q.tokens - p.tokens || p.id - q.id);
+    const top = found.slice(0, MAX_ANCHORS - 1);
+    const ids = [0, ...top.map((f) => f.id)];
+    return ids.map((id): AgentAnchor => {
+      const a = trace.agents[id];
+      agentPose(trace, id, t, anchorPose);
+      const c = project(anchorPose.x, anchorPose.y, anchorPose.z, true);
+      const edge = project(anchorPose.x + nebula.radiusOf(id), anchorPose.y, anchorPose.z, true);
+      const r = Math.hypot(edge.x - c.x, edge.y - c.y);
+      return {
+        id,
+        ...c,
+        r,
+        model: a.model,
+        name: id === 0 ? "orchestrator" : a.label,
+        tokens: nebula.tokensAt(id, t),
+        live: id === 0 || (t >= a.spawnT && !(a.returned && t >= a.returnT)),
+      };
+    });
+  };
 
   const updateOverlay = (t: number, drawn: number[]) => {
+    overlayFrame++;
     const stationLabels = STATIONS.map((key, i): StationLabel => {
       const at = stationAngle(i);
       // Outward from the disc; the web station's probes leave along its own direction, so its label turns aside.
@@ -336,13 +366,34 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       const pr = probes[k];
       return { id: pr.event, ...project(pr.ex, pr.ey, pr.ez, true), tool: pr.tool, query: pr.query };
     });
+    const anchors = anchorsAt(t);
+    const bounds = frame ? { x: frame.left ?? 0, y: frame.top, w: frame.width ?? width, h: frame.height } : { x: 0, y: 0, w: width, h: height };
+    const core = project(0, 0, 0, true);
+    // Publish only what moved a pixel or changed, and no oftener than every few frames, so a paused
+    // or slowly drifting scene does not re-render the React overlay 60 times a second.
+    const sig = [
+      width,
+      height,
+      `${bounds.x},${bounds.y},${bounds.w},${bounds.h}`,
+      u.sizeScale.value.toFixed(3),
+      core.x.toFixed(0),
+      core.y.toFixed(0),
+      stationLabels.map((l) => `${l.x.toFixed(0)},${l.y.toFixed(0)},${l.count},${l.active ? 1 : 0}`).join(";"),
+      probeLabels.map((l) => `${l.id},${l.x.toFixed(0)},${l.y.toFixed(0)}`).join(";"),
+      anchors.map((l) => `${l.id},${l.x.toFixed(0)},${l.y.toFixed(0)},${l.r.toFixed(0)},${Math.round(l.tokens / 100)},${l.live ? 1 : 0}`).join(";"),
+    ].join("|");
+    if (sig === overlaySig || (overlayFrame % OVERLAY_EVERY !== 0 && overlay.width === width && overlay.height === height)) return;
+    overlaySig = sig;
     // The boundary label sits outside the circle at about ten to eleven on the clock face.
     const ba = (140 * Math.PI) / 180;
     overlay = {
       version: overlay.version + 1,
       scale: u.sizeScale.value,
       width,
-      core: project(0, 0, 0, true),
+      height,
+      frame: bounds,
+      anchors,
+      core,
       boundary: project(Math.cos(ba) * (BOUNDARY_RADIUS + 0.12), Math.sin(ba) * (BOUNDARY_RADIUS + 0.12), 0, false),
       stations: stationLabels,
       probes: probeLabels,
@@ -351,16 +402,26 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
 
   // --- picking: the CPU twin of the scene (agentPose), projected like the labels ---
   const pickPose = newPose();
-  const pick = (x: number, y: number): number | null => {
-    if (!trace) return null;
-    const t = playback.time();
+  const pickAgents = (t: number) => {
     const pts: { id: number; x: number; y: number }[] = [];
     for (let i = 1; i < trace.agents.length; i++) {
       agentPose(trace, i, t, pickPose);
       if (pickPose.presence < 0.5) continue;
       pts.push({ id: i, ...project(pickPose.x, pickPose.y, pickPose.z, true) });
     }
-    return nearestWithin(pts, x, y, coarse ? PICK_RADIUS_COARSE : PICK_RADIUS);
+    return pts;
+  };
+  /** Station centres, projected at the click because the camera moves. */
+  const projectStations = () =>
+    STATIONS.map((_, i) => {
+      stationPos(i, pickPose);
+      return { id: i, ...project(pickPose.x, pickPose.y, pickPose.z, true) };
+    });
+  const pickRadius = () => (coarse ? PICK_RADIUS_COARSE : PICK_RADIUS);
+  const pick = (x: number, y: number): number | null => (trace ? nearestWithin(pickAgents(playback.time()), x, y, pickRadius()) : null);
+  const pickStation = (x: number, y: number): StationCategory | null => {
+    const hit = trace ? pickTarget([], projectStations(), x, y, pickRadius()) : null;
+    return hit?.kind === "station" ? hit.key : null;
   };
 
   /** Where agent `id` is on the canvas now (CSS px), or null while it is not in the scene. */
@@ -379,8 +440,9 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   const onUp = (e: PointerEvent) => {
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8) return;
     const box = canvas.getBoundingClientRect();
-    const hit = pick(e.clientX - box.left, e.clientY - box.top);
-    if (hit !== null) select(hit);
+    const hit = trace ? pickTarget(pickAgents(playback.time()), projectStations(), e.clientX - box.left, e.clientY - box.top, pickRadius()) : null;
+    if (hit?.kind === "agent") select(hit.id);
+    else if (hit?.kind === "station") selectStation(hit.key);
   };
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointerup", onUp);
@@ -400,6 +462,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     rate: 0,
     playing: false,
     selected,
+    station: null as StationCategory | null,
+    nebula: 0,
     following: -1,
     agentsAlive: 0,
     label: "",
@@ -426,6 +490,9 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio(stepped, coarse)));
       particles.dispose();
       particles = createParticles(swarm, u, TIERS[stepped.tier].particleCap);
+      nebula.dispose();
+      nebula = createNebula(swarm, TIERS[stepped.tier].nebula);
+      nebula.setTrace(trace, params.seed);
       sync.rewrite();
       debug.tier = stepped.tier;
     }
@@ -460,7 +527,9 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     }
     agents.update(t, selected);
     tethers.update(t, selected);
+    realSeconds += dt;
     for (let i = 0; i < STATIONS.length; i++) activityNow[i] = activity.at(i, t);
+    nebula.update(t, selected, activityNow, realSeconds);
     stations.update(activityNow);
     const drawn = boundary.update(t);
     let lastPrompt = -Infinity;
@@ -474,6 +543,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     debug.rate = rate;
     debug.playing = playback.playing();
     debug.selected = selected;
+    debug.station = stationSel;
+    debug.nebula = nebula.points();
     debug.following = followId;
     debug.streaks = Math.min(particles.count, particles.capacity);
     debug.probes = drawn.length;
@@ -524,6 +595,9 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       resize();
     },
     overlay: () => overlay,
+    pickStation,
+    station: () => stationSel,
+    selectStation,
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -535,7 +609,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       audio.dispose();
       bus.clear();
       post.dispose();
-      for (const m of [pulses, agents, core, particles, tethers, stations, boundary, backdrop]) m.dispose();
+      for (const m of [pulses, nebula, agents, core, particles, tethers, stations, boundary, backdrop]) m.dispose();
       renderer.dispose();
     },
   };

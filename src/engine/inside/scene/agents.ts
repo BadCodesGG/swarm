@@ -14,11 +14,11 @@ import { dynamicAttribute, modelColor, spriteGeometry, spriteMaterial } from "./
 
 /** Halo and centre radius, design px, by family. */
 const SIZE: Record<ModelFamily, [number, number]> = {
-  opus: [42, 8.5],
-  fable: [36, 7.5],
-  sonnet: [31, 6.5],
-  haiku: [25, 5.5],
-  other: [28, 6],
+  opus: [24, 7],
+  fable: [21, 6],
+  sonnet: [19, 5.5],
+  haiku: [16, 4.5],
+  other: [18, 5],
 };
 const RING_GAP = 8;
 

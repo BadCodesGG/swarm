@@ -40,6 +40,32 @@ describe("shotsOf", () => {
     expect(shotsOf(tl, 200).length).toBeLessThan(shotsOf(tl, 1).length);
   });
 
+  it("pulls back to the orchestrator on a compaction, not on a human prompt", () => {
+    // The medium sample has prompts and no compaction: only the opener looks at the orchestrator for one.
+    expect(trace.events.some((e) => e.kind === "prompt" && e.t > 0)).toBe(true);
+    expect(shots.filter((s) => s.kind === "prompt")).toHaveLength(1);
+    expect(shots.some((s) => s.kind === "compact")).toBe(false);
+    // The large samples compact: each compaction cuts a wide shot on the orchestrator, unless another
+    // shot began within the hold before it (the hold rule, so the camera never ping-pongs).
+    let cut = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      const large = generateTrace(seed, "large");
+      const ltl = buildTimeline(large);
+      const all = shotsOf(ltl, 4);
+      for (const e of large.events) {
+        if (e.kind !== "compact") continue;
+        const at = ltl.toPlayback(e.t);
+        const pull = all.find((s) => s.kind === "compact" && Math.abs(s.t - at) < 1e-6);
+        if (pull) {
+          cut++;
+          expect(pull.agents).toEqual([0]);
+          expect(pull.wide).toBeGreaterThan(1);
+        } else expect(all.some((s) => s.t < at && at - s.t < holdFor(4))).toBe(true);
+      }
+    }
+    expect(cut).toBeGreaterThan(0);
+  });
+
   it("is the same shots every time", () => {
     expect(shotsOf(buildTimeline(generateTrace(50, "medium")), 4)).toEqual(shots);
   });

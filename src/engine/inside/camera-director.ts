@@ -18,7 +18,8 @@
  *    on the group (a fan-out, framed to hold every child);
  *  - station: a burst (four or more calls to one station within eight seconds) swings to it;
  *  - return: a handback follows the report line back to the parent cluster;
- *  - prompt: a human prompt pulls back to the orchestrator and its near children;
+ *  - prompt: the opening shot, on the orchestrator reading the first prompt;
+ *  - compact: a context compaction pulls back to the orchestrator and its near children;
  *  - drift: a long quiet stretch (three holds with no other shot) tours the running clusters in
  *    turn, a little wider, each with a slow sway;
  *  - overview: the last stretch of the run pulls all the way back to show everything at once.
@@ -30,7 +31,7 @@ import { agentPose, newPose, SPAWN_TIME, stationPos, STATIONS, stationIndex } fr
 import { cloudRadius } from "./nebula-plan";
 
 export type Vec3 = [number, number, number];
-export type ShotKind = "spawn" | "station" | "return" | "prompt" | "drift" | "overview" | "follow";
+export type ShotKind = "spawn" | "station" | "return" | "prompt" | "compact" | "drift" | "overview" | "follow";
 
 export interface Shot {
   /** Playback seconds at which the camera starts flying to this shot. */
@@ -138,8 +139,8 @@ function buildShots(tl: Timeline, hold: number): Shot[] {
     } else if (e.kind === "return" && e.child !== undefined) {
       const parent = trace.agents[e.child]?.parent ?? 0;
       cands.push({ t: tl.toPlayback(e.t), kind: "return", agents: [Math.max(parent, 0)], station: -1, priority: 2 });
-    } else if (e.kind === "prompt") {
-      cands.push({ t: tl.toPlayback(e.t), kind: "prompt", agents: [0], station: -1, priority: 3 });
+    } else if (e.kind === "compact") {
+      cands.push({ t: tl.toPlayback(e.t), kind: "compact", agents: [0], station: -1, priority: 3 });
     } else if (e.kind === "call" && e.category) {
       const s = stationIndex(e.category);
       if (s < 0) continue;
@@ -162,7 +163,7 @@ function buildShots(tl: Timeline, hold: number): Shot[] {
   for (const c of cands) {
     if (c.t > overviewAt - hold * 0.5) break;
     if (last && c.t - last.t < hold) continue;
-    kept.push({ t: c.t, kind: c.kind, agents: c.agents, station: c.station, wide: c.kind === "prompt" ? 1.9 : 1, azimuth: 0 });
+    kept.push({ t: c.t, kind: c.kind, agents: c.agents, station: c.station, wide: c.kind === "prompt" || c.kind === "compact" ? 1.9 : 1, azimuth: 0 });
     last = c;
   }
 

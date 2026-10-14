@@ -212,6 +212,63 @@ describe("layoutWorldLabels", () => {
     expect(Math.abs(l.links[0].y - 400)).toBeLessThan(40);
   });
 
+  it("brings a name back inside the slot when every spot round its ring would leave it", () => {
+    // A phone's slot with a ring that nearly fills it: under, over and beside it all run off an edge.
+    const tiny: Rect = { x0: 0, y0: 0, x1: 200, y1: 120 };
+    const l = layoutWorldLabels({ bounds: tiny, labs: [{ id: "a", name: "MERIDIAN", status: "HELD", x: 100, y: 60, r: 50 }], links: [], markers: [], outside: { x: 198, y: 60 }, k: 1 });
+    for (const r of [rectOf(l.labs[0]), rectOf(l.outside!)]) {
+      expect(r.x0).toBeGreaterThanOrEqual(tiny.x0);
+      expect(r.y0).toBeGreaterThanOrEqual(tiny.y0);
+      expect(r.x1).toBeLessThanOrEqual(tiny.x1);
+      expect(r.y1).toBeLessThanOrEqual(tiny.y1);
+    }
+  });
+
+  it("on a phone's slot leaves link names off and shows OUTSIDE only where it is clear, so no text covers a button or a name", () => {
+    // The breakout overview on a 362x267 slot, as a phone draws it: rings of 41 px, six buttons, text at 1.25.
+    const k = 1.25;
+    const phone = { x0: 16, y0: 359, x1: 374, y1: 622 };
+    const labs = [
+      { id: "meridian", name: "MERIDIAN", status: "HELD", x: 127, y: 425, r: 41 },
+      { id: "kestrel", name: "KESTREL", status: "BREACHED", x: 262, y: 425, r: 41 },
+      { id: "halcyon", name: "HALCYON", status: "BREACHED", x: 196, y: 510, r: 41 },
+    ];
+    const buttons = [
+      { n: 1, x: 284, y: 396 },
+      { n: 2, x: 320, y: 430 },
+      { n: 3, x: 318, y: 375 },
+      { n: 4, x: 349, y: 402 },
+      { n: 5, x: 223, y: 475 },
+      { n: 6, x: 175, y: 425 },
+    ];
+    const crowded = {
+      bounds: phone,
+      labs,
+      links: [
+        { index: 0, name: "Shared cache", x: 240, y: 468 },
+        { index: 1, name: "Model registry", x: 175, y: 425 },
+      ],
+      markers: buttons,
+      outside: { x: 339, y: 394 },
+      segments: [[{ x: 290, y: 400 }, { x: 339, y: 394 }]] as [Point, Point][],
+      k,
+    };
+    const l = layoutWorldLabels({ ...crowded, sparse: true });
+    expect(l.links).toEqual([]);
+    expect(l.labs).toHaveLength(3);
+    const boxes = boxesOf(l);
+    boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
+    for (const r of boxes) {
+      for (const m of buttons) expect(touchesDisc(r, m, MARKER_BUTTON * k)).toBe(false);
+      expect(r.x0).toBeGreaterThanOrEqual(phone.x0);
+      expect(r.x1).toBeLessThanOrEqual(phone.x1);
+      expect(r.y0).toBeGreaterThanOrEqual(phone.y0);
+      expect(r.y1).toBeLessThanOrEqual(phone.y1);
+    }
+    // A wide slot keeps every name whatever the crowd.
+    expect(layoutWorldLabels(crowded).links).toHaveLength(2);
+  });
+
   it("moves a name off a marker button that sits where it would go", () => {
     const l = layoutWorldLabels({ ...input, markers: [{ n: 1, x: 260, y: 360 }] });
     expect(touchesDisc(rectOf(l.labs[0]), { x: 260, y: 360 }, MARKER_BUTTON)).toBe(false);

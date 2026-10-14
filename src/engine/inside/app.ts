@@ -105,6 +105,8 @@ export interface InsideApp extends ExperienceApp {
   /** The selected tool station, or null. Selecting one clears the selected agent, and the reverse. */
   station(): StationCategory | null;
   selectStation(key: StationCategory | null): void;
+  /** Where agent `id`'s cloud is on the canvas now (CSS px, with its screen radius), or null off screen or before it exists. */
+  cloudOf(id: number): { x: number; y: number; r: number } | null;
 }
 
 /** CSS px around a point within which a click picks an agent. */
@@ -520,6 +522,19 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     return c.behind ? null : { x: c.x, y: c.y };
   };
 
+  /** The cloud of agent `id` projected now: its centre and screen radius, for lines drawn between clouds. */
+  const cloudOf = (id: number) => {
+    if (!trace || id < 0 || id >= trace.agents.length) return null;
+    const radius = nebula.radiusOf(id);
+    if (radius <= 0) return null;
+    right.setFromMatrixColumn(camera.matrixWorld, 0);
+    cloudAt(trace, id, playback.time(), anchorCloud);
+    const c = project(anchorCloud.x, anchorCloud.y, anchorCloud.z);
+    if (!onCanvas(c, 0)) return null;
+    const edge = project(anchorCloud.x + right.x * radius, anchorCloud.y + right.y * radius, anchorCloud.z + right.z * radius);
+    return { x: c.x, y: c.y, r: Math.hypot(edge.x - c.x, edge.y - c.y) };
+  };
+
   let downX = 0;
   let downY = 0;
   let lastX = 0;
@@ -718,6 +733,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     pickStation,
     station: () => stationSel,
     selectStation,
+    cloudOf,
     dispose() {
       if (disposed) return;
       disposed = true;

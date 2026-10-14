@@ -5,6 +5,7 @@ import type { InsideApp } from "@/engine/inside/app";
 import { clock, idleCutLabel, MODEL_VARS } from "@/engine/inside/format";
 import { axisTicks, barHeight, buildLanes, LANE_BINS, type Lanes } from "@/engine/inside/lanes";
 import type { IdleCut, Timeline } from "@/lib/trace/timeline";
+import { AgentLanes, lanesHeightFor, LaneKey } from "./agent-lanes";
 import { nextRate, RATES, shownRate } from "./rates";
 import { useClock, useEngineSnapshot, useTimeline } from "./use-engine";
 
@@ -76,11 +77,11 @@ const Lane = memo(function Lane({ spec, played }: { spec: LaneSpec; played: numb
 });
 
 const specs = (lanes: Lanes, only: "tools" | "all"): LaneSpec[] => {
-  const tools: LaneSpec = { label: "TOOLS", labelClass: "text-muted", heightPx: only === "tools" ? 26 : 24, counts: lanes.tools, color: () => "var(--muted)" };
+  const tools: LaneSpec = { label: "TOOLS", labelClass: "text-muted", heightPx: only === "tools" ? 26 : 20, counts: lanes.tools, color: () => "var(--muted)" };
   if (only === "tools") return [tools];
   return [
-    { label: "PROMPTS", labelClass: "text-warn", heightPx: 18, counts: lanes.prompts, color: () => "var(--opus)" },
-    { label: "AGENTS", labelClass: "text-[#c9b8ff]", heightPx: 18, counts: lanes.agents, color: (i) => MODEL_VARS[lanes.agentModel[i]] },
+    { label: "PROMPTS", labelClass: "text-warn", heightPx: 14, counts: lanes.prompts, color: () => "var(--opus)" },
+    { label: "AGENTS", labelClass: "text-[#c9b8ff]", heightPx: 14, counts: lanes.agents, color: (i) => MODEL_VARS[lanes.agentModel[i]] },
     tools,
   ];
 };
@@ -90,7 +91,8 @@ function cutMarks(cuts: IdleCut[], span: number) {
   let lastLabel = -1;
   return cuts.map((c) => {
     const at = span > 0 ? c.at / span : 0;
-    const label = lastLabel < 0 || at - lastLabel >= 0.14;
+    // A label hangs right of its line, so one near the end would run under the key hints.
+    const label = at <= 0.88 && (lastLabel < 0 || at - lastLabel >= 0.14);
     if (label) lastLabel = at;
     return { at, text: label ? idleCutLabel(c.removed) : null };
   });
@@ -134,6 +136,9 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
               {s.label}
             </span>
           ))}
+          <span className="flex items-end text-label" style={{ height: lanesHeightFor(tl) }}>
+            LANES
+          </span>
           <span className="h-[17px]" />
         </div>
       ) : null}
@@ -159,6 +164,7 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
         {laneSpecs.map((s) => (
           <Lane key={s.label} spec={s} played={played} />
         ))}
+        {full ? <AgentLanes tl={tl} /> : null}
         {full ? (
           <div className="relative flex h-[17px] justify-between pt-1 font-mono text-[10px] text-faint" aria-hidden="true">
             {ticks.map((k) => (
@@ -214,7 +220,7 @@ export function Timeline({
   if (narrow) {
     const shown = shownRate(rate);
     return (
-      <section aria-label="Timeline" className="pointer-events-auto flex flex-col gap-2.5 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 py-3">
+      <section aria-label="Timeline" className="pointer-events-auto flex flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-3.5 py-3">
         <Scrubber app={app} only="tools" />
         <div className="flex items-center gap-2.5">
           <PlayButton app={app} playing={playing} size={44} />
@@ -237,7 +243,7 @@ export function Timeline({
   return (
     <section
       aria-label="Timeline"
-      className="pointer-events-auto flex flex-wrap items-stretch gap-x-5 gap-y-3.5 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-[18px] py-3.5 backdrop-blur-[10px]"
+      className="pointer-events-auto flex flex-wrap items-stretch gap-x-5 gap-y-3 rounded-[14px] border border-panel-border bg-panel px-[18px] py-2.5 backdrop-blur-[10px]"
     >
       <div className="flex flex-col justify-between gap-2.5">
         <div className="flex items-center gap-3">
@@ -254,7 +260,7 @@ export function Timeline({
               type="button"
               aria-pressed={rate === r}
               onClick={() => app.setRate(r)}
-              className={`min-h-11 min-w-[52px] rounded-lg border-0 outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${
+              className={`min-h-9 min-w-[52px] rounded-lg border-0 outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${
                 rate === r ? "bg-control font-semibold text-ink-strong" : "bg-transparent text-label hover:text-ink"
               }`}
             >
@@ -262,6 +268,7 @@ export function Timeline({
             </button>
           ))}
         </div>
+        <LaneKey />
       </div>
 
       <div className="min-w-0 flex-[999_1_480px] self-end pt-4">

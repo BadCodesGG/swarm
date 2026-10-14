@@ -29,6 +29,25 @@ describe("rosterAt", () => {
     expect(rosterAt(tl, 100)[0].status).toBe("done");
   });
 
+  it("says the orchestrator is waiting on you between your prompts, and a helper during a permission wait", () => {
+    const t = literal(
+      [
+        { t: 1, agent: 0, kind: "call", category: "shell", tool: "Bash" },
+        { t: 2, agent: 0, kind: "result", category: "shell", tool: "Bash", call: 0 },
+        { t: 10, agent: 0, kind: "spawn", category: "agents", tool: "Agent", child: 1 },
+        { t: 12, agent: 1, kind: "call", category: "files", tool: "Read" },
+        { t: 18, agent: 1, kind: "result", category: "files", tool: "Read", call: 3, permission: "user" },
+        { t: 20, agent: 0, kind: "return", child: 1, call: 2 },
+        { t: 50, agent: 0, kind: "prompt" },
+      ],
+      [agent(0), agent(1, { spawnT: 10, returnT: 20 })],
+    );
+    const tl2 = buildTimeline(t);
+    expect(rosterAt(tl2, 15).map((r) => r.status)).toEqual(["working", "waiting-on-you"]);
+    expect(rosterAt(tl2, 30).map((r) => r.status)).toEqual(["waiting-on-you", "done"]);
+    expect(rosterAt(tl2, 55).map((r) => r.status)).toEqual(["working", "done"]);
+  });
+
   it("stops the active clock at the return, and starts it at the spawn", () => {
     expect(rosterAt(tl, 99)[1].activeTime).toBe(20);
     expect(rosterAt(tl, 5)[1].activeTime).toBe(0);

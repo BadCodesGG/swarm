@@ -99,6 +99,9 @@ export async function stepImport(browser, h) {
 
         const stray = log.requests.filter((r) => !allowed(r, h.BASE));
         check("import: no request beyond this site's own assets and routes", stray.length === 0, stray.map((r) => `${r.method} ${r.url}`).join(" | "));
+        // The moment sync runs once a second: give it two to prove it never touches an upload's URL.
+        await page.waitForTimeout(2200);
+        check("import: an upload offers no link to copy", (await page.locator("[data-copy-moment]").count()) === 0);
         const stored = await page.evaluate(() => ({
           keys: Object.keys(localStorage).filter((k) => !k.startsWith("swarm-")),
           session: sessionStorage.length,
@@ -152,12 +155,12 @@ export async function stepImport(browser, h) {
 
     // --- a session file alone, then its folder; markup where the HUD shows session text ---
     {
-      // A copy of the fixture with markup at the head of every Agent description and every turn's text.
+      // A copy of the fixture with markup at the head of every Agent description, every Agent prompt (the brief) and every turn's text.
       const hostile = path.join(scratch, "hostile");
       const subagents = path.join(hostile, "session", "subagents");
       mkdirSync(subagents, { recursive: true });
       const poison = (text) =>
-        text.replaceAll('"description":"', `"description":"${HOSTILE} `).replaceAll('"type":"text","text":"', `"type":"text","text":"${HOSTILE} `);
+        text.replaceAll('"description":"', `"description":"${HOSTILE} `).replaceAll('"type":"text","text":"', `"type":"text","text":"${HOSTILE} `).replaceAll('"prompt":"', `"prompt":"${HOSTILE} `);
       writeFileSync(path.join(hostile, "session.jsonl"), poison(readFileSync(path.join(FIXTURES, "session.jsonl"), "utf8")));
       for (const name of readdirSync(path.join(FIXTURES, "session", "subagents"))) {
         writeFileSync(path.join(subagents, name), poison(readFileSync(path.join(FIXTURES, "session", "subagents", name), "utf8")));

@@ -9,7 +9,7 @@ export function KeyPanel({ open }: { open: boolean }) {
   return (
     <details
       open={open}
-      className="pointer-events-auto min-h-0 shrink overflow-y-auto rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.78)] px-[18px] pt-1.5 pb-4 backdrop-blur-[10px] [&::-webkit-details-marker]:hidden"
+      className="pointer-events-auto min-h-0 shrink overflow-y-auto rounded-[14px] border border-panel-border bg-panel px-[18px] pt-1.5 pb-4 backdrop-blur-[10px] [&::-webkit-details-marker]:hidden"
     >
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between font-mono text-[10px] tracking-[0.14em] text-label outline-none focus-visible:ring-2 focus-visible:ring-layer-1 [&::-webkit-details-marker]:hidden">
         WHAT YOU ARE SEEING

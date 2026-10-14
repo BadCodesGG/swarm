@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateTrace } from "@/lib/trace/generate";
+import { agent, trace as literal } from "@/lib/trace/test-trace";
 import { buildTimeline } from "@/lib/trace/timeline";
 import { agentInfo } from "./agent-info";
 import { featuredAgent } from "./layout";
@@ -40,6 +41,27 @@ describe("agentInfo", () => {
       expect(late.state).toBe("returned");
       expect(late.running).toBeCloseTo(a.returnT - a.spawnT, 5);
     }
+  });
+
+  it("reads waiting-on-you off the lane: the orchestrator between prompts, a helper on a permission prompt", () => {
+    const t = literal(
+      [
+        { t: 1, agent: 0, kind: "call", category: "shell", tool: "Bash" },
+        { t: 2, agent: 0, kind: "result", category: "shell", tool: "Bash", call: 0 },
+        { t: 10, agent: 0, kind: "spawn", category: "agents", tool: "Agent", child: 1 },
+        { t: 12, agent: 1, kind: "call", category: "files", tool: "Read" },
+        { t: 18, agent: 1, kind: "result", category: "files", tool: "Read", call: 3, permission: "user" },
+        { t: 20, agent: 0, kind: "return", child: 1, call: 2 },
+        { t: 50, agent: 0, kind: "prompt" },
+      ],
+      [agent(0), agent(1, { spawnT: 10, returnT: 20 })],
+    );
+    const tl2 = buildTimeline(t);
+    expect(agentInfo(tl2, 0, 15)!.state).toBe("running");
+    expect(agentInfo(tl2, 1, 15)!.state).toBe("waiting-on-you");
+    expect(agentInfo(tl2, 0, 30)!.state).toBe("waiting-on-you");
+    expect(agentInfo(tl2, 1, 30)!.state).toBe("returned");
+    expect(agentInfo(tl2, 0, 55)!.state).toBe("running");
   });
 
   it("finds the last call at or before t", () => {

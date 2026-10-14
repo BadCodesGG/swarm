@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentAnchor } from "@/engine/inside/overlay-api";
-import { pathOf, placeCallouts, type Rect } from "./callouts";
+import { pathOf, placeCallouts, placeFarLabels, type Rect } from "./callouts";
 
 const anchor = (id: number, x: number, y: number, r = 30): AgentAnchor => ({ id, x, y, r, model: "sonnet", name: `agent ${id}`, tokens: 1000 * id, live: true, far: 0, focus: false });
 const centre = { x: 700, y: 400 };
@@ -38,9 +38,26 @@ describe("placeCallouts", () => {
     expect(d.side).toBe("end");
   });
 
+  it("labels nothing whose cloud sits outside the free frame, even when its label would fit inside", () => {
+    // The frame is the canvas minus the HUD's chrome: a cloud under the toolbar gets no leader into the scene.
+    const bounds: Rect = { x: 100, y: 120, w: 1200, h: 600 };
+    const under = anchor(1, 700, 100);
+    expect(placeCallouts([under], stat, centre, { width: 1400, height: 900, bounds })).toEqual([]);
+    expect(placeCallouts([anchor(2, 700, 200)], stat, centre, { width: 1400, height: 900, bounds })).toHaveLength(1);
+  });
+
   it("labels only two clouds on a narrow canvas, and drops one it cannot fit", () => {
     expect(placeCallouts(ring(8), stat, centre, { width: 600, height: 800 }).length).toBeLessThanOrEqual(2);
     expect(placeCallouts([anchor(1, 5, 5)], () => 30, { x: 5, y: 5 }, { width: 60, height: 60 })).toEqual([]);
+  });
+});
+
+describe("placeFarLabels", () => {
+  it("tags only clouds inside the free frame", () => {
+    const bounds: Rect = { x: 100, y: 120, w: 1200, h: 600 };
+    const far = (id: number, x: number, y: number) => ({ ...anchor(id, x, y, 20), far: 0.8 });
+    const out = placeFarLabels([far(1, 700, 90), far(2, 700, 400), far(3, 1350, 400)], [], bounds);
+    expect(out.map((t) => t.anchor.id)).toEqual([2]);
   });
 });
 

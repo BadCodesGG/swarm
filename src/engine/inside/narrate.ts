@@ -7,6 +7,7 @@
 import type { Timeline } from "@/lib/trace/timeline";
 import type { ModelFamily, SessionTrace, ToolCategory, TraceAgent } from "@/lib/trace/types";
 import { MODEL_NAMES } from "./format";
+import { waitingOnYouAt } from "./lanes";
 
 /** An agent counts as "using" a tool for this many trace seconds after its call. */
 const RECENT = 30;
@@ -128,7 +129,9 @@ export function narrate(tl: Timeline, t: number): string {
     const own = currentActivity(tl, 0, t);
     if (own) return `The orchestrator is ${ACTIVITY[own]} on its own.`;
     if (t < trace.events[0].t + 5) return "The session is starting. The orchestrator is reading the first prompt.";
-    return "Nothing is running. The session is waiting for the next prompt.";
+    // The same answer the roster and the card's badge give, so the line never contradicts them.
+    if (waitingOnYouAt(trace, 0, t)) return "Nothing is running. The session is waiting for the next prompt.";
+    return "The orchestrator is thinking on its own.";
   }
 
   // Agents grouped by what they are doing, busiest first; agents with no recent call always go last.

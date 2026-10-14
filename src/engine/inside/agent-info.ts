@@ -6,8 +6,10 @@
 
 import type { Timeline } from "@/lib/trace/timeline";
 import type { ModelFamily, SessionTrace, ToolCategory } from "@/lib/trace/types";
+import { waitingOnYouAt } from "./lanes";
 
-export type AgentState = "waiting" | "running" | "returned";
+/** waiting-on-you: live, but held on a permission prompt or (the orchestrator) on your next prompt. */
+export type AgentState = "waiting" | "running" | "waiting-on-you" | "returned";
 
 export interface AgentInfo {
   id: number;
@@ -85,7 +87,7 @@ export function agentInfo(tl: Timeline, id: number, t: number): AgentInfo | null
 
   const lastEvent = last >= 0 ? trace.events[last] : null;
   const returnedNow = a.returned && t >= a.returnT;
-  const state: AgentState = t < a.spawnT ? "waiting" : returnedNow ? "returned" : "running";
+  const state: AgentState = t < a.spawnT ? "waiting" : returnedNow ? "returned" : waitingOnYouAt(trace, id, t) ? "waiting-on-you" : "running";
 
   return {
     id,

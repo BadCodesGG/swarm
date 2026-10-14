@@ -3,7 +3,7 @@ import { generateTrace } from "@/lib/trace/generate";
 import { buildTimeline } from "@/lib/trace/timeline";
 import { agent, trace as literal } from "@/lib/trace/test-trace";
 import type { TraceEvent } from "@/lib/trace/types";
-import { axisTicks, barHeight, buildAgentLanes, buildLanes, HUMAN_GAP_MIN, RETRY_WINDOW } from "./lanes";
+import { axisTicks, barHeight, buildAgentLanes, buildLanes, HUMAN_GAP_MIN, lanesOf, RETRY_WINDOW, waitingOnYouAt } from "./lanes";
 
 describe("lanes", () => {
   const trace = generateTrace(1, "medium");
@@ -122,6 +122,30 @@ describe("buildAgentLanes", () => {
     expect(buildAgentLanes(literal([]))[0].segments).toEqual([{ kind: "idle", start: 0, end: 100 }]);
     expect(buildAgentLanes(literal([call(1), result(2, 0)]))[0]).toMatchObject({ errors: [], retries: [], pauses: [], compactions: [] });
     expect(buildAgentLanes(literal([], []))).toEqual([]);
+  });
+
+  it("says who is waiting on you at a moment: the orchestrator before your next prompt, an agent in a permission wait", () => {
+    const t = literal(
+      [call(1), result(2, 0), call(12, "Read", 1), result(18, 2, { agent: 1, permission: "user" }), { t: 50, agent: 0, kind: "prompt" }, call(51), result(52, 5)],
+      [agent(0), agent(1, { spawnT: 10, returnT: 20 })],
+    );
+    expect(waitingOnYouAt(t, 0, 1.5)).toBe(false);
+    // The helper is still out until 18: the session is not waiting on you while something runs.
+    expect(waitingOnYouAt(t, 0, 15)).toBe(false);
+    expect(waitingOnYouAt(t, 0, 18)).toBe(true);
+    expect(waitingOnYouAt(t, 0, 49.9)).toBe(true);
+    expect(waitingOnYouAt(t, 0, 50)).toBe(false);
+    expect(waitingOnYouAt(t, 0, 60)).toBe(false);
+    expect(waitingOnYouAt(t, 1, 11)).toBe(false);
+    expect(waitingOnYouAt(t, 1, 15)).toBe(true);
+    expect(waitingOnYouAt(t, 1, 19)).toBe(false);
+    expect(waitingOnYouAt(t, 9, 15)).toBe(false);
+  });
+
+  it("builds the lanes once per trace", () => {
+    const t = literal([call(1), result(2, 0)]);
+    expect(lanesOf(t)).toBe(lanesOf(t));
+    expect(lanesOf(t)).toEqual(buildAgentLanes(t));
   });
 
   it("covers every lane of a sample with contiguous segments", () => {

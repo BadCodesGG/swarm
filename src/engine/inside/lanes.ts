@@ -265,3 +265,32 @@ export function buildAgentLanes(trace: SessionTrace): AgentLane[] {
   }
   return lanes;
 }
+
+const laneCache = new WeakMap<SessionTrace, AgentLane[]>();
+
+/** The agent lanes of a trace, built once: the HUD's panels, the roster and the cards all read them. */
+export function lanesOf(trace: SessionTrace): AgentLane[] {
+  let hit = laneCache.get(trace);
+  if (!hit) laneCache.set(trace, (hit = buildAgentLanes(trace)));
+  return hit;
+}
+
+/**
+ * Whether the agent is waiting on the human at trace time `t`: a permission prompt on one of its
+ * calls, or (the orchestrator) the silence before your next prompt. The one answer the roster, the
+ * card's badge and the NOW line share, so they never disagree with the lane under the playhead.
+ */
+export function waitingOnYouAt(trace: SessionTrace, id: number, t: number): boolean {
+  const segments = lanesOf(trace)[id]?.segments;
+  if (!segments) return false;
+  // Segments are contiguous and ascending: the last one starting at or before t holds it.
+  let lo = 0;
+  let hi = segments.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (segments[mid].start > t) hi = mid;
+    else lo = mid + 1;
+  }
+  const seg = segments[lo - 1];
+  return !!seg && t < seg.end && seg.kind === "waiting-on-you";
+}

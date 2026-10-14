@@ -3,7 +3,10 @@ import { createState, rogueCount, step } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, LAYER_ORDER, type ActionId, type BoxConfig, type CatchReport, type LayerId, type StepReport, type Verdict } from "@/lib/box/types";
 import { simRng } from "./params";
 import { RING_RADIUS } from "./layout";
-import { createTally, LOG_CAP, MARKER_TICKS, record, type TallyContext } from "./tally";
+import type { Scenario, WorldEvent } from "@/lib/box/world-types";
+import { createWorld, stepWorld } from "@/lib/box/world";
+import { presetScenario } from "@/lib/box/presets";
+import { createTally, createWorldTally, labStatus, labTotals, LOG_CAP, MARKER_TICKS, mergeTallies, record, recordWorld, type TallyContext } from "./tally";
 
 const zero = (): Record<LayerId, number> => ({ sandbox: 0, permissions: 0, network: 0, monitor: 0, audit: 0 });
 
@@ -104,5 +107,118 @@ describe("tally: what each layer cost", () => {
     expect(costs).toBeCloseTo(lost, 6);
     // Nearly all of it is the monitor's: it is the layer that stopped them.
     expect(t.byLayer.monitor.costShare).toBeGreaterThan(0.8);
+  });
+});
+
+describe("the world tally", () => {
+  const escapeEvent: WorldEvent = { type: "escape", tick: 152, lab: "kestrel", agent: 33, disposition: "hidden-get-out", trace: [] };
+  const crossed: WorldEvent = { type: "contact", tick: 158, from: { lab: "kestrel", agent: 33 }, to: "halcyon", link: "shared-cache", outcome: "crossed" };
+  const held: WorldEvent = { type: "contact", tick: 160, from: { lab: "kestrel", agent: 33 }, to: "meridian", link: "chat-bus", outcome: "held", layer: "monitor" };
+  const plan = () => ["ask-permission", "open-connection"] as const;
+
+  it("starts with every lab holding", () => {
+    const t = createWorldTally();
+    expect(labStatus(t, "meridian")).toBe("held");
+    expect(t.log).toEqual([]);
+  });
+
+  it("marks a lab breached by an escape out of it or a crossing into it, once each, and logs both", () => {
+    const t = createWorldTally();
+    recordWorld(t, [escapeEvent, crossed, { ...crossed, tick: 159 }], plan);
+    expect(t.breached).toEqual(["kestrel", "halcyon"]);
+    expect(labStatus(t, "kestrel")).toBe("breached");
+    expect(labStatus(t, "halcyon")).toBe("breached");
+    expect(labStatus(t, "meridian")).toBe("held");
+    expect(t.crossings).toBe(2);
+    expect(t.log.map((e) => e.kind).reverse()).toEqual(["escape", "breached", "crossed", "breached", "crossed"]);
+    expect(t.log.find((e) => e.kind === "escape")?.text).toBe("KESTREL-33 got out of KESTREL in two steps.");
+    expect(t.log.find((e) => e.kind === "crossed")?.text).toBe("KESTREL-33, already outside, reached HALCYON through the shared cache.");
+  });
+
+  it("counts a refused reach against the lab that refused it, and does not breach it", () => {
+    const t = createWorldTally();
+    recordWorld(t, [held], plan);
+    expect(t.heldContacts).toEqual({ meridian: 1 });
+    expect(labStatus(t, "meridian")).toBe("held");
+    expect(t.log[0]).toMatchObject({ kind: "held", lab: "meridian", text: "MERIDIAN held: its monitor turned KESTREL-33 away at the chat bus." });
+  });
+
+  it("keeps only the latest entries", () => {
+    const t = createWorldTally();
+    for (let i = 0; i < LOG_CAP + 7; i++) recordWorld(t, [{ ...held, tick: i }], plan);
+    expect(t.log.length).toBe(LOG_CAP);
+    expect(t.log[0].tick).toBe(LOG_CAP + 6);
+  });
+});
+
+describe("mergeTallies", () => {
+  const caught = (agent: number): CatchReport => ({ ...permissionsCatch, agent });
+  it("hands a lone tally back as it is", () => {
+    const t = createTally(10, 1);
+    expect(mergeTallies([t])).toBe(t);
+  });
+
+  it("sums the counters, weighs usefulness by each lab's possible work and merges the logs newest first", () => {
+    const a = createTally(100, 2);
+    const b = createTally(50, 0);
+    record(a, report({ tick: 1, work: 98, catches: [caught(1)], caught: { ...zero(), permissions: 1 } }), ctx);
+    record(a, report({ tick: 2, work: 98, escapes: [], caught: { ...zero(), permissions: 1 }, escapedTotal: 1 }), ctx);
+    record(b, report({ tick: 1, work: 25, catches: [caught(2)], caught: { ...zero(), permissions: 1 } }), ctx);
+    record(b, report({ tick: 2, work: 25, caught: { ...zero(), permissions: 1 } }), ctx);
+    const m = mergeTallies([a, b]);
+    expect(m.agents).toBe(150);
+    expect(m.rogues).toBe(2);
+    expect(m.tick).toBe(2);
+    expect(m.caughtTotal).toBe(2);
+    expect(m.escaped).toBe(1);
+    expect(m.byLayer.permissions.caught).toBe(2);
+    expect(m.usefulWork).toBeCloseTo(246 / (98 * 2 + 50 * 2), 6);
+    expect(m.log.map((e) => e.tick)).toEqual([1, 1]);
+    expect(m.markers).toEqual([]);
+  });
+
+  it("takes the latest escape from whichever lab had it", () => {
+    const a = createTally(10, 1);
+    const b = createTally(10, 1);
+    record(a, report({ tick: 3, escapes: [{ agent: 4, trace: [] }], escapedTotal: 1 }), ctx);
+    record(b, report({ tick: 5, escapes: [{ agent: 7, trace: [] }], escapedTotal: 1 }), ctx);
+    expect(mergeTallies([a, b]).lastEscape?.agent).toBe(7);
+    expect(mergeTallies([b, a]).lastEscape?.agent).toBe(7);
+  });
+});
+
+describe("labTotals", () => {
+  const run = (scenario: Scenario, ticks: number) => {
+    const world = createWorld(scenario, false);
+    const tallies = world.labs.map((l) => createTally(l.spec.agents, rogueCount(l.spec.config, l.spec.agents)));
+    const flagged = world.labs.map(() => 0);
+    for (let i = 0; i < ticks; i++) {
+      const wr = stepWorld(world);
+      wr.labs.forEach((r, k) => {
+        record(tallies[k], r, { config: world.labs[k].state.config, plan: (a) => world.labs[k].state.plans[a] ?? [], home: () => ({ x: 0, y: 10 }) });
+        flagged[k] += r.flags.length;
+      });
+    }
+    return { world, tallies, flagged, totals: tallies.map(labTotals) };
+  };
+
+  it("counts each lab's own catches and escapes, and the labs add up to the world", () => {
+    const { world, tallies, totals } = run(presetScenario("breakout"), 300);
+    world.labs.forEach((l, k) => {
+      expect(totals[k].escaped).toBe(world.log.filter((e) => e.type === "escape" && e.lab === l.id).length);
+      expect(totals[k].caught).toBe(world.log.filter((e) => e.type === "caught" && e.lab === l.id).length);
+    });
+    expect(totals.find((_, k) => world.labs[k].id === "kestrel")!.escaped).toBeGreaterThan(0);
+    expect(totals.reduce((n, t) => n + t.caught, 0)).toBeGreaterThan(0);
+    expect(labTotals(mergeTallies(tallies)).escaped).toBe(totals.reduce((n, t) => n + t.escaped, 0));
+  });
+
+  it("counts each lab's own flags", () => {
+    const { flagged, totals } = run(presetScenario("everything-off", 1812, 3), 400);
+    const base = presetScenario("default-lab", 1812, 3);
+    const on = run({ ...base, labs: base.labs.map((l) => ({ ...l, config: { ...l.config, monitorThreshold: 0.15 } })) }, 400);
+    expect(totals.map((t) => t.flagged)).toEqual(flagged);
+    expect(on.totals.map((t) => t.flagged)).toEqual(on.flagged);
+    expect(on.totals.reduce((n, t) => n + t.flagged, 0)).toBeGreaterThan(0);
   });
 });

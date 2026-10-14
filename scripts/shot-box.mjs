@@ -2,10 +2,10 @@
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
  *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
- * of its first escape) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
+ * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
  * (unless --webgl), zero console errors or `THREE.` warnings and no two scene labels overlapping, and writes `.shots/<name>-<n>.png`
  * with the next free n. On --mobile it also scrolls the page and writes `<name>-<n>-panels.png`,
@@ -31,7 +31,7 @@ const SHOTS = path.join(ROOT, ".shots");
 const wantWebGL = flag("webgl");
 const mobile = flag("mobile");
 const name = value("name", `${mobile ? "box-mobile" : "box"}${wantWebGL ? "-webgl" : ""}`);
-const query = new URLSearchParams({ shot: "escape" });
+const query = new URLSearchParams({ shot: value("shot", "escape") });
 const seed = value("seed", null);
 if (seed !== null) query.set("seed", seed);
 if (wantWebGL) query.set("webgl", "1");
@@ -90,10 +90,18 @@ async function attempt(strategy) {
       rings: [...document.querySelectorAll("[data-ring]")].map((e) => e.textContent),
       markers: [...document.querySelectorAll("[data-marker]")].map((e) => e.textContent),
       trail: [...document.querySelectorAll("[data-trail]")].map((e) => e.textContent),
+      // The map: lab names with their state, link names, the OUTSIDE label and the numbered step buttons.
+      labNames: [...document.querySelectorAll("[data-lab-name]")].map((e) => e.textContent),
+      linkNames: [...document.querySelectorAll("[data-link-name]")].map((e) => e.textContent),
+      outside: [...document.querySelectorAll("[data-outside]")].map((e) => e.textContent),
+      stepMarkers: [...document.querySelectorAll("[data-step-marker]")].map((e) => e.textContent),
       points: document.querySelector("svg[data-plot-points]")?.getAttribute("data-plot-points"),
       // Scene labels whose drawn boxes touch, as Chromium lays the text out (not the placer's estimate).
       clashes: (() => {
-        const boxes = [...document.querySelectorAll("[data-ring], [data-marker], [data-trail]")].map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
+        const boxes = [...document.querySelectorAll("[data-ring], [data-marker], [data-trail], [data-lab-name], [data-link-name], [data-outside], [data-step-marker]")]
+          // The page's own scene labels are hidden while the map is up; hidden text overlaps nothing.
+          .filter((e) => getComputedStyle(e).visibility !== "hidden")
+          .map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
         const out = [];
         boxes.forEach((a, i) => {
           for (const b of boxes.slice(i + 1)) {
@@ -151,6 +159,11 @@ try {
   console.log(`  rings: ${info.labels.rings.join(" | ")}`);
   console.log(`  markers: ${info.labels.markers.join(" | ") || "(none)"}`);
   console.log(`  trail: ${info.labels.trail.join(" | ") || "(none)"}; plotted ${info.labels.points}`);
+  if (info.labels.labNames.length) {
+    console.log(`  labs: ${info.labels.labNames.join(" | ").replace(/\s+/g, " ")}`);
+    console.log(`  links: ${info.labels.linkNames.join(" | ") || "(none)"}; outside: ${info.labels.outside.join(" | ") || "(none)"}`);
+    console.log(`  steps: ${info.labels.stepMarkers.join(" ") || "(none)"}; camera ${info.camera?.mode}, focus ${info.camera?.focus ?? "none"}`);
+  }
   for (const out of result.outs) console.log(`  saved ${path.relative(ROOT, out)}`);
   const problems = [
     ...result.errors,

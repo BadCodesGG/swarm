@@ -82,4 +82,26 @@ describe("Box cues", () => {
     bus.emit("escape", { agent: 9, tick: 31 });
     expect(cues).toHaveLength(3);
   });
+
+  it("sounds a crossing, a reach turned away and a breach, each a headline", () => {
+    type M = {
+      catch: CatchReport;
+      escape: { agent: number };
+      trials: TrialSummary;
+      crossing: { from: { agent: number } };
+      held: { from: { agent: number } };
+      breached: { lab: string };
+    };
+    const bus = new EventBus<M>();
+    const { cues, offer } = recorder();
+    const off = bindBox(bus, offer);
+    bus.emit("crossing", { from: { agent: 33 } });
+    bus.emit("held", { from: { agent: 33 } });
+    bus.emit("breached", { lab: "halcyon" });
+    expect(cues.map((c) => c.cue.timbre)).toEqual(["whoosh", "bell", "alarm"]);
+    expect(cues.every((c) => c.rank === 0)).toBe(true);
+    off();
+    bus.emit("breached", { lab: "halcyon" });
+    expect(cues).toHaveLength(3);
+  });
 });

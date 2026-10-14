@@ -5,7 +5,7 @@
  */
 
 import { Mesh, MeshBasicNodeMaterial, type Scene } from "three/webgpu";
-import { attribute, color, length, min, mix, varying, vec2, vec3, vec4 } from "three/tsl";
+import { attribute, color, length, min, mix, uniform, varying, vec2, vec3, vec4 } from "three/tsl";
 import type { Marker } from "../tally";
 import { disc, dynamicAttribute, premultiplied, quadGeometry, segmentDistance, stroke, type BoxUniforms } from "./common";
 
@@ -14,7 +14,7 @@ const HALF = 12;
 
 export interface Markers {
   /** Draws these markers; `fade` gives each one's opacity. */
-  set(markers: readonly Marker[], fade: (m: Marker) => number): void;
+  set(markers: readonly Marker[], fade: (m: Marker) => number, scale?: number): void;
   dispose(): void;
 }
 
@@ -25,19 +25,20 @@ export function createMarkers(scene: Scene, u: BoxUniforms): Markers {
   geometry.instanceCount = 0;
 
   const m = attribute("aMark", "vec4");
+  const scale = uniform(1);
   // The raw quad corner: once `positionNode` is set, `positionLocal` reads the moved position.
   const corner = attribute("position", "vec3").xy;
   const material = new MeshBasicNodeMaterial();
-  material.positionNode = vec3(m.xy.add(corner.mul(HALF)), 0);
+  material.positionNode = vec3(m.xy.add(corner.mul(HALF).mul(scale)), 0);
   const q = varying(corner.mul(HALF));
-  const px = u.unitPx;
+  const px = u.unitPx.mul(scale);
   const isFlag = m.z;
 
   const cross = min(segmentDistance(q, vec2(-4, -4), vec2(4, 4)), segmentDistance(q, vec2(-4, 4), vec2(4, -4)));
-  const crossCov = stroke(cross.mul(px), px.mul(0.9));
+  const crossCov = stroke(cross.mul(px), u.unitPx.mul(0.9));
   const r = length(q);
-  const ringCov = stroke(r.sub(9).mul(px), px.mul(0.7));
-  const dotCov = disc(r.mul(px), px.mul(3.5));
+  const ringCov = stroke(r.sub(9).mul(px), u.unitPx.mul(0.7));
+  const dotCov = disc(r.mul(px), u.unitPx.mul(3.5).mul(scale.max(0.7)));
 
   const pink = color(0xff4d7d);
   const catchCol = vec4(pink.mul(crossCov), crossCov);
@@ -51,7 +52,8 @@ export function createMarkers(scene: Scene, u: BoxUniforms): Markers {
   scene.add(mesh);
 
   return {
-    set(markers, fade) {
+    set(markers, fade, size = 1) {
+      scale.value = size;
       const arr = aMark.array as Float32Array;
       const shown = markers.slice(-MARKER_CAPACITY);
       shown.forEach((mk, i) => arr.set([mk.x, mk.y, mk.kind === "flag" ? 1 : 0, fade(mk)], i * 4));

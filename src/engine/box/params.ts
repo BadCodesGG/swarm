@@ -7,6 +7,10 @@
 import { fork, type Rng } from "@/lib/rng";
 import { step, type BoxState } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, type BoxConfig, type StepReport } from "@/lib/box/types";
+import { DEFAULT_CAST } from "@/lib/box/cast";
+import { presetScenario } from "@/lib/box/presets";
+import { scenarioFromParams } from "@/lib/box/share";
+import { PRESET_IDS, type Scenario } from "@/lib/box/world-types";
 
 /**
  * Seed 1812 with the network layer off: seven catches, then one agent splits its way out at tick 85,
@@ -45,4 +49,43 @@ export function runToEscape(state: BoxState, r: Rng, maxTicks: number, onReport?
     if (report.escapes.length > 0) return report.tick;
   }
   return -1;
+}
+
+// --- the world: several labs ---
+
+/** What `/box` asks of the world beyond the plain Box. */
+export interface WorldParams {
+  /** The scenario to run, or null for the plain one-lab Box. */
+  scenario: Scenario | null;
+  /** `shot=breakout`: run the breakout preset to the tick the second lab is breached. */
+  shot: "breakout" | null;
+}
+
+const intParam = (text: string | null, min: number, max: number): number | null => {
+  if (text === null || !/^\d{1,10}$/.test(text)) return null;
+  const n = Number(text);
+  return n >= min && n <= max ? n : null;
+};
+
+/**
+ * `?scenario=` is a whole scenario in the share format (`share.ts`), either as that query string
+ * percent-encoded in one value or as its own parameters at the top level; `?preset=` names one of
+ * the presets, with `labs=` (1 to 5) and `seed=`; `?shot=breakout` is the breakout preset on its own
+ * seed, stopped on the breach. A scenario wins over a preset, a preset over the shot. Anything
+ * unreadable falls back to the plain Box.
+ */
+export function parseWorldParams(params: URLSearchParams): WorldParams {
+  const shot = params.get("shot") === "breakout" ? "breakout" : null;
+  const encoded = params.get("scenario");
+  const shared = encoded !== null ? scenarioFromParams(new URLSearchParams(encoded)) : params.has("b") ? scenarioFromParams(params) : null;
+  if (shared) return { scenario: shared, shot };
+  const seed = intParam(params.get("seed"), 0, 0xffffffff) ?? undefined;
+  const preset = PRESET_IDS.find((p) => p === params.get("preset")) ?? (shot ? "breakout" : null);
+  if (!preset) return { scenario: null, shot };
+  return { scenario: presetScenario(preset, seed, intParam(params.get("labs"), 1, 5) ?? 3), shot };
+}
+
+/** The plain Box as a world: one lab, the settings it was given, no links. */
+export function loneLab(config: BoxConfig, seed: number, agents: number): Scenario {
+  return { seed, labs: [{ id: "meridian", config, agents, cast: { ...DEFAULT_CAST, hidden: { ...DEFAULT_CAST.hidden } } }], links: [] };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breakoutSteps } from "./breakout";
+import { breakoutSteps, ESCAPE_BEATS } from "./breakout";
 import { presetScenario } from "./presets";
 import { LAYER_ORDER } from "./types";
 import { worldStoppingLayers } from "./world-replay";
@@ -14,6 +14,28 @@ describe("breakoutSteps", () => {
     for (let i = 1; i < steps.length; i++) expect(steps[i].tick).toBeGreaterThanOrEqual(steps[i - 1].tick);
     expect(steps.some((s) => s.kind === "escape")).toBe(true);
     expect(steps.some((s) => s.kind === "crossing")).toBe(true);
+  });
+
+  it("splits each escape into its sub-steps, each carrying its layer's verdict", () => {
+    const escapes = steps.filter((s) => s.kind === "escape");
+    expect(escapes.length % ESCAPE_BEATS).toBe(0);
+    escapes.forEach((s, i) => {
+      expect(s.beat).toBe(i % ESCAPE_BEATS);
+      expect(s.verdict?.text).toMatch(/^[A-Za-z ]+: /);
+    });
+    const group = escapes.slice(0, ESCAPE_BEATS);
+    expect(new Set(group.map((s) => s.tick)).size).toBe(1);
+    expect(group.map((s) => s.verdict?.layer)).toEqual(["sandbox", "network", "monitor", "audit"]);
+    expect(group[1].verdict?.result).toBe("off");
+  });
+
+  it("adds one step for the first refused reach into each lab, naming the layer that refused", () => {
+    const calm = breakoutSteps(presetScenario("breakout"), [], 300);
+    const held = calm.filter((s) => s.kind === "held");
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({ lab: "meridian", stoppedBy: [], title: "Meridian holds" });
+    expect(held[0].where).toMatch(/^MERIDIAN, LAYER [1-5]$/);
+    expect(held[0].stop).toMatch(/held: keep it on.$/);
   });
 
   it("is nothing for a lab that holds", () => {
@@ -55,6 +77,15 @@ describe("breakoutSteps", () => {
       expect(s.title.length).toBeGreaterThan(5);
     }
     expect(steps.filter((s) => s.kind === "escape").every((s) => s.body.includes("(fiction)"))).toBe(true);
+  });
+
+  it("never repeats a clause inside a step's text", () => {
+    for (const preset of ["breakout", "everything-off", "rushed-launch"] as const) {
+      for (const st of breakoutSteps(presetScenario(preset), [], 400)) {
+        const clauses = st.body.replace(/\.$/, "").split(/, then |, and then |, and | and then /);
+        expect(new Set(clauses).size).toBe(clauses.length);
+      }
+    }
   });
 
   it("covers only what happened by the tick asked for", () => {

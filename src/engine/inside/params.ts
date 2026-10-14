@@ -12,7 +12,7 @@ import { clampRate } from "./playback";
  * around the Opus core, two levels deep), a Fable helper and a Sonnet helper searching the web
  * with a probe out past the boundary, and idle cuts ahead on the scrubber.
  */
-export const HERO = { source: "medium" as SampleSize, seed: 50, t: 927.5, rate: 4 };
+export const HERO = { source: "medium" as SampleSize, seed: 50, t: 944, rate: 4 };
 
 export interface InsideParams {
   source: SampleSize;

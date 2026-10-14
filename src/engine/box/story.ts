@@ -5,6 +5,7 @@
  * the same picture, so replaying or scrubbing never disagrees with the camera.
  */
 
+import { ESCAPE_BEATS } from "@/lib/box/breakout";
 import type { LabId } from "@/lib/box/world-types";
 import { CROSS_TICKS, ESCAPE_TICKS, type StoryItem } from "./camera";
 
@@ -29,11 +30,36 @@ export function reachProgress(item: StoryItem, tick: number): number | null {
 /** Whether a reach has landed by this tick (a crossing got in, a refusal was felt). */
 export const reachLanded = (item: StoryItem, tick: number): boolean => tick >= item.end - 1;
 
-/** The tick a step's numbered marker appears: an escape once it is well out, a crossing as it lands. */
-export const markerTick = (item: StoryItem): number => (item.kind === "escape" ? item.start + Math.round(ESCAPE_TICKS * 0.7) : item.end - 3);
+/**
+ * The tick a step's numbered marker appears: an escape's sub-steps one after another as the agent
+ * runs out (the last at 70% of the flight), a crossing or a refusal as it lands.
+ */
+export const markerTick = (item: StoryItem, beat = 0): number =>
+  item.kind === "escape" ? item.start + Math.round(ESCAPE_TICKS * (0.7 - 0.16 * (ESCAPE_BEATS - 1 - beat))) : item.end - 3;
 
-/** The beats that carry a numbered marker, in the order of the breakout's steps. */
-export const stepItems = (items: readonly StoryItem[]): StoryItem[] => items.filter((i) => i.kind !== "held");
+/** One numbered marker: the beat of the story it belongs to and, for an escape, which sub-step. */
+export interface MarkerSlot {
+  item: StoryItem;
+  beat: number | null;
+}
+
+/**
+ * The numbered markers in order, matching `breakoutSteps`: an escape is `ESCAPE_BEATS` markers, a
+ * crossing one, and the first refused reach into each lab one; later refusals there carry none.
+ */
+export function markerSlots(items: readonly StoryItem[]): MarkerSlot[] {
+  const slots: MarkerSlot[] = [];
+  const refused = new Set<LabId>();
+  for (const item of items) {
+    if (item.kind === "escape") for (let beat = 0; beat < ESCAPE_BEATS; beat++) slots.push({ item, beat });
+    else if (item.kind === "crossed") slots.push({ item, beat: null });
+    else if (!refused.has(item.lab)) {
+      refused.add(item.lab);
+      slots.push({ item, beat: null });
+    }
+  }
+  return slots;
+}
 
 /** The tick each lab starts to read as breached: when its agent is out, or the crossing lands. */
 export function breachTicks(items: readonly StoryItem[]): Partial<Record<LabId, number>> {

@@ -5,7 +5,7 @@
 
 import { Mesh, type Object3D } from "three/webgpu";
 import { color, cos, float, sin, uniform, vec3, vec4 } from "three/tsl";
-import { BOUNDARY_RADIUS } from "../layout";
+import { PULSE_RADIUS } from "../layout";
 import { coverage, ribbonGeometry, ribbonMaterial, type InsideUniforms } from "./common";
 
 /** Trace seconds a prompt ring takes to reach the core. */
@@ -44,7 +44,7 @@ export function createPulses(root: Object3D, u: InsideUniforms): Pulses {
       mesh.visible = k >= 0 && k < 1;
       if (!mesh.visible) return;
       const e = 1 - (1 - k) ** 2;
-      radius.value = BOUNDARY_RADIUS * (1 - e) + 0.3 * e;
+      radius.value = PULSE_RADIUS * (1 - e) + 0.3 * e;
       alpha.value = 0.45 * Math.sin(Math.PI * k);
     },
     dispose() {

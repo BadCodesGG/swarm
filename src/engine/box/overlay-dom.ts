@@ -30,7 +30,7 @@ function markerStyle(selected: boolean, held: boolean): string {
   const face = selected
     ? `background:${tone};color:#070910;border:2px solid #f6f8fc;box-shadow:0 0 18px ${tone}`
     : `background:rgba(7,9,16,0.85);color:${tone};border:1.5px solid ${tone}`;
-  return `position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;padding:0;cursor:pointer;pointer-events:auto;font:700 13px ${FONT};display:flex;align-items:center;justify-content:center;${face}`;
+  return `position:absolute;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;padding:0;cursor:pointer;pointer-events:auto;font:700 12px ${FONT};display:flex;align-items:center;justify-content:center;${face}`;
 }
 
 const anchorShift = (a: TextSpec["anchor"]) => (a === "middle" ? "-50%" : a === "end" ? "-100%" : "0");
@@ -53,7 +53,6 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
   const style = document.createElement("style");
   style.textContent = "html[data-box-map] [data-scene-slot] svg[viewBox=\"0 0 760 560\"]{visibility:hidden}";
   root.appendChild(style);
-  canvas.after(root);
   const els = new Map<string, HTMLElement>();
   let visible = true;
   let kind = "";
@@ -77,17 +76,32 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
   const textCss = (t: TextSpec, color: string, extra = "") =>
     `position:absolute;left:${t.x.toFixed(1)}px;top:${(t.y - t.fontSize * 0.95).toFixed(1)}px;transform:translateX(${anchorShift(t.anchor)});text-align:${alignOf(t.anchor)};white-space:pre;font:${t.fontSize.toFixed(2)}px/1.2 ${FONT};letter-spacing:${t.letterSpacing.toFixed(2)}px;color:${color};text-shadow:${HALO};${extra}`;
 
+  /** Takes every element it made out of the document. */
+  const detach = () => {
+    root.remove();
+    root.replaceChildren(style);
+    els.clear();
+    kind = "";
+  };
+
   return {
     setVisible(next) {
       visible = next;
-      root.style.display = next ? "" : "none";
+      if (!next) {
+        delete document.documentElement.dataset.boxMap;
+        detach();
+      }
     },
     update(o, k) {
       const show = visible && o.map;
-      root.style.display = show ? "" : "none";
       if (show) document.documentElement.dataset.boxMap = "";
       else delete document.documentElement.dataset.boxMap;
-      if (!show) return;
+      if (!show) {
+        // Not hidden: gone, so the page's own selectors never meet a second copy.
+        detach();
+        return;
+      }
+      if (!root.isConnected) canvas.after(root);
       const slot = { x0: o.frame.x, y0: o.frame.y, x1: o.frame.x + o.frame.width, y1: o.frame.y + o.frame.height };
       const inSlot = (p: { x: number; y: number }) => p.x >= slot.x0 && p.x <= slot.x1 && p.y >= slot.y0 && p.y <= slot.y1;
       const markers = o.markers.filter((m) => m.shown && inSlot(m));
@@ -145,7 +159,7 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
           b.addEventListener("click", () => onPick(m.n));
           return b;
         }) as HTMLButtonElement;
-        put(el, `${markerStyle(m.selected, false)};left:${m.x.toFixed(1)}px;top:${m.y.toFixed(1)}px`, String(m.n));
+        put(el, `${markerStyle(m.selected, m.kind === "held")};left:${m.x.toFixed(1)}px;top:${m.y.toFixed(1)}px`, String(m.n));
         el.setAttribute("aria-label", `Marker ${m.n}, tick ${m.tick}${m.step ? `: ${m.step.title}` : ""}`);
         el.setAttribute("aria-pressed", String(m.selected));
       }

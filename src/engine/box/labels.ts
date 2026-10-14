@@ -387,7 +387,7 @@ export interface WorldLabelLayout {
 export const LAB_FONT = 12;
 export const LINK_FONT = 10;
 /** Half the side of a marker button at a text scale of 1: the design's 44 px. */
-export const MARKER_BUTTON = 22;
+export const MARKER_BUTTON = 18;
 
 /** Spots for a lab's block (its name, then its state) round its ring. */
 function labSpots(l: WorldLabInput, k: number): { x: number; y: number; anchor: Anchor }[] {
@@ -418,7 +418,8 @@ export function layoutWorldLabels({ bounds, labs, links, markers, outside, segme
   const buttons = markers.map((m) => ({ c: { x: m.x, y: m.y }, r: MARKER_BUTTON * k + 2 }));
   const boxes: Rect[] = [];
   const crowded = (r: Rect, own?: number, link?: number): number => {
-    let n = inside(r, bounds) ? 0 : 1;
+    // Text cut off by the slot is worse than text beside a button.
+    let n = inside(r, bounds) ? 0 : 3;
     for (const b of boxes) if (overlaps(r, b)) n++;
     rings.forEach((d, i) => {
       if (i !== own && touchesDisc(r, d.c, d.r)) n++;
@@ -477,6 +478,10 @@ export function layoutWorldLabels({ bounds, labs, links, markers, outside, segme
       [-10, -8, "end"],
       [-10, 16, "end"],
       [0, -14, "middle"],
+      [0, 26, "middle"],
+      [-10, -26, "end"],
+      [10, 34, "start"],
+      [-10, 34, "end"],
     ];
     const spots = rows.map(
       ([dx, dy, anchor]): TextSpec => ({ text: "OUTSIDE", lines: ["OUTSIDE"], x: outside.x + dx * k, y: outside.y + dy * k, anchor, fontSize: LINK_FONT * k, letterSpacing: 1.6 * k }),

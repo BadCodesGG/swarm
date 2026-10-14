@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryItem } from "./camera";
 import { CROSS_TICKS, ESCAPE_TICKS } from "./camera";
-import { HELD_STOP, LINGER_TICKS, breachTicks, escapeProgress, markerTick, reachLanded, reachProgress, settledTick, stepItems } from "./story";
+import { HELD_STOP, LINGER_TICKS, breachTicks, escapeProgress, markerSlots, markerTick, reachLanded, reachProgress, settledTick } from "./story";
 
 const escape: StoryItem = { kind: "escape", lab: "kestrel", tick: 152, start: 152, end: 152 + ESCAPE_TICKS, index: 0 };
 const crossed: StoryItem = { kind: "crossed", lab: "halcyon", from: "kestrel", tick: 158, start: 178, end: 178 + CROSS_TICKS, index: 1 };
@@ -41,8 +41,24 @@ describe("reachProgress", () => {
 });
 
 describe("markers and breaches", () => {
-  it("numbers only escapes and crossings, in event order", () => {
-    expect(stepItems(items)).toEqual([escape, crossed]);
+  it("numbers four markers for an escape, one for a crossing and one for the first refusal into a lab, in event order", () => {
+    expect(markerSlots(items)).toEqual([
+      { item: escape, beat: 0 },
+      { item: escape, beat: 1 },
+      { item: escape, beat: 2 },
+      { item: escape, beat: 3 },
+      { item: crossed, beat: null },
+      { item: held, beat: null },
+    ]);
+    expect(markerSlots([...items, { ...held, tick: held.tick + 50, start: held.start + 50, end: held.end + 50 }])).toHaveLength(6);
+  });
+
+  it("shows an escape's sub-steps one after another, the last where the whole marker used to appear", () => {
+    const ticks = [0, 1, 2, 3].map((b) => markerTick(escape, b));
+    expect(ticks).toEqual([...ticks].sort((a, b) => a - b));
+    expect(new Set(ticks).size).toBe(4);
+    expect(ticks[0]).toBeGreaterThan(escape.start);
+    expect(ticks[3]).toBe(escape.start + Math.round(26 * 0.7));
   });
 
   it("shows an escape's marker once the agent is well out and a crossing's as it lands", () => {

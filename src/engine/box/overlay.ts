@@ -1,13 +1,13 @@
 /**
  * What the page needs to draw over the map (types only). `BoxApp.overlay()` returns the latest,
  * rebuilt every frame the camera or the story moved; every position is in CSS px from the top left
- * of the canvas, already projected through the camera, so a DOM element placed at (x, y) sits on
+ * of the page (the canvas, unless the page gave the scene a rect, in which case that rect's own offset is included), already projected through the camera, so a DOM element placed at (x, y) sits on
  * the thing it names. `wx`, `wy` are the same points on the map, in world units, which do not move
  * with the camera.
  */
 
 import type { LayerId } from "@/lib/box/types";
-import type { BreakoutStep, LabId, LinkKind } from "@/lib/box/world-types";
+import type { BreakoutStep, Flip, LabId, LinkKind } from "@/lib/box/world-types";
 import type { Pose } from "./camera";
 import type { LabStatus } from "./tally";
 import type { Frame } from "./view";
@@ -22,7 +22,15 @@ export interface LabView {
   /** Reaches this lab has turned away. */
   held: number;
   layers: Record<LayerId, boolean>;
+  /** The lab's monitor threshold and audit budget (fraction of actions reviewed) at this moment. */
+  monitorThreshold: number;
+  auditBudget: number;
   agents: number;
+  /** Counts for this lab alone, up to this moment. */
+  caught: number;
+  escaped: number;
+  /** Actions its monitor sent on to a human reviewer. */
+  flagged: number;
   x: number;
   y: number;
   /** The outer ring's radius. */
@@ -49,7 +57,7 @@ export interface LinkView {
 export interface MarkerView {
   /** The step's number, from 1: the number on the button. */
   n: number;
-  kind: "escape" | "crossing";
+  kind: "escape" | "crossing" | "held";
   lab: LabId;
   tick: number;
   x: number;
@@ -74,14 +82,35 @@ export interface CameraView {
   scale: number;
 }
 
+/** A rectangle of the page, CSS px from its top left: where the scene is drawn. */
+export interface SceneRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Where the picture is on the run: the moment it shows, how far the run has got, and whether it is the head. */
+export interface TimelineView {
+  /** The tick shown. */
+  at: number;
+  /** The newest tick the run has reached (a rewound view does not advance it). */
+  head: number;
+  /** True when the picture is the head and moving with the run. */
+  live: boolean;
+}
+
 export interface BoxOverlay {
   /** Moves whenever anything below does. */
   version: number;
   tick: number;
   /** The story's clock: the tick plus the part of the next that has played. */
   story: number;
-  /** The scene slot the map is fitted in. */
+  /** The scene slot the map is fitted in, in page CSS px (every x and y here is a page position too). */
   frame: Frame;
+  timeline: TimelineView;
+  /** The layer switches made so far, in order, up to the moment shown (all of them when live). */
+  flips: Flip[];
   /** More than one lab: the map is drawn. A lone lab is the plain Box. */
   map: boolean;
   labs: LabView[];

@@ -127,7 +127,19 @@ export interface BreakoutStep {
   stoppedBy: LayerId[];
   /** One sentence naming the fix, in plain words. */
   stop: string;
-  kind: "escape" | "crossing";
+  kind: "escape" | "crossing" | "held";
+  /** For an escape: which of its `ESCAPE_BEATS` sub-steps this is (0 to 3). Absent on the others. */
+  beat?: number;
+  /** The layer's verdict at this step, when one applies (every escape beat, and a refused reach). */
+  verdict?: StepVerdict;
+}
+
+/** What one layer did at a step: it let it through, it was switched off, or it refused. */
+export interface StepVerdict {
+  layer: LayerId;
+  result: "passed" | "off" | "refused";
+  /** One short sentence, for example "Network allowlist: off." */
+  text: string;
 }
 
 /** One line of the intercepted chat. Always from a template, always labelled fiction. */

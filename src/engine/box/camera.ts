@@ -9,7 +9,7 @@
  */
 
 import type { LabId, WorldEvent } from "@/lib/box/world-types";
-import { worldBounds, type LabFrame } from "./world-layout";
+import { overviewBounds, trailReach, worldBounds, type LabFrame } from "./world-layout";
 
 /** The visible rectangle in world units: centre and size. */
 export interface Pose {
@@ -32,19 +32,19 @@ export const TRAVEL_TICKS = 18;
 /** Ticks before a beat starts that the camera is already there. */
 const LEAD_TICKS = 2;
 
-/** World units round the rings the overview keeps clear, enough for an escape trail to run out. */
-const OVERVIEW_PAD = 80;
 const FOCUS = { w: 520, h: 420 } as const;
 const PAIR_PAD = 70;
 
 export function overviewPose(frames: readonly LabFrame[]): Pose {
   if (frames.length <= 1) return LEGACY_POSE;
-  const b = worldBounds(frames, OVERVIEW_PAD);
+  const b = overviewBounds(frames);
   return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2, w: b.x1 - b.x0, h: b.y1 - b.y0 };
 }
 
+/** One lab and the trail an escape from it runs out. */
 export function focusPose(frame: LabFrame): Pose {
-  return { x: frame.x, y: frame.y, w: FOCUS.w, h: FOCUS.h };
+  const w = Math.max(FOCUS.w, 2 * (trailReach(frame) + 40));
+  return { x: frame.x, y: frame.y, w, h: (w * FOCUS.h) / FOCUS.w };
 }
 
 /** Both labs of a crossing and the link between them. */

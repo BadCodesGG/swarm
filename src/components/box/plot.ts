@@ -169,14 +169,14 @@ const boxesTouch = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.widt
 
 /**
  * Names for the plotted setups, each beside its dot where neither the frontier, another dot nor a
- * tag already placed (or a box in `taken`, such as the current setup's label) runs through it. A tag
+ * tag already placed (or a box in `taken`, such as the current setup's label) runs through it. `charWidth` is the text's width per character in viewBox units. A tag
  * with no clear spot keeps its first candidate that fits the view.
  */
-export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = []): TagPlace[] {
+export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = [], charWidth = TAG_CHAR): TagPlace[] {
   const placed: TagPlace[] = [];
   const used: Box[] = [...taken];
   for (const t of tags) {
-    const w = t.text.length * TAG_CHAR;
+    const w = t.text.length * charWidth;
     const spots: Omit<TagPlace, "key" | "text">[] = [];
     for (const [dx, dy, anchor] of [
       [8, 3, "start"],
@@ -187,6 +187,9 @@ export function placeTags(tags: readonly { key: string; text: string; at: Pt }[]
       [-8, 14, "end"],
       [0, -9, "middle"],
       [0, 17, "middle"],
+      [-8, -21, "end"],
+      [8, -21, "start"],
+      [0, -30, "middle"],
     ] as const) {
       const x = t.at.x + dx;
       const y = t.at.y + dy;

@@ -1,8 +1,9 @@
 /**
- * Makes the reduced-motion stills, `public/stills/inside.jpg` and `public/stills/box.jpg`, from the
+ * Makes the reduced-motion stills, `public/stills/inside.jpg`, `public/stills/box.jpg` and
+ * `public/stills/box-world.jpg`, from the
  * production build. `experience.tsx` shows them in its `still` and `unsupported` states.
  *
- *   npm run build && node scripts/stills.mjs [--only=inside|box] [--port=3130]
+ *   npm run build && node scripts/stills.mjs [--only=inside|box|box-world] [--port=3130]
  *
  * Inside: the hero frame without the HUD (`/inside?shot=hero&source=medium&hud=0`, the frame
  * shot.mjs takes) at 1440x900, filling the screen behind the still's caption.
@@ -12,6 +13,10 @@
  * design frame fitted as the live camera fits it, so the crop is taken at a width where the slot
  * has exactly that aspect (below 1158 px) and with the slot's DOM labels hidden: the live HUD
  * draws its own over the still.
+ *
+ * The Box world: the three-lab breakout (`/box?shot=breakout`) cropped the same way. The page draws
+ * this one in place of box.jpg whenever it opens with a preset or a shared scenario; the lab names,
+ * link names and numbered markers are part of the image (the still has no overlay of its own).
  *
  * Fails on any console error or `THREE.` warning, or when no launch strategy draws with WebGPU.
  */
@@ -39,6 +44,16 @@ const settle = (act) => async (page) => {
   await page.waitForTimeout(1600);
 };
 
+/** The Box's scene slot alone, at the 760:560 the still is fitted to, with the page's own scene labels hidden. */
+async function shootSlot(page) {
+  await page.addStyleTag({ content: "[data-scene-slot] > * { visibility: hidden !important; }" });
+  const slot = await page.locator("[data-scene-slot]").boundingBox();
+  if (!slot) throw new Error("no [data-scene-slot] on the page");
+  const aspect = slot.width / slot.height;
+  if (Math.abs(aspect - 760 / 560) > 0.01) throw new Error(`scene slot is ${slot.width}x${slot.height}, not 760:560`);
+  return jpegUnder((opts) => page.screenshot({ ...opts, clip: slot }), MAX_BYTES);
+}
+
 const STILLS = [
   {
     name: "inside",
@@ -55,14 +70,15 @@ const STILLS = [
     // Below the 1158 px breakpoint the slot keeps the design's 760:560; DPR 2 keeps it sharp on retina.
     context: { viewport: { width: 1100, height: 1000 }, deviceScaleFactor: 2 },
     ready: settle("box"),
-    async shoot(page) {
-      await page.addStyleTag({ content: "[data-scene-slot] > * { visibility: hidden !important; }" });
-      const slot = await page.locator("[data-scene-slot]").boundingBox();
-      if (!slot) throw new Error("no [data-scene-slot] on the page");
-      const aspect = slot.width / slot.height;
-      if (Math.abs(aspect - 760 / 560) > 0.01) throw new Error(`scene slot is ${slot.width}x${slot.height}, not 760:560`);
-      return jpegUnder((opts) => page.screenshot({ ...opts, clip: slot }), MAX_BYTES);
-    },
+    shoot: shootSlot,
+  },
+  {
+    name: "box-world",
+    act: "box",
+    url: `${BASE}/box?shot=breakout`,
+    context: { viewport: { width: 1100, height: 1000 }, deviceScaleFactor: 2 },
+    ready: settle("box"),
+    shoot: shootSlot,
   },
 ].filter((s) => !ONLY || s.name === ONLY);
 

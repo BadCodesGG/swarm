@@ -177,7 +177,8 @@ export function spreadLine(xs: readonly number[], min: number, lo: number, hi: n
     const cap = i === out.length - 1 ? hi : out[i + 1] - min;
     out[i] = Math.min(out[i], cap);
   }
-  return out;
+  // A line too short for them all: they overlap inside it rather than run out of it.
+  return out.map((x) => Math.min(hi, Math.max(lo, x)));
 }
 
 /** The step the previous (-1) or next (1) control opens among the numbers shown: from none, the first or the last; at an end, the same one. */

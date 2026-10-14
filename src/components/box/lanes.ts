@@ -6,10 +6,8 @@ export type LaneKind = "caught" | "held" | "crossing" | "escape";
 const GRAVITY: Record<LaneKind, number> = { caught: 0, held: 1, crossing: 2, escape: 3 };
 
 export interface LaneTick {
-  /** The tick of the gravest event in its bin. */
+  /** The tick of the gravest event in its bin (absolute: the timeline places it on the span it shows). */
   tick: number;
-  /** Where it sits on the lane, 0 to 1 of the span. */
-  at: number;
   kind: LaneKind;
   /** Events merged into this bin. */
   count: number;
@@ -29,23 +27,23 @@ function place(e: WorldEvent): [LabId, LaneKind] {
 }
 
 /**
- * One lane per lab for the timeline: the world's events up to now as ticks on a span of `span`
- * ticks, merged into `bins` bins per lane (the gravest kind shown, the count kept) so a long run
- * stays a handful of marks, and the tick each lab was first breached.
+ * One lane per lab for the timeline: the world's events up to now as ticks, merged into `bins` bins
+ * per lane over the log's own span (the gravest kind shown, its tick and the count kept) so a long
+ * run stays a handful of marks, and the tick each lab was first breached. Ticks stay absolute: the
+ * timeline normalises them on the same span as its pins and the breach cut.
  */
-export function buildLanes(labs: readonly LabId[], log: readonly WorldEvent[], span: number, bins = 120): Lane[] {
-  const len = Math.max(1, span);
+export function buildLanes(labs: readonly LabId[], log: readonly WorldEvent[], bins = 120): Lane[] {
+  const len = Math.max(1, ...log.map((e) => e.tick));
   const lanes = new Map<LabId, { breachedAt: number | null; bins: Map<number, LaneTick> }>(labs.map((l) => [l, { breachedAt: null, bins: new Map() }]));
   for (const e of log) {
     const [lab, kind] = place(e);
     const lane = lanes.get(lab);
     if (!lane) continue;
     if ((kind === "escape" || kind === "crossing") && (lane.breachedAt === null || e.tick < lane.breachedAt)) lane.breachedAt = e.tick;
-    const at = Math.min(1, Math.max(0, e.tick / len));
-    const bin = Math.min(bins - 1, Math.floor(at * bins));
+    const bin = Math.min(bins - 1, Math.max(0, Math.floor((e.tick / len) * bins)));
     const seen = lane.bins.get(bin);
-    if (!seen) lane.bins.set(bin, { tick: e.tick, at, kind, count: 1 });
-    else if (GRAVITY[kind] > GRAVITY[seen.kind]) lane.bins.set(bin, { tick: e.tick, at, kind, count: seen.count + 1 });
+    if (!seen) lane.bins.set(bin, { tick: e.tick, kind, count: 1 });
+    else if (GRAVITY[kind] > GRAVITY[seen.kind]) lane.bins.set(bin, { tick: e.tick, kind, count: seen.count + 1 });
     else seen.count += 1;
   }
   return labs.map((lab) => {

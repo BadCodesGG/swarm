@@ -76,7 +76,7 @@ export function BranchCard({
   };
   const ready = !!chosen && !!world;
   return (
-    <section aria-label="Branch from a tick" className="flex min-w-0 flex-col gap-3.5 rounded-[14px] border border-panel-border bg-panel p-5" data-branch-card>
+    <section aria-label="Branch from a tick" className="flex min-w-0 flex-col gap-3.5 rounded-[14px] border border-panel-border bg-panel p-5" data-branch-card data-at={at}>
       <span className={eyebrow}>What if, from T+{clock(at)}</span>
       <h2 className="m-0 text-xl font-bold text-ink-strong">One change, same run up to that moment.</h2>
       <div className="flex flex-wrap gap-2">

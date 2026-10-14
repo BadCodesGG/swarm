@@ -9,7 +9,7 @@
  */
 
 import type { LabId, WorldEvent } from "@/lib/box/world-types";
-import { overviewBounds, trailReach, worldBounds, type LabFrame } from "./world-layout";
+import { centroid, overviewBounds, trailReach, worldBounds, type LabFrame } from "./world-layout";
 
 /** The visible rectangle in world units: centre and size. */
 export interface Pose {
@@ -39,6 +39,32 @@ export function overviewPose(frames: readonly LabFrame[]): Pose {
   if (frames.length <= 1) return LEGACY_POSE;
   const b = overviewBounds(frames);
   return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2, w: b.x1 - b.x0, h: b.y1 - b.y0 };
+}
+
+/**
+ * Every lab's rings and the far end of each trail, fitted to a slot of `width` by `height` CSS px with
+ * `inset` px kept clear round them for the names under the labs and the marker buttons at the trails'
+ * ends. The pose has the slot's own shape, so the fit crops none of it, and the room is in px, so a
+ * short slot (a phone's, a tablet's) keeps its labels off the rings where world-unit room would not.
+ */
+export function fittedOverview(frames: readonly LabFrame[], slot: { width: number; height: number }, inset: { x: number; y: number }): Pose {
+  if (frames.length <= 1) return LEGACY_POSE;
+  const box = worldBounds(frames);
+  const c = centroid(frames);
+  for (const f of frames) {
+    const heading = Math.hypot(f.x - c.x, f.y - c.y) < 1 ? 0.12 : Math.atan2(f.y - c.y, f.x - c.x);
+    const reach = trailReach(f);
+    const x = f.x + Math.cos(heading) * reach;
+    const y = f.y + Math.sin(heading) * reach;
+    box.x0 = Math.min(box.x0, x);
+    box.x1 = Math.max(box.x1, x);
+    box.y0 = Math.min(box.y0, y);
+    box.y1 = Math.max(box.y1, y);
+  }
+  const w = Math.max(1, slot.width - 2 * inset.x);
+  const h = Math.max(1, slot.height - 2 * inset.y);
+  const scale = Math.max(0.05, Math.min(w / (box.x1 - box.x0), h / (box.y1 - box.y0)));
+  return { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2, w: Math.max(1, slot.width) / scale, h: Math.max(1, slot.height) / scale };
 }
 
 /** One lab and the trail an escape from it runs out. */

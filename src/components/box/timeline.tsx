@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { clock } from "@/engine/box/explain";
 import { LAB_NAME, type BreakoutStep, type LabId } from "@/lib/box/world-types";
 import type { Lane, LaneKind } from "./lanes";
@@ -85,15 +85,15 @@ export function Timeline({
   compact?: boolean;
 }) {
   const max = Math.max(head, 1);
-  const track = useRef<HTMLDivElement>(null);
+  // The pins' track: a callback ref, since the compact layout mounts a new element (an observer left on the old one reads 0 as it leaves the page).
+  const [track, setTrack] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(600);
   useEffect(() => {
-    const el = track.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el);
+    if (!track) return;
+    const ro = new ResizeObserver(() => setWidth(track.clientWidth));
+    ro.observe(track);
     return () => ro.disconnect();
-  }, []);
+  }, [track]);
   const shown = [...markers].sort((a, b) => a.tick - b.tick);
   const lo = PIN / 2;
   const hi = Math.max(lo, width - PIN / 2);
@@ -139,7 +139,7 @@ export function Timeline({
     </button>
   );
   const pins = (
-    <div ref={track} className="relative h-[26px]" role="group" aria-label="Steps on the timeline">
+    <div ref={setTrack} className="relative h-[26px]" role="group" aria-label="Steps on the timeline">
       {shown.map((m, i) => (
         <button
           key={m.n}
@@ -233,7 +233,12 @@ export function Timeline({
                   style={{ background: cut ? `linear-gradient(90deg, rgba(126,226,168,0.45) 0 ${cut}, #ff4d7d ${cut} 100%)` : "rgba(126,226,168,0.45)" }}
                 />
                 {lane.ticks.map((t) => (
-                  <span key={`${t.tick}-${t.kind}`} className={`absolute top-1/2 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full ${TICK_CLASS[t.kind]}`} style={{ left: along(t.at) }} />
+                  <span
+                    key={`${t.tick}-${t.kind}`}
+                    data-lane-tick={t.tick}
+                    className={`absolute top-1/2 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full ${TICK_CLASS[t.kind]}`}
+                    style={{ left: along(Math.min(1, t.tick / max)) }}
+                  />
                 ))}
               </div>
               <span className={`font-mono text-[10px] tracking-[0.1em] ${lane.breachedAt === null ? "text-haiku" : "text-escape-text"}`}>{lane.breachedAt === null ? "HELD" : "BREACHED"}</span>

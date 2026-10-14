@@ -16,10 +16,13 @@
  *      layers that would have stopped it, [ opens the previous step, Escape closes it, a branch from a marker opens the Results view (Back returns to the map) and shows both outcomes, Watch the branch forks the run (pill, then back to the original), and
  *      "Replay with this switched on" reruns with that layer on.
  *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
- *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
- *      is within the first screen and every lab is in frame, the bottom tab bar offers Story, Defences,
- *      Results and Feed, Defences opens a dialog sheet with the layer switches that Escape closes with focus
- *      back on its tab, and the step card's next button opens step 1 when none is open, then step 2.
+ *      every lab, name and button is wholly inside it with none overlapping, and a lane's mark sits
+ *      where its step's pin does; at 768x1024 and 390x844 the scene is within the first screen and
+ *      every lab, its name and every step marker is in frame at the head and on a beat, the pins sit
+ *      inside the scrubber, the bottom tab bar offers Story, Defences, Results and Feed, Defences opens a
+ *      dialog sheet with the layer switches that Escape closes with focus back on its tab, the step
+ *      card's next button opens step 1 when none is open, then step 2, and a fork every lab holds
+ *      shows the "No steps yet" prompt on the step card with the map whole.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
@@ -308,6 +311,22 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.goBack();
       await page.locator("[data-results-view]").waitFor({ state: "hidden", timeout: 5_000 });
       check("the browser's Back returns to the map", !page.url().includes("view=results"), page.url());
+      // Scrubbed past the first breach (with the scrubber: the pins all share a tick here), "Branch from here" branches at the scrubbed tick; "just before the first breach" is the live default only.
+      const pinOne = Number((await page.locator('[data-timeline-marker="1"]').getAttribute("aria-label")).match(/tick (\d+)/)[1]);
+      const head = Number(await page.locator("[data-scrubber-box]").getAttribute("max"));
+      const scrubbed = Math.min(head - 1, pinOne + 30);
+      await page.locator("[data-scrubber-box]").fill(String(scrubbed));
+      await page.waitForFunction((t) => window.__swarm.box.stats.tick === t, scrubbed, { timeout: 10_000 });
+      await page.locator("[data-branch-from-here]").click();
+      await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 5_000 });
+      await page.waitForFunction((t) => document.querySelector("[data-branch-card]")?.getAttribute("data-at") === String(t), scrubbed, { timeout: 5_000 }).catch(() => {});
+      const branchTick = await page.locator("[data-branch-card]").getAttribute("data-at");
+      check("scrubbed past the first breach, Branch from here branches at the scrubbed tick", branchTick === String(scrubbed), `step 1 at tick ${pinOne}, scrubbed to ${scrubbed}, the card says ${branchTick}`);
+      await page.goBack();
+      await page.locator("[data-results-view]").waitFor({ state: "hidden", timeout: 5_000 });
+      // Back on step 1's moment for the branch below.
+      await page.locator('[data-timeline-marker="1"]').click();
+      await page.waitForFunction((t) => window.__swarm.box.stats.tick === t - 1, pinOne, { timeout: 10_000 });
       await page.locator("[data-branch-from-here]").click();
       await page.locator("[data-watch-branch]").click();
       await page.locator("[data-branched-pill]").waitFor({ timeout: 10_000 });
@@ -346,24 +365,53 @@ export function boxSteps({ check, openPage, software = false }) {
     }
   }
 
-  /** The scene as drawn: no label or button on another, none cut by the slot, every lab wholly inside it. */
+  /** The scene as drawn: no label or button on another, none cut by the slot, every lab wholly inside it, no lab name on a ring. */
   const checkScene = async (page, where) => {
     const scene = await measureScene(page);
     check(`${where}: the scene slot is on the page`, scene.slot !== null);
     check(`${where}: no scene label or marker button touches another`, scene.clashes.length === 0, scene.clashes.join(", "));
     check(`${where}: no scene label or marker button is cut by the slot's edge`, scene.cut.length === 0, scene.cut.join(", "));
     check(`${where}: every lab's ring is wholly inside the scene`, scene.labsCut.length === 0, scene.labsCut.join(", "));
+    check(`${where}: no lab's name sits on a ring`, scene.onRing.length === 0, scene.onRing.join(", "));
     return scene;
   };
 
+  /** A short slot (a phone's, a tablet's): the scene whole, every lab named, and (`allMarkers`) every step's marker out and on the map. */
+  const checkSceneWhole = async (page, where, allMarkers) => {
+    const scene = await checkScene(page, where);
+    const named = await page.locator("[data-lab-name]:visible").count();
+    check(`${where}: every lab is named on the scene`, named === scene.labs.length && scene.labs.length === 3, `${named} names, ${scene.labs.length} labs`);
+    if (allMarkers) {
+      const all = await page.evaluate(() => window.__swarm.box.markers.length);
+      const out = await page.locator("[data-step-marker]:visible").count();
+      check(`${where}: every step's marker is out and on the map`, all > 0 && out === all, `${out} of ${all}`);
+    }
+    return scene;
+  };
+
+  /** Step 1's beat, scrubbed to (the story's camera would be close on that lab), the scene checked, then back to live. */
+  const checkOnBeat = async (page, where) => {
+    const pinOne = await page.evaluate(() => window.__swarm.box.markers[0].tick);
+    await page.locator("[data-scrubber-box]").fill(String(pinOne + 2));
+    await page.locator("[data-back-to-live]").waitFor({ timeout: 10_000 });
+    await page.waitForFunction((t) => window.__swarm.box.stats.tick === t, pinOne + 2, { timeout: 10_000 });
+    await page.waitForTimeout(700);
+    await checkSceneWhole(page, `${where}, on step 1's beat`, false);
+    await page.locator("[data-back-to-live]").click();
+    await page.locator("[data-back-to-live]").waitFor({ state: "detached", timeout: 5_000 });
+    await page.waitForTimeout(400);
+  };
+
   /**
-   * The playground's framing at a desktop and a phone, on the breakout shot: the scene keeps at least
-   * SCENE_MIN_PX of height with a marker's card open and every lab stays in it; on the phone the scene
-   * starts within the first screen and every lab is in frame; nothing on the map overlaps or is cut.
+   * The playground's framing at a desktop, a tablet and a phone, on the breakout shot: the scene keeps at
+   * least SCENE_MIN_PX of height with a marker's card open and every lab stays in it; the lanes' marks
+   * sit on the pins' span; on the tablet and the phone the scene starts within the first screen and
+   * every lab, its name and every step's marker is in frame, at the head (every marker out) and on a
+   * beat (where the desktop's camera closes in on one lab); nothing on the map overlaps or is cut.
    * `openPage` fixes the window at 1280x720, so each page is resized once it is up (the slot follows).
    */
   async function stepLayout(browser) {
-    console.log("-- 8. layout: the scene's framing at a desktop and a phone");
+    console.log("-- 8. layout: the scene's framing at a desktop, a tablet and a phone");
     const sized = async (page, width, height) => {
       await page.waitForFunction(() => window.__swarm?.box?.settled === true, null, { timeout: READY_TIMEOUT_MS });
       await page.waitForFunction(() => window.__swarm.box.markers.length > 0 && window.__swarm.box.markers.every((m) => m.title), null, { timeout: 30_000 });
@@ -411,18 +459,60 @@ export function boxSteps({ check, openPage, software = false }) {
       await desktop.page.waitForTimeout(300);
       const zoomed = await desktop.page.evaluate(() => window.__swarm.box.camera.mode);
       check("desktop: Ctrl and the wheel over the map zooms it", zoomed === "free", zoomed);
+      // The lanes' marks sit on the span the pins use (the head), not the rebuilt world's bucketed tick: step 1's pin and its lab's lane mark share an x, at a head that is not a round bucket.
+      const headOf = () => desktop.page.evaluate(() => window.__swarm.box.stats.tick);
+      for (let i = 0; i < 6 && (await headOf()) % 10 < 3; i++) {
+        await desktop.page.locator('button[aria-label="Resume the simulation"]').click();
+        await desktop.page.waitForTimeout(350);
+        await desktop.page.locator('button[aria-label="Pause the simulation"]').click();
+      }
+      await desktop.page.waitForTimeout(800);
+      const head = await headOf();
+      const stepOne = await desktop.page.evaluate(() => window.__swarm.box.markers[0]);
+      const pinX = await desktop.page.locator('[data-timeline-marker="1"]').evaluate((e) => e.getBoundingClientRect().left + e.getBoundingClientRect().width / 2);
+      const mark = desktop.page.locator(`[data-lane="${stepOne.lab}"] [data-lane-tick="${stepOne.tick}"]`);
+      const markX = (await mark.count()) ? await mark.first().evaluate((e) => e.getBoundingClientRect().left + e.getBoundingClientRect().width / 2) : NaN;
+      check("desktop: a lab's escape mark on its lane and the step's pin share an x within 1 px", Math.abs(markX - pinX) <= 1, `head ${head}, step 1 (${stepOne.lab}, tick ${stepOne.tick}): pin at ${pinX.toFixed(1)}, mark at ${markX.toFixed(1)}`);
       check("desktop: no console errors or THREE warnings", desktop.problems.length === 0, desktop.problems.join(" | "));
     } finally {
       await desktop.context.close();
     }
+    const tablet = await openPage(browser, "/box?shot=breakout");
+    try {
+      await sized(tablet.page, 768, 1024);
+      const scene = await checkSceneWhole(tablet.page, "tablet", true);
+      check("tablet: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 1024, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 1024`);
+      await checkOnBeat(tablet.page, "tablet");
+      check("tablet: no console errors or THREE warnings", tablet.problems.length === 0, tablet.problems.join(" | "));
+    } finally {
+      await tablet.context.close();
+    }
     const phone = await openPage(browser, "/box?shot=breakout");
     try {
       await sized(phone.page, 390, 844);
-      const scene = await checkScene(phone.page, "phone");
+      const scene = await checkSceneWhole(phone.page, "phone", true);
       check("phone: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 844, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 844`);
       check("phone: every lab is in frame", scene.labs.length === 3 && scene.labsCut.length === 0, scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", "));
+      await checkOnBeat(phone.page, "phone");
       const tickLeft = await phone.page.locator("[data-counter=tick]").evaluate((e) => Math.round(e.getBoundingClientRect().left));
       check("phone: the counters start at the left edge", tickLeft < 40, `TICK at x=${tickLeft}`);
+      // The step pins sit along the scrubber by tick, inside its width, over no control.
+      const pinBoxes = await phone.page.locator("[data-timeline-marker]").evaluateAll((els) =>
+        els.map((e) => {
+          const r = e.getBoundingClientRect();
+          return { n: e.dataset.timelineMarker, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        }),
+      );
+      const scrub = await phone.page.locator("[data-scrubber-box]").boundingBox();
+      const controls = await phone.page.locator("[data-timeline] button:not([data-timeline-marker])").evaluateAll((els) =>
+        els.map((e) => {
+          const r = e.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        }),
+      );
+      const outside = pinBoxes.filter((p) => p.left < scrub.x - 1 || p.right > scrub.x + scrub.width + 1).map((p) => `${p.n} at ${Math.round(p.left)}..${Math.round(p.right)}`);
+      const over = pinBoxes.filter((p) => controls.some((c) => p.left < c.right && c.left < p.right && p.top < c.bottom && c.top < p.bottom)).map((p) => p.n);
+      check("phone: every step pin sits inside the scrubber's width and over no button", pinBoxes.length > 0 && outside.length === 0 && over.length === 0, `${pinBoxes.length} pins, scrubber ${Math.round(scrub.x)}..${Math.round(scrub.x + scrub.width)}; outside: ${outside.join(", ") || "none"}; over a button: ${over.join(", ") || "none"}`);
 
       const tabs = phone.page.locator('nav[aria-label="Panels"]');
       const tabNames = await tabs.locator("button").allInnerTexts();
@@ -450,6 +540,21 @@ export function boxSteps({ check, openPage, software = false }) {
       await phone.page.waitForFunction(() => document.querySelector("[data-step-card]")?.getAttribute("data-step-card-n") === "2", null, { timeout: 5_000 });
       const second = await card.getAttribute("data-step-card-n");
       check("phone: Next from no step opens step 1, then step 2", first === "1" && second === "2" && /Step 2 of \d+/i.test(await card.innerText()), `${first} -> 1 -> ${second}`);
+
+      // A fork from the live default (just before the first breach) with the layer that would have stopped step 1 on: every lab holds, so there is no step, and the step card says so; the map frames every lab with its name clear of the rings.
+      const stepOne = await phone.page.evaluate(() => ({ lab: window.__swarm.box.markers[0].lab, layer: window.__swarm.box.steps[0]?.stoppedBy?.[0] ?? null }));
+      await tabs.locator('[data-phone-tab="results"]').click();
+      await phone.page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 5_000 });
+      const branchCard = phone.page.locator("[data-branch-card]");
+      await branchCard.locator('select[aria-label="Lab to change"]').selectOption(stepOne.lab);
+      if (stepOne.layer) await branchCard.locator('select[aria-label="Layer to switch on"]').selectOption(stepOne.layer);
+      await phone.page.locator("[data-watch-branch]").click();
+      await phone.page.locator("[data-branched-pill]").waitFor({ timeout: 10_000 });
+      const emptyPrompt = phone.page.locator("[data-step-card] [data-story-empty]");
+      await emptyPrompt.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+      check("phone: after a fork that every lab holds, the step card shows the No steps yet prompt", await emptyPrompt.isVisible(), `${stepOne.lab} with ${stepOne.layer} on; steps: ${await phone.page.evaluate(() => window.__swarm.box.markers.length)}`);
+      await phone.page.waitForTimeout(900);
+      await checkSceneWhole(phone.page, "phone after the fork", false);
       check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
     } finally {
       await phone.context.close();

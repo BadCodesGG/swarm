@@ -1,11 +1,11 @@
 /**
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
- *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
+ *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--viewport=768x1024] [--seed=1812] [--name=box]
  *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
- * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
+ * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
  * (unless --webgl), zero console errors or `THREE.` warnings, no two scene labels or marker buttons
  * overlapping and none cut by the scene's edge (as drawn, after the `--do` actions), and writes `.shots/<name>-<n>.png`
@@ -35,6 +35,9 @@ const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
 const mobile = flag("mobile");
+const [vw, vh] = value("viewport", "1440x900").split("x").map(Number);
+/** The phone layout (a tab bar leads to the results): a phone, or any window of 914 px and under. */
+const phoneLayout = mobile || vw <= 914;
 const name = value("name", `${mobile ? "box-mobile" : "box"}${wantWebGL ? "-webgl" : ""}`);
 const query = new URLSearchParams({ shot: value("shot", "escape") });
 const seed = value("seed", null);
@@ -76,7 +79,7 @@ async function attempt(strategy) {
             userAgent:
               "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
           }
-        : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+        : { viewport: { width: vw, height: vh }, deviceScaleFactor: 1 },
     );
     const page = await context.newPage();
     page.on("console", (msg) => {
@@ -104,7 +107,7 @@ async function attempt(strategy) {
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
     }
     if (actions.includes("results")) {
-      if (!(await page.locator("[data-results-view]").isVisible())) await page.locator(mobile ? '[data-phone-tab="results"]' : "[data-open-results]:visible").click();
+      if (!(await page.locator("[data-results-view]").isVisible())) await page.locator(phoneLayout ? '[data-phone-tab="results"]' : "[data-open-results]:visible").click();
       await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 10_000 });
       if (!(await page.locator("[data-branch-result]").count())) {
         await page.locator("[data-branch]").click();

@@ -42,6 +42,19 @@ function Summary({ labs }: { labs: readonly WorldLabSnapshot[] }) {
   );
 }
 
+/** A map of several labs with no step yet: what a step is, and how to get one (the story rail and the phone's step card share it). */
+export function NoStepsYet() {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-[rgba(150,172,214,0.22)] p-3" data-story-empty>
+      <span className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">No steps yet</span>
+      <p className="m-0 text-[13px] leading-normal text-muted">
+        A step appears here when an agent gets out of a lab or reaches another one. With every layer holding that may never happen: switch a layer off in Defences, or open Scenario and
+        pick a preset to see a story.
+      </p>
+    </div>
+  );
+}
+
 export function StepBody({ pin, onReplayWith }: { pin: Pin; onReplayWith(lab: LabId, layer: LayerId): void }) {
   const { step } = pin;
   if (!step) return <p className="m-0 text-[13px] leading-normal text-label">Replaying the run with each layer on, one at a time, to see which would have stopped it.</p>;
@@ -154,15 +167,7 @@ export function StoryRail({
         <p className="mt-1.5 mb-0 text-[15px] leading-[1.45] text-ink">{labs.length > 1 ? <Summary labs={labs} /> : "One lab. Each escape is explained here as it happens."}</p>
       </div>
       {lead}
-      {steps.length === 0 && labs.length > 1 ? (
-        <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-[rgba(150,172,214,0.22)] p-3" data-story-empty>
-          <span className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">No steps yet</span>
-          <p className="m-0 text-[13px] leading-normal text-muted">
-            A step appears here when an agent gets out of a lab or reaches another one. With every layer holding that may never happen: switch a layer off in Defences, or open Scenario
-            and pick a preset to see a story.
-          </p>
-        </div>
-      ) : null}
+      {steps.length === 0 && labs.length > 1 ? <NoStepsYet /> : null}
       <ol className="m-0 flex list-none flex-col gap-0.5 p-0" aria-label="Steps">
         {steps.map((p) => {
           const open = selected === p.n;

@@ -111,6 +111,15 @@ describe("spreadLine", () => {
     expect(out[0]).toBeGreaterThanOrEqual(12);
     expect(out[3]).toBeLessThanOrEqual(290);
   });
+
+  it("never leaves the bounds, even when the line is too short to keep every position apart", () => {
+    const out = spreadLine([5, 5, 5, 5, 5, 5], 26, 12, 80);
+    for (const x of out) {
+      expect(x).toBeGreaterThanOrEqual(12);
+      expect(x).toBeLessThanOrEqual(80);
+    }
+    expect(spreadLine([150, 150, 150], 26, 12, 12)).toEqual([12, 12, 12]);
+  });
 });
 
 describe("nextInterceptLine", () => {

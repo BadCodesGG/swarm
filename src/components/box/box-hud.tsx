@@ -96,6 +96,11 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     app.showOverlay(false);
   }, [app]);
 
+  // The phone layout's short scene has no room for the story's close-ups: every lab, its name and its markers stay in view, refitted as the slot changes.
+  useEffect(() => {
+    app.camera.keepAll(phone);
+  }, [app, phone]);
+
   // The engine draws the scene into the scene panel's rect, kept up to date as the page scrolls or resizes.
   useEffect(() => {
     let raf = 0;
@@ -283,13 +288,12 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     return out;
   }, [multi, viewWorld, shown.id]);
   const labIds = world.labs.map((l) => l.id).join();
-  // Live, the lanes span the rebuilt world's own tick (it trails the head by a bucket), so a mark sits where its tick is and the log is read once per rebuild; rewound, the head the timeline spans.
-  const laneSpan = Math.max(tl.live ? (viewWorld?.tick ?? 0) : tl.head, 1);
-  const lanes = useMemo(() => buildLanes(labIds.split(",") as LabId[], viewWorld?.log ?? [], laneSpan), [labIds, viewWorld, laneSpan]);
-  // The branch card's tick: the scrubbed one, or just before the first breach when that is later, so a first comparison has something to change.
+  // The lanes keep absolute ticks, read once per rebuild of the world; the timeline places them on the head it spans, as it does its pins and the breach cut.
+  const lanes = useMemo(() => buildLanes(labIds.split(",") as LabId[], viewWorld?.log ?? []), [labIds, viewWorld]);
+  // The branch card's tick: the scrubbed one; live, just before the first breach when the head is past it, so a first comparison has something to change.
   const firstBreach = lanes.reduce<number | null>((n, l) => (l.breachedAt === null ? n : Math.min(n ?? Infinity, l.breachedAt)), null);
   const scrubbed = viewWorld?.tick ?? tl.at;
-  const branchAt = firstBreach !== null && scrubbed >= firstBreach ? Math.max(0, firstBreach - 1) : scrubbed;
+  const branchAt = tl.live && firstBreach !== null && scrubbed >= firstBreach ? Math.max(0, firstBreach - 1) : scrubbed;
   const branchRebuilt = useWorldAt(world.scenario, flips, branchAt, 1, view === "results" && branchAt !== scrubbed);
   const branchWorld = branchAt === scrubbed ? viewWorld : branchRebuilt && branchRebuilt.tick === branchAt && branchRebuilt.scenario === world.scenario ? branchRebuilt : null;
 
@@ -578,7 +582,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
               mode === "agent" && primary ? (
                 primary.node
               ) : (
-                <StepCard steps={steps} current={currentPin} open={world.selected !== null} lead={lead} onStep={walk} onReplayWith={rerunWith} />
+                <StepCard steps={steps} current={currentPin} open={world.selected !== null} multi={multi} lead={lead} onStep={walk} onReplayWith={rerunWith} />
               )
             ) : (
               <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>

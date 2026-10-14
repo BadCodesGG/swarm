@@ -14,7 +14,7 @@ import { Color, InstancedBufferAttribute, Mesh, Vector4, type Object3D } from "t
 import { attribute, clamp, cos, dot, exp, float, length, mix, modelViewMatrix, sin, smoothstep, uniform, uniformArray, varying, vec2, vec3, vec4 } from "three/tsl";
 import type { SessionTrace } from "@/lib/trace/types";
 import { agentPose, FOLD_TIME, newPose, SPAWN_TIME, stationPos } from "../layout";
-import { DUST_SLOT, planNebula, SLOTS, STATION_SLOT0, type NebulaPlan } from "../nebula-plan";
+import { DUST_SLOT, planNebula, RADIUS_SIGMAS, SLOTS, STATION_SLOT0, type NebulaPlan } from "../nebula-plan";
 import { modelColor, spriteGeometry, spriteMaterial, type FloatNode, type InsideUniforms, type Vec3Node, type Vec4Node } from "./common";
 
 const STATION_COLOUR = 0xa7b1c2;
@@ -172,7 +172,7 @@ export function createNebula(parent: Object3D, budget: number, u: InsideUniforms
         const sigma = plan.sigma[s] * (0.5 + 0.5 * Math.sqrt(fill));
         arr[s * 3].set(pose.x, pose.y, pose.z, sigma);
         arr[s * 3 + 1].set(colour.r * gain, colour.g * gain, colour.b * gain, fill);
-        radii[s] = fill > 0 ? sigma * 2.2 : 0;
+        radii[s] = fill > 0 ? sigma * RADIUS_SIGMAS : 0;
       }
     },
     tokensAt: (id, t) => {

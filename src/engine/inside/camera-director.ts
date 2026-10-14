@@ -27,6 +27,7 @@
 import type { Timeline } from "@/lib/trace/timeline";
 import type { SessionTrace } from "@/lib/trace/types";
 import { agentPose, newPose, SPAWN_TIME, stationPos, STATIONS, stationIndex } from "./layout";
+import { cloudRadius } from "./nebula-plan";
 
 export type Vec3 = [number, number, number];
 export type ShotKind = "spawn" | "station" | "return" | "prompt" | "drift" | "overview" | "follow";
@@ -64,18 +65,26 @@ export interface DirectorOptions {
   rate: number;
   /** Canvas width over height. */
   aspect: number;
+  /**
+   * The free frame: the canvas minus the HUD's panels and the open detail card, as fractions of
+   * the canvas width and height (0..1). The camera's view offset centres the target in it, and a
+   * focused cluster is sized to it. The whole canvas when absent.
+   */
+  free?: { width: number; height: number };
   /** Cuts instead of flights, and no orbit. */
   reduced?: boolean;
 }
 
 /** Vertical field of view, degrees (the app's camera uses the same). */
 export const CAMERA_FOV = 36;
-/** A cluster's radius in world units, about where its points fade out. */
+/** Fallback cluster radii in world units for an agent without a cloud, about where its point fades out. */
 export const ORCHESTRATOR_RADIUS = 1.9;
 export const CLUSTER_RADIUS = 1.1;
 export const STATION_FOCUS_RADIUS = 1.0;
-/** Fraction of the frame height a focused cluster fills. */
-const FILL = 0.42;
+/** A focused cluster's projected radius as a fraction of the free frame's height (its diameter fills 40%). */
+export const FOCUS_FILL = 0.2;
+/** The overview's radius as a fraction of the free frame's short side (everything fills 92%). */
+const OVERVIEW_FILL = 0.46;
 const BURST_CALLS = 4;
 const BURST_WINDOW = 8;
 /** Playback seconds before the end at which the final pull back begins, at least. */
@@ -206,15 +215,21 @@ function focusOf(trace: SessionTrace, shot: Shot, t: number): Focus {
     pts.push([scratch.x, scratch.y, scratch.z]);
     n++;
   }
-  if (!n) return { centre: [0, 0, 0], radius: ORCHESTRATOR_RADIUS };
+  if (!n) return { centre: [0, 0, 0], radius: clusterRadius(trace, 0) };
   const centre: Vec3 = [sum[0] / n, sum[1] / n, sum[2] / n];
-  const single = shot.agents.length === 1;
-  let radius = single && shot.agents[0] === 0 ? ORCHESTRATOR_RADIUS : CLUSTER_RADIUS;
-  if (!single) {
+  let radius = clusterRadius(trace, shot.agents[0]);
+  if (shot.agents.length > 1) {
     // A fan-out: hold every child, and the parent they came out of.
-    for (const p of pts) radius = Math.max(radius, Math.hypot(p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]) + CLUSTER_RADIUS);
+    pts.forEach((p, i) => {
+      radius = Math.max(radius, Math.hypot(p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]) + clusterRadius(trace, shot.agents[i]));
+    });
   }
   return { centre, radius };
+}
+
+/** The world radius of agent `id`'s cloud at full growth, or the fallback for an agent drawn as a point. */
+function clusterRadius(trace: SessionTrace, id: number): number {
+  return cloudRadius(trace, id) || (id === 0 ? ORCHESTRATOR_RADIUS : CLUSTER_RADIUS);
 }
 
 /** Everything at once: the stations, the orchestrator and every cluster still out. */
@@ -243,14 +258,51 @@ function overviewFocus(trace: SessionTrace, t: number): Focus {
   const centre: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
   let radius = 0;
   for (const p of pts) radius = Math.max(radius, Math.hypot(p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]));
-  return { centre, radius: radius + CLUSTER_RADIUS };
+  return { centre, radius: radius + clusterRadius(trace, 0) };
 }
 
-/** Eye to target distance that frames `radius` across `FILL` of the frame's short side. */
-function framingDistance(radius: number, aspect: number, fill: number): number {
-  const half = (CAMERA_FOV * Math.PI) / 360;
-  const halfShort = Math.min(half, Math.atan(Math.tan(half) * aspect));
-  return radius / (Math.tan(halfShort) * fill);
+const tanHalfFov = () => Math.tan((CAMERA_FOV * Math.PI) / 360);
+
+/**
+ * Eye to target distance at which a sphere of `radius` round the target projects to `fill` of the
+ * free frame's height, and no more than `fill` of its width (a narrow frame stands further back).
+ */
+export function focusDistance(radius: number, fill: number, o: DirectorOptions): number {
+  const freeH = o.free?.height ?? 1;
+  const freeW = (o.free?.width ?? 1) * o.aspect;
+  // The projected radius in canvas heights is radius / (distance * 2 * tan(fov / 2)).
+  return radius / (2 * tanHalfFov() * fill * Math.min(freeH, freeW));
+}
+
+/**
+ * The app's camera as a pure pinhole: canvas px of a world `point` under `pose`, with the view
+ * offset that puts the target in the middle of the free frame (`free`, canvas px). `depth` is the
+ * distance along the line of sight; a point behind the eye has `depth <= 0`.
+ */
+export function projectPoint(
+  pose: CameraPose,
+  point: Vec3,
+  canvas: { width: number; height: number },
+  free: { left: number; top: number; width: number; height: number },
+): { x: number; y: number; depth: number } {
+  const { eye, target } = pose;
+  const f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
+  const fl = Math.hypot(f[0], f[1], f[2]) || 1;
+  const z = [-f[0] / fl, -f[1] / fl, -f[2] / fl];
+  // lookAt with up = +y: x = up cross z, y = z cross x.
+  let x = [z[2], 0, -z[0]];
+  const xl = Math.hypot(x[0], x[2]);
+  x = xl > 1e-9 ? [x[0] / xl, 0, x[2] / xl] : [1, 0, 0];
+  const y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+  const d = [point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]];
+  const vx = d[0] * x[0] + d[1] * x[1] + d[2] * x[2];
+  const vy = d[0] * y[0] + d[1] * y[1] + d[2] * y[2];
+  const depth = -(d[0] * z[0] + d[1] * z[1] + d[2] * z[2]);
+  const safe = depth > 1e-9 ? depth : 1e-9;
+  const halfH = canvas.height / 2;
+  const px = (vx / (safe * tanHalfFov())) * halfH;
+  const py = (vy / (safe * tanHalfFov())) * halfH;
+  return { x: free.left + free.width / 2 + px, y: free.top + free.height / 2 - py, depth };
 }
 
 const EL_BASE = 0.2;
@@ -259,10 +311,7 @@ const EL_BASE = 0.2;
 function shotPose(trace: SessionTrace, shot: Shot, index: number, t: number, p: number, o: DirectorOptions): CameraPose {
   const focus = focusOf(trace, shot, t);
   const overview = shot.kind === "overview";
-  const distance = Math.max(
-    overview ? framingDistance(focus.radius, o.aspect, 0.92) : framingDistance(focus.radius, o.aspect, FILL) * shot.wide,
-    4,
-  );
+  const distance = Math.max(overview ? focusDistance(focus.radius, OVERVIEW_FILL, o) : focusDistance(focus.radius, FOCUS_FILL, o) * shot.wide, 4);
   // A slow sway round the focus, bounded so a long hold never winds up.
   const hold = holdFor(Math.max(o.rate, 1));
   const amplitude = shot.kind === "drift" ? 0.7 : overview ? 0.25 : 0.4;

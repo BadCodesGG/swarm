@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { generateTrace } from "@/lib/trace/generate";
 import { buildTimeline } from "@/lib/trace/timeline";
-import { CAMERA_FOV, directorPose, followPose, holdFor, shotsOf, type CameraPose, type DirectorOptions } from "./camera-director";
+import { CAMERA_FOV, directorPose, FOCUS_FILL, followPose, holdFor, projectPoint, shotsOf, type CameraPose, type DirectorOptions } from "./camera-director";
 import { agentPose, newPose, stationPos, STATIONS } from "./layout";
+import { cloudRadius } from "./nebula-plan";
 
 const trace = generateTrace(50, "medium");
 const tl = buildTimeline(trace);
@@ -138,6 +139,49 @@ describe("directorPose", () => {
   });
 });
 
+describe("focus framing", () => {
+  // A 1440x900 canvas with the left panels (340 px) and the open detail card (340 px) taken out,
+  // the header above and the timeline below: the free frame the HUD passes to the camera.
+  const canvas = { width: 1440, height: 900 };
+  const free = { left: 340, top: 90, width: 760, height: 630 };
+  const framed: DirectorOptions = { rate: 4, aspect: canvas.width / canvas.height, free: { width: free.width / canvas.width, height: free.height / canvas.height } };
+  /** The camera's right vector under the app's lookAt convention (up is +y). */
+  const rightOf = (p: CameraPose) => {
+    const f = [p.target[0] - p.eye[0], p.target[1] - p.eye[1], p.target[2] - p.eye[2]];
+    const r = [-f[2], 0, f[0]];
+    const len = Math.hypot(r[0], r[1], r[2]) || 1;
+    return [r[0] / len, 0, r[2] / len];
+  };
+
+  it("holds a focused cluster at a fifth of the free frame's height and in its centre", () => {
+    const shots = shotsOf(tl, 4);
+    const single = shots.find((s) => (s.kind === "drift" || s.kind === "spawn") && s.agents.length === 1 && s.agents[0] > 0)!;
+    const t = tl.toTrace(single.t + holdFor(4) * 0.9);
+    const p = directorPose(tl, t, framed);
+    expect(p.flight).toBe(0);
+    const radius = cloudRadius(trace, single.agents[0]);
+    expect(radius).toBeGreaterThan(0);
+    const centre = projectPoint(p, p.target, canvas, free);
+    expect(centre.x).toBeCloseTo(free.left + free.width / 2, 3);
+    expect(centre.y).toBeCloseTo(free.top + free.height / 2, 3);
+    const r = rightOf(p);
+    const rim = projectPoint(p, [p.target[0] + r[0] * radius, p.target[1] + r[1] * radius, p.target[2] + r[2] * radius], canvas, free);
+    // A drift stands `wide` times further back than a close focus shot.
+    const projected = (Math.hypot(rim.x - centre.x, rim.y - centre.y) * single.wide) / (free.height * FOCUS_FILL);
+    expect(projected).toBeGreaterThan(0.97);
+    expect(projected).toBeLessThan(1.03);
+  });
+
+  it("stands twice as far back when the free frame is half as tall, so the cluster fills the same share of it", () => {
+    const shots = shotsOf(tl, 4);
+    const single = shots.find((s) => s.kind === "drift" && s.agents.length === 1 && s.agents[0] > 0)!;
+    const t = tl.toTrace(single.t + holdFor(4) * 0.9);
+    const whole = directorPose(tl, t, { rate: 4, aspect: 1.6 });
+    const half = directorPose(tl, t, { rate: 4, aspect: 1.6, free: { width: 1, height: 0.5 } });
+    expect(half.distance).toBeCloseTo(whole.distance * 2, 6);
+  });
+});
+
 describe("followPose", () => {
   it("looks at the agent from a cluster-filling distance", () => {
     const id = trace.agents.find((a) => a.parent === 0)!.id;
@@ -147,6 +191,13 @@ describe("followPose", () => {
     agentPose(trace, id, t, a);
     expect(dist(p.target, [a.x, a.y, a.z])).toBeLessThan(1e-9);
     expect(p.distance).toBeGreaterThan(4);
-    expect(p.distance).toBeLessThan(14);
+    // Its cloud's radius takes a fifth of the canvas height, like a director's focus shot.
+    const canvas = { width: 1600, height: 1000 };
+    const whole = { left: 0, top: 0, ...canvas };
+    const c = projectPoint(p, p.target, canvas, whole);
+    const rim = projectPoint(p, [a.x, a.y + cloudRadius(trace, id), a.z], canvas, whole);
+    const projected = Math.hypot(rim.x - c.x, rim.y - c.y) / (canvas.height * FOCUS_FILL);
+    expect(projected).toBeGreaterThan(0.9);
+    expect(projected).toBeLessThan(1.03);
   });
 });

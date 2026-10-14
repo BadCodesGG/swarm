@@ -316,7 +316,12 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       goalLook.copy(manual.target);
       want = null;
     } else {
-      const opts = { rate: playback.rate(), aspect: width / height, reduced: reducedMotion };
+      const opts = {
+        rate: playback.rate(),
+        aspect: width / height,
+        reduced: reducedMotion,
+        free: frame ? { width: (frame.width ?? width) / width, height: frame.height / height } : undefined,
+      };
       want = followId >= 0 ? followPose(timeline, followId, t, opts) : directorPose(timeline, t, opts);
       goalEye.set(want.eye[0], want.eye[1], want.eye[2]);
       goalLook.set(want.target[0], want.target[1], want.target[2]);

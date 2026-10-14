@@ -9,7 +9,7 @@
 
 import { fork, type Rng } from "@/lib/rng";
 import type { SessionTrace } from "@/lib/trace/types";
-import { STATIONS, stationCounts } from "./layout";
+import { ORBIT_RADIUS, STATIONS, stationCounts } from "./layout";
 
 /** Subagents that get their own cloud; the rest keep their single point. */
 export const CLOUD_AGENTS = 47;
@@ -49,6 +49,49 @@ export interface NebulaPlan {
 
 const tokensOf = (u: { input: number; output: number; cacheRead: number; cacheWrite: number }) => u.input + u.output + u.cacheRead + u.cacheWrite;
 
+/** A cloud's visible radius is about this many sigmas: its core and shoulder, before the long tails. */
+export const RADIUS_SIGMAS = 2.2;
+export const ORCHESTRATOR_SIGMA = 1.5;
+export const STATION_SIGMA = 0.45;
+
+interface Ranking {
+  root: number;
+  /** The busiest subagents, most tokens first, that get a cloud. */
+  chosen: { id: number; tok: number }[];
+  /** Full-growth sigma per agent, world units; 0 for an agent without a cloud. */
+  sigma: Float32Array;
+}
+
+const rankMemo = new WeakMap<SessionTrace, Ranking>();
+
+/** The orchestrator, then the busiest subagents, with each cloud's full-growth size (cached per trace). */
+function rankClouds(trace: SessionTrace): Ranking {
+  let r = rankMemo.get(trace);
+  if (r) return r;
+  const ranked: { id: number; tok: number }[] = [];
+  for (const a of trace.agents) if (a.parent >= 0) ranked.push({ id: a.id, tok: tokensOf(a.usage) });
+  ranked.sort((a, b) => b.tok - a.tok || a.id - b.id);
+  const chosen = ranked.slice(0, CLOUD_AGENTS);
+  const root = trace.agents.findIndex((a) => a.parent < 0);
+  const sigma = new Float32Array(trace.agents.length);
+  if (root >= 0) sigma[root] = ORCHESTRATOR_SIGMA;
+  const maxTok = chosen.length ? chosen[0].tok || 1 : 1;
+  for (const c of chosen) {
+    // Grows with the root of the tokens, and never past a third of the orbit the agent sits on, so
+    // siblings and their parent keep distinct cores while their tails may overlap.
+    const depth = Math.min(trace.agents[c.id].depth, ORBIT_RADIUS.length - 1);
+    sigma[c.id] = Math.min(0.55 + 0.75 * Math.sqrt(c.tok / maxTok), ORBIT_RADIUS[depth] * 0.3);
+  }
+  rankMemo.set(trace, (r = { root, chosen, sigma }));
+  return r;
+}
+
+/** Agent `id`'s cloud radius at full growth, world units (about where its points fade out); 0 when it has no cloud. */
+export function cloudRadius(trace: SessionTrace, id: number): number {
+  const { sigma } = rankClouds(trace);
+  return id >= 0 && id < sigma.length ? sigma[id] * RADIUS_SIGMAS : 0;
+}
+
 /** Box-Muller, one draw. */
 function gauss(r: Rng): number {
   return Math.sqrt(-2 * Math.log(r() || 1e-9)) * Math.cos(2 * Math.PI * r());
@@ -60,16 +103,12 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
   const total = new Float64Array(SLOTS);
 
   // The orchestrator, then the busiest subagents.
-  const ranked: { id: number; tok: number }[] = [];
-  for (const a of trace.agents) if (a.parent >= 0) ranked.push({ id: a.id, tok: tokensOf(a.usage) });
-  ranked.sort((a, b) => b.tok - a.tok || a.id - b.id);
-  const root = trace.agents.findIndex((a) => a.parent < 0);
+  const { root, chosen, sigma: agentSigma } = rankClouds(trace);
   if (root >= 0) {
     agentSlot[root] = 0;
     slotAgent[0] = root;
     total[0] = tokensOf(trace.agents[root].usage);
   }
-  const chosen = ranked.slice(0, CLOUD_AGENTS);
   chosen.forEach((c, i) => {
     agentSlot[c.id] = 1 + i;
     slotAgent[1 + i] = c.id;
@@ -109,11 +148,10 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
   if (used > budget) for (let s = 0; s < SLOTS; s++) perSlot[s] = Math.floor((perSlot[s] * budget) / used);
 
   // Cloud size: the orchestrator is the widest, the rest grow with the root of their tokens.
-  const maxTok = chosen.length ? chosen[0].tok || 1 : 1;
   const sigma = new Float32Array(SLOTS);
-  sigma[0] = 0.52;
-  chosen.forEach((c, i) => (sigma[1 + i] = 0.2 + 0.27 * Math.sqrt(c.tok / maxTok)));
-  for (let i = 0; i < STATIONS.length; i++) sigma[STATION_SLOT0 + i] = 0.3;
+  sigma[0] = ORCHESTRATOR_SIGMA;
+  chosen.forEach((c, i) => (sigma[1 + i] = agentSigma[c.id]));
+  for (let i = 0; i < STATIONS.length; i++) sigma[STATION_SLOT0 + i] = STATION_SIGMA;
 
   // Points.
   let count = 0;

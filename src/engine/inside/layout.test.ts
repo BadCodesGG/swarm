@@ -5,7 +5,7 @@ import type { SessionTrace, TraceAgent, TraceEvent } from "@/lib/trace/types";
 import {
   ACTIVE_FADE,
   agentPose,
-  BOUNDARY_RADIUS,
+  PROBE_LENGTH,
   FOLD_TIME,
   cycleAgent,
   featuredAgent,
@@ -26,6 +26,7 @@ import {
   liveProbes,
   PROBE_GROW,
   webProbes,
+  type StationCategory,
   type WebProbe,
 } from "./layout";
 import { createPlayback } from "./playback";
@@ -82,31 +83,29 @@ const dist = (a: { x: number; y: number; z: number }, b: { x: number; y: number;
   Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
 describe("stations", () => {
-  it("sit on the ring like a clock face: web at half past one, plan on top, then anticlockwise", () => {
+  it("hang around the orchestrator in STATIONS order, each at its own depth, none coplanar", () => {
     expect(STATIONS).toEqual(["web", "plan", "advisor", "agents", "edit", "mcp", "files", "shell"]);
-    const p = newPose();
-    const s = Math.SQRT1_2 * STATION_RADIUS;
-    const expected: Record<string, [number, number]> = {
-      web: [s, s],
-      plan: [0, STATION_RADIUS],
-      advisor: [-s, s],
-      agents: [-STATION_RADIUS, 0],
-      edit: [-s, -s],
-      mcp: [0, -STATION_RADIUS],
-      files: [s, -s],
-      shell: [STATION_RADIUS, 0],
-    };
-    for (const [name, [x, y]] of Object.entries(expected)) {
-      stationPos(stationIndex(name as never), p);
-      expect(p.x).toBeCloseTo(x, 9);
-      expect(p.y).toBeCloseTo(y, 9);
-      expect(p.z).toBe(0);
+    const pts = STATIONS.map((_, i) => ({ ...stationPos(i, newPose()) }));
+    for (const p of pts) {
+      expect(Math.hypot(p.x, p.y, p.z)).toBeGreaterThan(STATION_RADIUS * 0.5);
+      expect(Math.hypot(p.x, p.y, p.z)).toBeLessThan(STATION_RADIUS * 1.6);
+      expect(Math.abs(p.z)).toBeGreaterThan(2);
     }
+    // Web is up and to the right (half past one), shell to the right, agents to the left.
+    const at = (k: StationCategory) => pts[stationIndex(k)];
+    expect(at("web").x).toBeGreaterThan(0);
+    expect(at("web").y).toBeGreaterThan(0);
+    expect(at("agents").x).toBeLessThan(0);
+    expect(at("shell").x).toBeGreaterThan(0);
+    expect(new Set(pts.map((p) => Math.round(p.z))).size).toBeGreaterThan(5);
   });
 
-  it("has no station for the other category, and the ring sits inside the boundary", () => {
+  it("are fixed: the same spot every time", () => {
+    expect({ ...stationPos(3, newPose()) }).toEqual({ ...stationPos(3, newPose()) });
+  });
+
+  it("has no station for the other category", () => {
     expect(stationIndex("other")).toBe(-1);
-    expect(STATION_RADIUS).toBeLessThan(BOUNDARY_RADIUS);
   });
 
   it("counts calls and launches made so far per station", () => {
@@ -248,12 +247,14 @@ describe("flights", () => {
 });
 
 describe("webProbes", () => {
-  it("lists each web call with its result time, tool and query, pointing out past the boundary", () => {
+  it("lists each web call with its result time, tool and query, reaching out past the web station", () => {
     const probes = webProbes(tree());
     expect(probes).toHaveLength(1);
     const [w] = probes;
     expect(w).toMatchObject({ event: 4, agent: 3, t0: 25, t1: 29, tool: "WebSearch", query: "tide tables" });
-    expect(Math.hypot(w.ex, w.ey, w.ez)).toBeGreaterThan(BOUNDARY_RADIUS);
+    const web = stationPos(stationIndex("web"), newPose());
+    expect(Math.hypot(w.ex - web.x, w.ey - web.y, w.ez - web.z)).toBeGreaterThan(PROBE_LENGTH * 0.9);
+    expect(Math.hypot(w.ex, w.ey, w.ez)).toBeGreaterThan(Math.hypot(web.x, web.y, web.z));
   });
 
   it("finds web calls in a generated sample", () => {
@@ -408,5 +409,27 @@ describe("pickTarget", () => {
 
   it("reports nothing in empty space", () => {
     expect(pickTarget(agents, stations, 600, 600, 30)).toBeNull();
+  });
+});
+
+describe("the world is spread out through depth", () => {
+  it("puts subagents several cloud radii from their parents and spreads them in z", () => {
+    const trace = generateTrace(50, "medium");
+    // The busiest moment: the spawn time with the most agents running.
+    const live = (t: number) => trace.agents.filter((a) => a.parent >= 0 && t >= a.spawnT + SPAWN_TIME && (!a.returned || t < a.returnT)).length;
+    const t = trace.agents.map((a) => a.spawnT + SPAWN_TIME + 0.1).reduce((best, x) => (live(x) > live(best) ? x : best), 0);
+    const parent = newPose();
+    const child = newPose();
+    const zs: number[] = [];
+    for (const a of trace.agents) {
+      if (a.parent < 0 || t < a.spawnT + SPAWN_TIME || (a.returned && t > a.returnT)) continue;
+      agentPose(trace, a.id, t, child);
+      agentPose(trace, a.parent, t, parent);
+      // A cloud is about 1.1 units across its radius: well clear of its parent's.
+      expect(dist(child, parent)).toBeGreaterThan(ORBIT_RADIUS[Math.min(a.depth, 3)] * 0.8);
+      zs.push(child.z);
+    }
+    expect(zs.length).toBeGreaterThan(3);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(3);
   });
 });

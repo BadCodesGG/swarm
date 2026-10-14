@@ -1,11 +1,13 @@
 /**
  * Where everything in Act 1 sits, as a pure function of the trace and the time. World units: the
- * orchestrator at the origin, the scene in the XY plane (the app tilts it slightly), about 100 px
- * per unit at the hero framing.
+ * orchestrator at the origin in a large dark space; a cloud is about a unit across, so clusters sit
+ * several cloud radii apart and the camera has to travel between them.
  *
- * - Stations sit on a ring in `STATIONS` order, anticlockwise from half past one on a clock face.
- * - An agent orbits its parent at its depth's radius, its angle set by its order among its siblings;
- *   it eases out of the parent at `spawnT` and folds back in over `FOLD_TIME` after `returnT`.
+ * - Stations hang on a wide, shallow shell around the orchestrator in `STATIONS` order, each at its
+ *   own depth (so no two are coplanar), their spots nudged by a fixed `fork` stream.
+ * - An agent orbits its parent at its depth's radius, in a direction (not just an angle) set by its
+ *   order among its siblings, so children spread through depth; it eases out of the parent at
+ *   `spawnT` and folds back in over `FOLD_TIME` after `returnT`.
  * - A flight is a call (or a subagent launch) travelling from the caller to its station. Its start,
  *   end and time window are baked once, at emission; `flightPos` is the CPU twin of the particle
  *   vertex node, so both must use the same easing.
@@ -14,16 +16,23 @@
 import { MODEL_FAMILIES } from "@/lib/trace/categories";
 import { particleLife, type Timeline } from "@/lib/trace/timeline";
 import type { SessionTrace, ToolCategory } from "@/lib/trace/types";
+import { fork } from "@/lib/rng";
 
 export const STATIONS = ["web", "plan", "advisor", "agents", "edit", "mcp", "files", "shell"] as const satisfies readonly ToolCategory[];
 export type StationCategory = (typeof STATIONS)[number];
 
-export const STATION_RADIUS = 3;
-export const BOUNDARY_RADIUS = 3.75;
-/** Where a web probe ends, past the boundary. */
-export const PROBE_RADIUS = 4.45;
+/** About how far the stations sit from the orchestrator. */
+export const STATION_RADIUS = 15;
+/** The ring a human prompt contracts from, around the orchestrator. */
+export const PULSE_RADIUS = 7;
+/** How far a web probe reaches past its station. */
+export const PROBE_LENGTH = 4.5;
 /** Orbit radius by depth; index 0 (the orchestrator) is unused. Deeper levels reuse the last. */
-export const ORBIT_RADIUS = [0, 1.55, 0.6, 0.36] as const;
+export const ORBIT_RADIUS = [0, 6.5, 3.2, 1.9] as const;
+/** A `fork` stream no other part of the project draws from: the stations' fixed jitter. */
+const STATION_STREAM = 0x57a7_0000;
+/** Each station's depth (z) in world units: alternating near and far of the orchestrator. */
+const STATION_DEPTH = [-5, 6, -8, 4, -6, 8, -4, 7] as const;
 /** Trace seconds an agent takes to ease out of its parent, and to fold back in. */
 export const SPAWN_TIME = 3;
 export const FOLD_TIME = 3;
@@ -51,11 +60,18 @@ export function stationAngle(index: number): number {
   return FIRST_ANGLE + (index * 2 * Math.PI) / STATIONS.length;
 }
 
+const stationSpots = STATIONS.map((_, i) => {
+  const a = stationAngle(i);
+  const r = fork(STATION_STREAM, i);
+  const reach = STATION_RADIUS * (0.92 + r() * 0.16);
+  return { x: Math.cos(a) * reach * 1.15, y: Math.sin(a) * reach * 0.68, z: STATION_DEPTH[i] * (0.85 + r() * 0.3) };
+});
+
 export function stationPos(index: number, out: Pose): Pose {
-  const a = stationAngle(index);
-  out.x = Math.cos(a) * STATION_RADIUS;
-  out.y = Math.sin(a) * STATION_RADIUS;
-  out.z = 0;
+  const spot = stationSpots[index] ?? stationSpots[0];
+  out.x = spot.x;
+  out.y = spot.y;
+  out.z = spot.z;
   out.presence = 1;
   return out;
 }
@@ -88,9 +104,13 @@ function orbitOffset(trace: SessionTrace, id: number, t: number, out: Pose): voi
   const d = Math.min(a.depth, ORBIT_RADIUS.length - 1);
   const r = ORBIT_RADIUS[d] * (0.85 + 0.3 * fract(k * 0.618034 + a.parent * 0.3));
   const angle = 0.9 + a.parent * 1.3 + k * GOLDEN + DRIFT[d] * t;
-  out.x = Math.cos(angle) * r;
-  out.y = Math.sin(angle) * r;
-  out.z = Math.sin(k * 1.7 + a.parent) * r * 0.3;
+  // A direction on a sphere, a little flattened vertically: the elevation comes from the sibling
+  // index, the longitude drifts, so children fan out through depth instead of round a disc.
+  const lift = (fract(k * 0.754878 + a.parent * 0.569840) - 0.5) * 1.3;
+  const ring = Math.sqrt(1 - lift * lift);
+  out.x = Math.cos(angle) * ring * r;
+  out.y = lift * r;
+  out.z = Math.sin(angle) * ring * r;
 }
 
 /**
@@ -314,13 +334,15 @@ export function webProbes(trace: SessionTrace): WebProbe[] {
   trace.events.forEach((e) => {
     if (e.kind === "result" && e.call !== undefined) resultOf.set(e.call, e.t);
   });
-  const web = stationAngle(stationIndex("web"));
+  const web = stationPos(stationIndex("web"), newPose());
+  const outward = Math.atan2(web.y, web.x);
+  const reach = Math.hypot(web.x, web.y, web.z) || 1;
   const out: WebProbe[] = [];
   trace.events.forEach((e, i) => {
     if (e.kind !== "call" || e.category !== "web") return;
     const k = out.length;
     // Fan the probes across a 32 degree arc around the web station so neighbours do not overlap.
-    const angle = web + (fract(k * 0.618034 + 0.25) - 0.5) * ((32 * Math.PI) / 180);
+    const angle = outward + (fract(k * 0.618034 + 0.25) - 0.5) * ((32 * Math.PI) / 180);
     out.push({
       event: i,
       agent: e.agent,
@@ -328,9 +350,9 @@ export function webProbes(trace: SessionTrace): WebProbe[] {
       t1: Math.max(resultOf.get(i) ?? e.t, e.t),
       tool: e.tool ?? "web",
       query: e.excerpt ?? "",
-      ex: Math.cos(angle) * PROBE_RADIUS,
-      ey: Math.sin(angle) * PROBE_RADIUS,
-      ez: 0,
+      ex: web.x + Math.cos(angle) * PROBE_LENGTH,
+      ey: web.y + Math.sin(angle) * PROBE_LENGTH,
+      ez: web.z + (web.z / reach) * PROBE_LENGTH,
     });
   });
   return out;

@@ -25,7 +25,8 @@ export function dotRadius(count: number): number {
   return Math.min(1.3, Math.max(0.55, 1.25 * Math.sqrt(300 / Math.max(count, 1))));
 }
 
-export function createAgents(scene: Scene, u: BoxUniforms, count: number, source: PositionsSource): Agents {
+/** `radius` overrides the dot size in scene units (the map draws small labs, so its dots are set by hand). */
+export function createAgents(scene: Scene, u: BoxUniforms, count: number, source: PositionsSource, radius?: number): Agents {
   const geometry = quadGeometry();
   geometry.instanceCount = count;
   const aStyle = dynamicAttribute(count, 4);
@@ -42,7 +43,7 @@ export function createAgents(scene: Scene, u: BoxUniforms, count: number, source
   }
 
   const style = attribute("aStyle", "vec4");
-  const trueRPx = float(dotRadius(count)).mul(u.unitPx);
+  const trueRPx = float(radius ?? dotRadius(count)).mul(u.unitPx);
   const rPx = max(trueRPx, 0.7);
   // Below the 0.7 px floor a dot is drawn larger than it is, so its light is scaled back to keep the
   // crowd's total brightness the same; otherwise a phone-sized crowd blows out to a white disc.

@@ -1,12 +1,15 @@
 import { categorize, modelFamily } from "./categories";
 import { classifyFile, type FileRole } from "./session-files";
 import {
+  COMPACT_TRIGGERS,
   TRACE_LIMITS,
   type CapName,
+  type CompactInfo,
   type EventKind,
   type ParseError,
   type ParseReport,
   type ParseResult,
+  type PermissionSource,
   type SessionTrace,
   type ToolCategory,
   type TraceAgent,
@@ -31,8 +34,8 @@ export interface TraceBuilder {
 /** Record types that carry nothing the trace needs; anything else is counted as unknown. */
 const IGNORED_TYPES = new Set([
   "attachment",
-  "queue-operation",
   "system",
+  "queue-operation",
   "summary",
   "progress",
   "custom-title",
@@ -73,6 +76,25 @@ export function cutText(s: string, n: number): string {
   if (s.length <= n) return s;
   const end = n > 0 && (s.charCodeAt(n - 1) & 0xfc00) === 0xd800 ? n - 1 : n;
   return s.slice(0, end);
+}
+
+/** Where a permission decision came from: `user_temporary` is a human approval wait. */
+function permissionOf(v: unknown): PermissionSource | undefined {
+  if (!isObj(v) || typeof v.source !== "string") return undefined;
+  const s = v.source;
+  if (s.startsWith("user")) return "user";
+  if (s === "config" || s === "rule" || s.startsWith("settings") || s.endsWith("_rule")) return "rule";
+  if (s === "classifier" || s === "auto" || s === "mode" || s.startsWith("auto")) return "auto";
+  return "other";
+}
+
+/** Characters in a tool_result's content, never the text itself. */
+function sizeOf(content: unknown): number | undefined {
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return undefined;
+  let n = 0;
+  for (const b of content) if (isObj(b) && typeof b.text === "string") n += b.text.length;
+  return n;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
@@ -121,6 +143,10 @@ interface RawEvent {
   usage?: Usage;
   isError?: boolean;
   excerpt?: string;
+  permission?: PermissionSource;
+  size?: number;
+  thinkMs?: number;
+  compact?: CompactInfo;
   /** Where it landed in the sorted output. */
   out: number;
 }
@@ -242,7 +268,9 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
         return;
       }
       const input = isObj(b.input) ? b.input : {};
-      const event = push({ tMs, file: fs, kind: "spawn", category: "agents", tool: name });
+      // The brief is the one piece of tool input read; every other argument is dropped.
+      const brief = typeof input.prompt === "string" ? takeExcerpt(input.prompt, limits.excerpt) : undefined;
+      const event = push({ tMs, file: fs, kind: "spawn", category: "agents", tool: name, excerpt: brief });
       const rec: SpawnRec = {
         seq: spawns.length,
         toolUseId: id ?? "",
@@ -278,13 +306,14 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
     rec.toolUseCount ??= num(r?.totalToolUseCount);
     if (isObj(r?.handbackReport)) rec.handback ??= str(r.handbackReport.text);
     if (!launched || isError) rec.completedMs ??= tMs;
+    if (isError) rec.event.isError = true;
   }
 
   function onUser(fs: FileState, rec: Json, tMs: number): void {
     const msg = isObj(rec.message) ? rec.message : undefined;
     const content = msg?.content;
 
-    if (fs.role === "session" && isObj(rec.origin) && rec.origin.kind === "human" && room(1)) {
+    if (fs.role === "session" && rec.isCompactSummary !== true && isObj(rec.origin) && rec.origin.kind === "human" && room(1)) {
       let text = "";
       if (typeof content === "string") text = content;
       else if (Array.isArray(content)) {
@@ -310,7 +339,17 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
       const call = fs.calls.get(id);
       if (!call || !room(1)) continue;
       fs.calls.delete(id);
-      push({ tMs: Math.max(tMs, call.tMs), file: fs, kind: "result", category: call.category, tool: call.tool, call, isError });
+      push({
+        tMs: Math.max(tMs, call.tMs),
+        file: fs,
+        kind: "result",
+        category: call.category,
+        tool: call.tool,
+        call,
+        isError,
+        permission: permissionOf(rec.permissionDecision),
+        size: sizeOf(b.content),
+      });
     }
   }
 
@@ -335,6 +374,8 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
       m.turn.usage = usage;
       m.bestOutput = usage.output;
     }
+    const think = num(rec.thinkingDurationMs);
+    if (think !== undefined && think >= 0) m.turn.thinkMs = Math.max(m.turn.thinkMs ?? 0, think);
     if (model) fileModels.set(fs, fileModels.get(fs) ?? model);
 
     const blocks = Array.isArray(msg.content) ? msg.content : [];
@@ -352,6 +393,19 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
       } else if (b.type === "tool_use") onToolUse(fs, b, tMs, false);
       else if (b.type === "server_tool_use") onToolUse(fs, b, tMs, true);
     }
+  }
+
+  /** A `compact_boundary` marker: the token counts and timing only, never the summary. */
+  function onCompact(fs: FileState, rec: Json, tMs: number): void {
+    const m = isObj(rec.compactMetadata) ? rec.compactMetadata : undefined;
+    if (!m || !room(1)) return;
+    const trigger = COMPACT_TRIGGERS.find((t) => t === m.trigger) ?? "auto";
+    push({
+      tMs,
+      file: fs,
+      kind: "compact",
+      compact: { trigger, preTokens: nat(m.preTokens), postTokens: nat(m.postTokens), durationMs: nat(m.durationMs) },
+    });
   }
 
   function accepts(file: string): boolean {
@@ -388,6 +442,11 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
       if (fs.role === "session" && tMs < firstMs) firstMs = tMs;
       if (type === "user") onUser(fs, rec, tMs);
       else onAssistant(fs, rec, tMs);
+      return;
+    }
+    if (type === "system" && rec.subtype === "compact_boundary") {
+      const tMs = typeof rec.timestamp === "string" ? Date.parse(rec.timestamp) : NaN;
+      if (Number.isFinite(tMs) && !(fs.role === "session" && rec.isSidechain === true)) onCompact(fs, rec, tMs);
       return;
     }
     if (typeof type !== "string" || !(IGNORED_TYPES.has(type) || type.startsWith("file-history"))) counts.unknownTypes++;
@@ -605,6 +664,10 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
       if (ev.usage) e.usage = ev.usage;
       if (ev.isError !== undefined) e.isError = ev.isError;
       if (ev.excerpt !== undefined) e.excerpt = ev.excerpt;
+      if (ev.permission !== undefined) e.permission = ev.permission;
+      if (ev.size !== undefined) e.size = ev.size;
+      if (ev.thinkMs !== undefined) e.thinkMs = ev.thinkMs;
+      if (ev.compact) e.compact = ev.compact;
       return e;
     });
 

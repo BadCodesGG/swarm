@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { fork } from "../rng";
 import { stoppingLayers } from "./replay";
 import { createState, step } from "./sim";
-import { runTrialsOffThread, stoppingLayersOffThread } from "./trials-client";
+import { presetScenario } from "./presets";
+import { runTrialsOffThread, runWorldTrialsOffThread, stoppingLayersOffThread, worldStoppingLayersOffThread } from "./trials-client";
+import { createWorld, runWorld } from "./world";
+import { worldStoppingLayers } from "./world-replay";
+import { runWorldTrials } from "./world-trials";
 import { runTrials } from "./trials";
 import { allOff, DEFAULT_CONFIG } from "./types";
 
@@ -24,5 +28,24 @@ describe("the trials worker's client, without a worker", () => {
     const layers = await stoppingLayersOffThread(config, 2, 300, escape.agent, escape.tick);
     expect(layers.length).toBeGreaterThan(0);
     expect(layers).toEqual(stoppingLayers(config, 2, 300, escape.agent, escape.tick));
+  });
+});
+
+describe("the world jobs, without a worker", () => {
+  const scenario = presetScenario("everything-off", 1812);
+
+  it("runs world trials inline", async () => {
+    expect(await runWorldTrialsOffThread(scenario, 4, 3)).toEqual(runWorldTrials(scenario, 4, 3));
+  });
+
+  it("finds the layers that would have stopped an escape in a world inline", async () => {
+    const world = createWorld(scenario, false);
+    runWorld(world, 300);
+    const e = world.log.find((x) => x.type === "escape")!;
+    if (e.type !== "escape") throw new Error("no escape");
+    const target = { type: "escape", lab: e.lab, agent: e.agent } as const;
+    const layers = await worldStoppingLayersOffThread(scenario, [], target, e.tick);
+    expect(layers.length).toBeGreaterThan(0);
+    expect(layers).toEqual(worldStoppingLayers(scenario, [], target, e.tick));
   });
 });

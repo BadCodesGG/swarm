@@ -125,8 +125,9 @@ export default function AboutPage() {
             <p className="m-0">
               <strong className="font-semibold text-ink-strong">Your own session never leaves your browser.</strong> You can load a Claude Code
               session file, or its folder with its subagents. It is parsed in a Web Worker on your device and kept in memory for that tab; it is
-              never uploaded, never stored, and gone when you close or reload the page. The site has no server code that could receive it. The
-              text in it is shown as plain text only.
+              never uploaded, never stored, and gone when you close or reload the page. The site has no server code that could receive it. What
+              is read is the brief handed to each subagent (its first 280 characters) and numbers (permission source, think time, compaction token
+              counts, result sizes). Tool arguments and results are not read, and nothing leaves the browser. The text that is shown is plain text only.
             </p>
           </Section>
 

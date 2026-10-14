@@ -1,6 +1,17 @@
 export type ModelFamily = "opus" | "fable" | "sonnet" | "haiku" | "other";
 export type ToolCategory = "web" | "shell" | "files" | "edit" | "agents" | "advisor" | "plan" | "mcp" | "other";
-export type EventKind = "prompt" | "turn" | "call" | "result" | "spawn" | "return";
+export type EventKind = "prompt" | "turn" | "call" | "result" | "spawn" | "return" | "compact";
+/** Who allowed a tool call: a human wait, a standing rule, an automatic mode, or something else. */
+export const PERMISSION_SOURCES = ["user", "rule", "auto", "other"] as const;
+export type PermissionSource = (typeof PERMISSION_SOURCES)[number];
+export const COMPACT_TRIGGERS = ["manual", "auto"] as const;
+/** What a context compaction cost: numbers only, never the summary text. */
+export interface CompactInfo {
+  trigger: (typeof COMPACT_TRIGGERS)[number];
+  preTokens: number;
+  postTokens: number;
+  durationMs: number;
+}
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 export interface TraceAgent {
@@ -29,8 +40,12 @@ export interface TraceEvent {
   call?: number;         // result/return: index of the matching call/spawn event
   child?: number;        // spawn/return: the subagent's id
   usage?: Usage;         // turn: that assistant message's usage
-  isError?: boolean;     // result
-  excerpt?: string;      // turn text and handback at most 280 chars; human prompts at most 2,000
+  isError?: boolean;     // result, and a spawn whose launch failed
+  excerpt?: string;      // turn text, handback and a spawn brief at most 280 chars; human prompts at most 2,000
+  permission?: PermissionSource; // result: who allowed the call
+  size?: number;         // result: characters in the result content (a number, never the text)
+  thinkMs?: number;      // turn: how long the model thought before answering
+  compact?: CompactInfo; // compact: what the compaction cost
 }
 
 export interface SessionTrace {

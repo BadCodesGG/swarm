@@ -1,4 +1,4 @@
-import { TRACE_LIMITS, type SessionTrace } from "./types";
+import { COMPACT_TRIGGERS, PERMISSION_SOURCES, TRACE_LIMITS, type SessionTrace } from "./types";
 
 const MAX_MESSAGES = 50;
 const EPS = 1e-6;
@@ -72,6 +72,20 @@ export function validateTrace(trace: SessionTrace): string[] {
       if (e.excerpt.length > cap) bad(`event ${i} excerpt is ${e.excerpt.length} chars, over ${cap}`);
       excerptBytes += e.excerpt.length;
     }
+
+    for (const [name, v] of [["size", e.size], ["thinkMs", e.thinkMs]] as const) {
+      if (v !== undefined && !(Number.isFinite(v) && v >= 0)) bad(`event ${i} ${name} ${v} is not a finite, non-negative number`);
+    }
+    if (e.permission !== undefined && !PERMISSION_SOURCES.includes(e.permission)) {
+      bad(`event ${i} permission ${String(e.permission)} is not a known source`);
+    }
+    if (e.kind === "compact") {
+      const c = e.compact;
+      if (!c || !COMPACT_TRIGGERS.includes(c.trigger)) bad(`compact event ${i} needs a known trigger`);
+      else for (const v of [c.preTokens, c.postTokens, c.durationMs]) {
+        if (!(Number.isFinite(v) && v >= 0)) bad(`compact event ${i} has a negative or invalid number`);
+      }
+    } else if (e.compact !== undefined) bad(`event ${i} is not a compact event but carries compact data`);
 
     switch (e.kind) {
       case "call":

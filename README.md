@@ -32,7 +32,7 @@ published AI control research; the [about page](https://swarm.badcodes.dev/about
 You can load a Claude Code session file (`~/.claude/projects/<project>/<session-id>.jsonl`) or its
 folder. It is parsed in a Web Worker in your browser and held in memory for that tab only: it is
 never uploaded, never stored, and gone on reload. The site has no API routes and no server code that
-could receive it. Session text is untrusted input and is only ever rendered as text.
+could receive it. What is read is the brief handed to each subagent (its first 280 characters) and numbers (permission source, think time, compaction token counts, result sizes). Tool arguments and results are not read. Nothing leaves the browser. Session text is untrusted input and is only ever rendered as text.
 
 Raw transcripts never enter this repository: `.gitignore` blocks `*.jsonl` except the scrubbed test
 fixture under `src/lib/trace/__fixtures__/`, which `scripts/scrub-fixture.mjs` made with every free

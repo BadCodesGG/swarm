@@ -7,6 +7,9 @@
  * be structural (the policy is default-deny):
  *   - the text the parser copies out (human prompts, a turn's text, handbacks, agent descriptions)
  *     becomes neutral placeholder text;
+ *   - the one tool input it copies, the `prompt` of an Agent or Task call (the brief), becomes
+ *     placeholder text too; every other tool argument is a sentinel. A result's content stays a
+ *     sentinel, padded to the original length because the parser reads that length as a number;
  *   - every other string becomes `FIXTURE-SECRET-<KEY>`, so a parser that wrongly copies a dropped
  *     field leaks a sentinel the tests look for (`cwd` becomes `FIXTURE-SECRET-CWD`);
  *   - every id is faked consistently (a uuid stays a uuid, `toolu_` stays `toolu_`), also across files;
@@ -39,7 +42,7 @@ const KEEP_KEYS = new Set([
   "type", "role", "subtype", "stop_reason", "service_tier", "speed", "kind", "operation", "status",
   "level", "decision", "source", "reasonType", "userType", "entrypoint", "effort", "perTurnEffort",
   "permissionMode", "promptSource", "turnOrigin", "version", "inference_geo", "renderedRole", "requestShape",
-  "reason",
+  "reason", "trigger",
 ]);
 
 /** Keys whose string value is an id, faked even when it does not look like one. */
@@ -361,6 +364,26 @@ function makeState(base) {
     return o;
   }
 
+  /** The one tool input the parser copies: the brief an Agent or Task call hands its subagent. Every other argument stays a sentinel. */
+  function scrubAgentInput(input, parentType) {
+    const o = {};
+    for (const [k, v] of Object.entries(input)) {
+      if (k === "prompt" && typeof v === "string") {
+        originals.add(v);
+        o[k] = placeholder(v.length);
+      } else {
+        o[scrubKey(k)] = scrub(v, k, { copyText: false, parentType });
+      }
+    }
+    return o;
+  }
+
+  /** A result's content is never copied, but its length is a number the parser reads, so the sentinel is padded to it. */
+  function sizedSentinel(s) {
+    const mark = sentinel("content", s);
+    return s.length > mark.length ? mark + "-".repeat(s.length - mark.length) : mark;
+  }
+
   function scrubBlock(b, copy) {
     if (!b || typeof b !== "object") return b;
     const o = {};
@@ -368,6 +391,10 @@ function makeState(base) {
       if (b.type === "text" && k === "text" && typeof v === "string") {
         originals.add(v);
         o[k] = copy ? placeholder(v.length) : sentinel("text", v);
+      } else if (b.type === "tool_use" && k === "input" && (b.name === "Agent" || b.name === "Task") && v && typeof v === "object" && !Array.isArray(v)) {
+        o[k] = scrubAgentInput(v, b.type);
+      } else if (b.type === "tool_result" && k === "content" && typeof v === "string") {
+        o[k] = sizedSentinel(v);
       } else {
         o[scrubKey(k)] = scrub(v, k, { copyText: false, parentType: b.type });
       }

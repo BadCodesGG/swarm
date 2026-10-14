@@ -1,5 +1,8 @@
 import { stoppingLayers } from "./replay";
 import { runTrials } from "./trials";
+import { worldStoppingLayers } from "./world-replay";
+import { runWorldTrials } from "./world-trials";
+import type { Flip, Scenario, StopTarget } from "./world-types";
 import type { WorkerRequest, WorkerResponse } from "./trials.worker";
 import type { BoxConfig, LayerId, TrialSummary } from "./types";
 
@@ -38,4 +41,14 @@ export function runTrialsOffThread(config: BoxConfig, n: number, seed: number, s
 /** The off layers that, turned on, would have kept `agent` from escaping by `tick` (`lib/box/replay`), replayed off the frame. */
 export function stoppingLayersOffThread(config: BoxConfig, seed: number, agentCount: number, agent: number, tick: number, signal?: AbortSignal): Promise<LayerId[]> {
   return offThread({ kind: "stops", config, seed, agentCount, agent, tick }, () => stoppingLayers(config, seed, agentCount, agent, tick), signal);
+}
+
+/** Trials of a whole world (`lib/box/world-trials`), its crowd capped at 250. */
+export function runWorldTrialsOffThread(scenario: Scenario, n: number, seed: number, signal?: AbortSignal): Promise<TrialSummary> {
+  return offThread({ kind: "worldTrials", scenario, n, seed }, () => runWorldTrials(scenario, n, seed), signal);
+}
+
+/** The layers that would have stopped an escape or a crossing in a world (`lib/box/world-replay`), replayed off the frame. */
+export function worldStoppingLayersOffThread(scenario: Scenario, flips: Flip[], target: StopTarget, tick: number, signal?: AbortSignal): Promise<LayerId[]> {
+  return offThread({ kind: "worldStops", scenario, flips, target, tick }, () => worldStoppingLayers(scenario, flips, target, tick), signal);
 }

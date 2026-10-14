@@ -1,5 +1,5 @@
 import { fork, pick, sampleQuantiles, type Rng } from "../rng";
-import { HANDBACKS, LABEL_NOUNS, LABEL_VERBS, PROMPTS, TURN_EXCERPTS, WEB_QUERIES } from "./phrases";
+import { BRIEFS, HANDBACKS, LABEL_NOUNS, LABEL_VERBS, PROMPTS, TURN_EXCERPTS, WEB_QUERIES } from "./phrases";
 import {
   CALIBRATION,
   CORE_CATEGORIES,
@@ -10,7 +10,7 @@ import {
   type CallCategory,
   type CoreCategory,
 } from "./stats";
-import type { ModelFamily, SessionTrace, TraceAgent, TraceEvent, Usage } from "./types";
+import type { ModelFamily, PermissionSource, SessionTrace, TraceAgent, TraceEvent, Usage } from "./types";
 
 export type SampleSize = "small" | "medium" | "large";
 
@@ -62,6 +62,13 @@ const MAX_HUMAN_GAP = 1800;
 const MIN_HUMAN_GAP = 5;
 
 const SIZE_STREAM: Record<SampleSize, number> = { small: 0, medium: 1000, large: 2000 };
+/**
+ * Streams for the fields added after the sample was calibrated (briefs, permissions, result sizes,
+ * think time, the compaction). Each lives on its own stream, so none of them shifts a draw that
+ * the original fields depend on, and hero seed 50 keeps its trace. Existing streams top out near 2,300.
+ */
+const DETAIL_STREAM = 50_000;
+const COMPACT_STREAM = 59_000;
 
 const uni = (r: Rng, [a, b]: Range) => a + r() * (b - a);
 const int = (r: Rng, [a, b]: Range) => a + Math.floor(r() * (b - a + 1));
@@ -240,6 +247,7 @@ function runAgent(c: Ctx, id: number, startT: number): number {
   const plan = c.plans[id];
   const pace = c.shapes[id].pace;
   const r = fork(c.seed, c.streamBase + 100 + id);
+  const rd = fork(c.seed, DETAIL_STREAM + c.streamBase + id);
   const must = [...plan.must];
   const phases = id === 0 ? plan.prompts : 1;
 
@@ -277,6 +285,13 @@ function runAgent(c: Ctx, id: number, startT: number): number {
     return prevCore;
   };
 
+  /** Who allowed a result: mostly a standing rule, sometimes a mode, now and then a human wait. */
+  const permission = (): PermissionSource => {
+    const x = rd();
+    return x < 0.06 ? "user" : x < 0.8 ? "rule" : "auto";
+  };
+  const thinkMs = () => Math.round(150 + rd() * rd() * 9000);
+
   const issueCalls = (k: number) => {
     const parallel = k >= 2 && r() < stats.parallelCallProb;
     let latest = cursor;
@@ -290,7 +305,7 @@ function runAgent(c: Ctx, id: number, startT: number): number {
       const seq = emit({ t: callT, agent: id, kind: "call", category, tool, ...query });
       calls++;
       const resT = round2(callT + sampleQuantiles(stats.latency[category], r));
-      emit({ t: resT, agent: id, kind: "result", category, tool, call: seq, isError: r() < stats.errorRate });
+      emit({ t: resT, agent: id, kind: "result", category, tool, call: seq, isError: r() < stats.errorRate, permission: permission(), size: Math.round(30 + rd() ** 3 * 24000) });
       if (parallel) latest = Math.max(latest, resT);
       else cursor = round2(resT + uni(r, CALL_STEP));
     }
@@ -301,7 +316,7 @@ function runAgent(c: Ctx, id: number, startT: number): number {
     let fgLatest = -1;
     group.forEach((child, j) => {
       const t = round2(cursor + 0.1 * (j + 1));
-      const spawnSeq = emit({ t, agent: id, kind: "spawn", category: "agents", tool: "Agent", child });
+      const spawnSeq = emit({ t, agent: id, kind: "spawn", category: "agents", tool: "Agent", child, excerpt: choose(BRIEFS, rd) });
       calls++;
       const retT = runAgent(c, child, t);
       emit({ t: retT, agent: id, kind: "return", child, call: spawnSeq, excerpt: choose(HANDBACKS, r) });
@@ -331,7 +346,7 @@ function runAgent(c: Ctx, id: number, startT: number): number {
     while (used < phaseBudget || gi < groups.length || (lastPhase && must.length > 0)) {
       const turnT = cursor;
       const usage = makeUsage(c, me.model, r);
-      emit({ t: turnT, agent: id, kind: "turn", usage, excerpt: choose(TURN_EXCERPTS, r) });
+      emit({ t: turnT, agent: id, kind: "turn", usage, excerpt: choose(TURN_EXCERPTS, r), thinkMs: thinkMs() });
       for (const key of Object.keys(usage) as (keyof Usage)[]) me.usage[key] += usage[key];
       used++;
       spent++;
@@ -354,11 +369,38 @@ function runAgent(c: Ctx, id: number, startT: number): number {
   me.toolCalls = calls;
   if (id === 0) {
     cursor = round2(Math.max(cursor, pendingBg) + uni(r, [0.3, 1.5]));
-    emit({ t: cursor, agent: 0, kind: "turn", usage: makeUsage(c, me.model, r), excerpt: choose(TURN_EXCERPTS, r) });
+    emit({ t: cursor, agent: 0, kind: "turn", usage: makeUsage(c, me.model, r), excerpt: choose(TURN_EXCERPTS, r), thinkMs: thinkMs() });
     return last;
   }
   me.returnT = round2(last + uni(r, [0.3, 2]));
   return me.returnT;
+}
+
+/**
+ * One compaction in the orchestrator's thread, just before one of its later prompts (a long session
+ * compacts when its context fills). The event goes in place, so every `call` link past it moves up one.
+ */
+function addCompaction(events: TraceEvent[], r: Rng): void {
+  const prompts = events.flatMap((e, i) => (e.kind === "prompt" && e.agent === 0 && i > 0 ? [i] : []));
+  if (prompts.length === 0) return;
+  const at = prompts[Math.floor(r() * prompts.length)];
+  const preTokens = Math.round(uni(r, [180_000, 900_000]));
+  const compact: TraceEvent = {
+    t: events[at].t,
+    agent: 0,
+    kind: "compact",
+    compact: {
+      trigger: r() < 0.7 ? "auto" : "manual",
+      preTokens,
+      postTokens: Math.round(uni(r, [8_000, 30_000])),
+      durationMs: Math.round(uni(r, [20_000, 90_000])),
+    },
+  };
+  for (let i = 0; i < events.length; i++) {
+    const c = events[i].call;
+    if (c !== undefined && c >= at) events[i] = { ...events[i], call: c + 1 };
+  }
+  events.splice(at, 0, compact);
 }
 
 /**
@@ -400,6 +442,7 @@ export function generateTrace(seed: number, size: SampleSize, stats: Calibration
     const e = ctx.events[from];
     return e.call === undefined ? e : { ...e, call: pos[e.call] };
   });
+  if (size === "large") addCompaction(events, fork(seed, COMPACT_STREAM + streamBase));
 
   const duration = round2(events[events.length - 1].t + uni(rs, [1, 4]));
   agents[0].returnT = duration;

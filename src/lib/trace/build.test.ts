@@ -487,3 +487,136 @@ describe("the scrubbed fixture", () => {
     expect(traceOf(reversed.finish())).toEqual(trace);
   });
 });
+
+// ---------------------------------------------------------------- briefs and numbers
+
+describe("createTraceBuilder: briefs and numbers", () => {
+  const agentCall = (id: string, input: Record<string, unknown>) => toolUse(id, "Agent", { description: "dig", subagent_type: "Explore", ...input });
+  const withDecision = (t: number, id: string, source: string | undefined, content: unknown) =>
+    JSON.stringify({
+      type: "user",
+      timestamp: ts(t),
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content }] },
+      permissionDecision: source === undefined ? undefined : { decision: "accept", source, reasonType: "other" },
+    });
+
+  it("keeps only the first 280 characters of an Agent prompt on the spawn", () => {
+    const brief = "BRIEF-START " + "x".repeat(400) + " BRIEF-TAIL";
+    const t = traceOf(
+      build({
+        main: [human(0), assistant(1, "m1", [agentCall("A1", { prompt: brief })]), result(2, "A1", { agentId: "aaa" })],
+        children: { aaa: [assistant(1.5, "c1", [text("hi")])] },
+        metas: { aaa: meta("A1") },
+      }),
+    );
+    const spawn = t.events.find((e) => e.kind === "spawn");
+    expect(spawn?.excerpt).toBe(brief.slice(0, 280));
+    expect(JSON.stringify(t)).not.toContain("BRIEF-TAIL");
+    expect(validateTrace(t)).toEqual([]);
+  });
+
+  it("copies no other tool input, on an Agent call or any other", () => {
+    const t = traceOf(
+      build({
+        main: [
+          human(0),
+          assistant(1, "m1", [
+            agentCall("A1", { prompt: "go", context: "SENTINEL-AGENT-ARG" }),
+            toolUse("B1", "Bash", { command: "SENTINEL-BASH-ARG", prompt: "SENTINEL-NOT-A-BRIEF" }),
+          ]),
+          result(2, "A1", { agentId: "aaa" }),
+          result(3, "B1"),
+        ],
+        children: { aaa: [assistant(1.5, "c1", [text("hi")])] },
+        metas: { aaa: meta("A1") },
+      }),
+    );
+    expect(JSON.stringify(t)).not.toContain("SENTINEL");
+    expect(t.events.find((e) => e.kind === "call")?.excerpt).toBeUndefined();
+  });
+
+  it("marks a spawn whose launch failed", () => {
+    const t = traceOf(
+      build({
+        main: [human(0), assistant(1, "m1", [agentCall("A1", { prompt: "go" })]), result(2, "A1", undefined, true)],
+      }),
+    );
+    expect(t.events.find((e) => e.kind === "spawn")?.isError).toBe(true);
+  });
+
+  it("maps the permission source and counts the result size without copying it", () => {
+    const t = traceOf(
+      build({
+        main: [
+          human(0),
+          assistant(1, "m1", [toolUse("T1", "Bash"), toolUse("T2", "Read"), toolUse("T3", "Grep"), toolUse("T4", "Glob"), toolUse("T5", "LS")]),
+          withDecision(2, "T1", "user_temporary", "SENTINEL-OUT-1234"),
+          withDecision(2, "T2", "config", [{ type: "text", text: "SENTINEL" }, { type: "text", text: "-ab" }]),
+          withDecision(2, "T3", "classifier", ""),
+          withDecision(2, "T4", "something_new", "abc"),
+          withDecision(2, "T5", undefined, "abc"),
+        ],
+      }),
+    );
+    const results = t.events.filter((e) => e.kind === "result");
+    expect(results.map((e) => e.permission)).toEqual(["user", "rule", "auto", "other", undefined]);
+    expect(results.map((e) => e.size)).toEqual([17, 11, 0, 3, 3]);
+    expect(JSON.stringify(t)).not.toContain("SENTINEL");
+    expect(validateTrace(t)).toEqual([]);
+  });
+
+  it("carries the thinking time of a turn", () => {
+    const withThink = (t: number, id: string, ms: number) =>
+      JSON.stringify({ type: "assistant", timestamp: ts(t), thinkingDurationMs: ms, message: { id, model: "claude-opus-5-5", content: [text("a")] } });
+    const t = traceOf(build({ main: [human(0), withThink(1, "m1", 869), assistant(2, "m2", [text("b")])] }));
+    expect(t.events.filter((e) => e.kind === "turn").map((e) => e.thinkMs)).toEqual([869, undefined]);
+  });
+
+  const boundary = (t: number, meta: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ type: "system", subtype: "compact_boundary", timestamp: ts(t), content: "SENTINEL-SYSTEM-TEXT", compactMetadata: meta, ...extra });
+
+  it("keeps a compaction as numbers on the agent whose file it is in, and not its summary", () => {
+    const summary = JSON.stringify({
+      type: "user",
+      timestamp: ts(2.5),
+      isCompactSummary: true,
+      origin: { kind: "human" },
+      message: { role: "user", content: "SENTINEL-SUMMARY-TEXT" },
+    });
+    const t = traceOf(
+      build({
+        main: [
+          human(0),
+          assistant(1, "m1", [agentCall("A1", { prompt: "go" })]),
+          boundary(2, { trigger: "manual", preTokens: 688982, postTokens: 15074, durationMs: 68972, preservedSegment: { x: "SENTINEL-SEG" } }),
+          summary,
+          result(4, "A1", { agentId: "aaa" }),
+        ],
+        children: { aaa: [assistant(1.5, "c1", [text("hi")]), boundary(3, { trigger: "auto", preTokens: 5, postTokens: 2, durationMs: 9 })] },
+        metas: { aaa: meta("A1") },
+      }),
+    );
+    const compacts = t.events.filter((e) => e.kind === "compact");
+    expect(compacts.map((e) => [e.agent, e.compact]).sort((a, b) => (a[0] as number) - (b[0] as number))).toEqual([
+      [0, { trigger: "manual", preTokens: 688982, postTokens: 15074, durationMs: 68972 }],
+      [1, { trigger: "auto", preTokens: 5, postTokens: 2, durationMs: 9 }],
+    ]);
+    expect(t.events.filter((e) => e.kind === "prompt")).toHaveLength(1);
+    expect(JSON.stringify(t)).not.toContain("SENTINEL");
+    expect(validateTrace(t)).toEqual([]);
+  });
+
+  it("makes no compact event from a boundary with no metadata", () => {
+    const t = traceOf(build({ main: [human(0), JSON.stringify({ type: "system", subtype: "compact_boundary", timestamp: ts(1) }), assistant(2, "m", [text("a")])] }));
+    expect(t.events.some((e) => e.kind === "compact")).toBe(false);
+  });
+});
+
+describe("the scrubbed fixture: briefs", () => {
+  it("reads a brief on spawns, none past 280 characters, and one cut at the cap", () => {
+    const spawns = traceOf(parseFixture()).events.filter((e) => e.kind === "spawn");
+    const briefs = spawns.map((e) => e.excerpt).filter((x): x is string => x !== undefined);
+    expect(briefs.length).toBeGreaterThan(5);
+    expect(Math.max(...briefs.map((b) => b.length))).toBe(TRACE_LIMITS.excerpt);
+  });
+});

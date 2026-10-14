@@ -78,12 +78,32 @@ describe("validateTrace", () => {
     ["spawn off spawnT", (t) => (t.agents[1].spawnT = 11), /not at agent 1 spawnT|outside/],
     ["excerpt over 280", (t) => (t.events[2].excerpt = "x".repeat(281)), /excerpt/],
     ["prompt over 2000", (t) => (t.events[0].excerpt = "x".repeat(2001)), /excerpt/],
+    ["spawn brief over 280", (t) => (t.events[1].excerpt = "x".repeat(281)), /excerpt/],
+    ["negative result size", (t) => (t.events[4].size = -1), /size/],
+    ["non-finite result size", (t) => (t.events[4].size = Number.NaN), /size/],
+    ["negative think time", (t) => (t.events[2].thinkMs = -5), /thinkMs/],
+    ["unknown permission source", (t) => ((t.events[4] as { permission?: string }).permission = "root"), /permission/],
+    ["compact without data", (t) => t.events.splice(6, 0, { t: 45, agent: 0, kind: "compact" }), /known trigger/],
+    ["compact with a bad number", (t) => t.events.splice(6, 0, { t: 45, agent: 0, kind: "compact", compact: { trigger: "auto", preTokens: -1, postTokens: 0, durationMs: 0 } }), /negative or invalid/],
+    ["compact with an unknown trigger", (t) => t.events.splice(6, 0, { t: 45, agent: 0, kind: "compact", compact: { trigger: "never" as "auto", preTokens: 1, postTokens: 0, durationMs: 0 } }), /known trigger/],
+    ["compact data on a turn", (t) => (t.events[6].compact = { trigger: "auto", preTokens: 1, postTokens: 0, durationMs: 0 }), /not a compact event/],
     ["label over 80", (t) => (t.agents[1].label = "x".repeat(81)), /label/],
     ["no agents", (t) => (t.agents = []), /no agents/],
   ])("rejects: %s", (_name, edit, re) => {
     const msgs = broken(edit);
     expect(msgs.length).toBeGreaterThan(0);
     expect(msgs.join("\n")).toMatch(re);
+  });
+
+  it("accepts the brief, permission, size, think time, failed-launch and compact fields", () => {
+    const t = valid();
+    t.events[1].excerpt = "x".repeat(TRACE_LIMITS.excerpt);
+    t.events[1].isError = true;
+    t.events[2].thinkMs = 869;
+    t.events[4].permission = "user";
+    t.events[4].size = 1200;
+    t.events.splice(6, 0, { t: 45, agent: 0, kind: "compact", compact: { trigger: "manual", preTokens: 688982, postTokens: 15074, durationMs: 68972 } });
+    expect(validateTrace(t)).toEqual([]);
   });
 
   it("rejects too many events and too many agents", () => {

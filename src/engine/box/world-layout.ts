@@ -9,13 +9,13 @@ import { LAB_NAME, LINK_LABEL, type LabId, type Link, type LinkKind } from "@/li
 import { escapeHeading, escapePath, RING_RADIUS, type EscapePath, type Point } from "./layout";
 
 /** Lab-local units to world units for two or three labs: big enough that the three fill the scene slot. */
-export const LAB_SCALE = 0.6;
+export const LAB_SCALE = 0.66;
 /** The same for four or five labs, which need the room. */
 export const CROWDED_SCALE = 0.45;
 /** A lab's outer ring, world units, at `LAB_SCALE`. */
 export const LAB_OUTER = RING_RADIUS.audit * LAB_SCALE;
 /** World units an escape trail runs out past a lab's outer ring (room for its four numbered markers), at each scale. */
-const TRAIL_BEYOND = { wide: 170, crowded: 110 } as const;
+const TRAIL_BEYOND = { wide: 180, crowded: 110 } as const;
 /** World units the escapee parks short of its trail's far end. */
 const ESCAPEE_SHORT = 20;
 
@@ -39,9 +39,9 @@ export const SLOTS: Readonly<Record<LabId, Point>> = {
 
 /** The slots for two or three labs: wider apart and bigger, the third below the pair, so the trio fills a 3:2 slot. */
 export const WIDE_SLOTS: Readonly<Partial<Record<LabId, Point>>> = {
-  meridian: { x: -280, y: 20 },
-  kestrel: { x: 280, y: 20 },
-  halcyon: { x: 0, y: -250 },
+  meridian: { x: -285, y: 0 },
+  kestrel: { x: 285, y: 0 },
+  halcyon: { x: 0, y: -350 },
 };
 
 const isWide = (ids: readonly LabId[]) => ids.length <= 3 && ids.every((id) => WIDE_SLOTS[id]);
@@ -108,7 +108,7 @@ export function overviewBounds(frames: readonly LabFrame[]): Box {
 }
 /** World units kept under a lab for its name, and round a trail's end for its marker and the OUTSIDE tag. */
 const NAME_ROOM = 40;
-const TRAIL_ROOM = { x: 64, y: 30 } as const;
+const TRAIL_ROOM = { x: 110, y: 30 } as const;
 
 export const centroid = (points: readonly Point[]): Point => ({
   x: points.reduce((n, p) => n + p.x, 0) / Math.max(1, points.length),

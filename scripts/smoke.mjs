@@ -313,9 +313,15 @@ async function stepInside(browser) {
       }
       check("medium: found a moment with a live subagent in the open", target !== null);
       check("medium: an agent is on screen to click", target !== null);
-      await page.mouse.click(target.x, target.y);
-      await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id);
-      check("medium: clicking an agent selects it", true, `agent ${target.id}`);
+      // The camera still eases while paused, and on a slow software renderer an agent can drift off the
+      // point between measuring it and the click: measure again right before each try.
+      let picked = false;
+      for (let attempt = 0; attempt < 5 && !picked; attempt++) {
+        if (attempt > 0) target = (await findTarget()) ?? target;
+        await page.mouse.click(target.x, target.y);
+        picked = await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id, 4000).then(() => true, () => false);
+      }
+      check("medium: clicking an agent selects it", picked, `agent ${target.id}`);
       const card = page.locator("[data-detail-card]");
       await card.waitFor({ state: "visible" });
       const title = await card.locator("h2").textContent();

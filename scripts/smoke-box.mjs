@@ -15,6 +15,9 @@
  *   7. `/box?shot=breakout`: a marker click and the key 2 open a detail card that names the layers
  *      that would have stopped it, Escape closes it, a branch from a marker shows both outcomes, and
  *      "Replay with this switched on" reruns with that layer on.
+ *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
+ *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
+ *      is within the first screen and every lab is in frame.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
@@ -25,6 +28,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { measureScene } from "./lib/scene-labels.mjs";
 
 const LAYERS = ["sandbox", "permissions", "network", "monitor", "audit"];
 const READY_TIMEOUT_MS = 60_000;
@@ -33,6 +37,8 @@ const ESCAPE_TIMEOUT_MS = 90_000;
 const TRIALS_TIMEOUT_MS = 90_000;
 /** The replay runs the escape's ticks again, once per off layer, in the worker. */
 const RERUN_TIMEOUT_MS = 30_000;
+/** The scene's least height beside the lab column (`box-hud.tsx` sets it), whatever is docked under it. */
+const SCENE_MIN_PX = 400;
 
 const box = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm?.box ?? null)));
 
@@ -239,15 +245,68 @@ export function boxSteps({ check, openPage, software = false }) {
     }
   }
 
-  return [stepBox, stepPlayground, stepDebrief, stepWebGL];
+  /** The scene as drawn: no label or button on another, none cut by the slot, every lab wholly inside it. */
+  const checkScene = async (page, where) => {
+    const scene = await measureScene(page);
+    check(`${where}: the scene slot is on the page`, scene.slot !== null);
+    check(`${where}: no scene label or marker button touches another`, scene.clashes.length === 0, scene.clashes.join(", "));
+    check(`${where}: no scene label or marker button is cut by the slot's edge`, scene.cut.length === 0, scene.cut.join(", "));
+    check(`${where}: every lab's ring is wholly inside the scene`, scene.labsCut.length === 0, scene.labsCut.join(", "));
+    return scene;
+  };
+
+  /**
+   * The playground's framing at a desktop and a phone, on the breakout shot: the scene keeps at least
+   * SCENE_MIN_PX of height with a marker's card open and every lab stays in it; on the phone the scene
+   * starts within the first screen and every lab is in frame; nothing on the map overlaps or is cut.
+   * `openPage` fixes the window at 1280x720, so each page is resized once it is up (the slot follows).
+   */
+  async function stepLayout(browser) {
+    console.log("-- 8. layout: the scene's framing at a desktop and a phone");
+    const sized = async (page, width, height) => {
+      await page.waitForFunction(() => window.__swarm?.box?.settled === true, null, { timeout: READY_TIMEOUT_MS });
+      await page.waitForFunction(() => window.__swarm.box.markers.length > 0 && window.__swarm.box.markers.every((m) => m.title), null, { timeout: 30_000 });
+      await page.setViewportSize({ width, height });
+      await page.waitForTimeout(600);
+    };
+    const desktop = await openPage(browser, "/box?shot=breakout");
+    try {
+      await sized(desktop.page, 1440, 900);
+      const before = await checkScene(desktop.page, "desktop");
+      check("desktop: the scene is at least SCENE_MIN_PX tall", (before.slot?.height ?? 0) >= SCENE_MIN_PX, `${Math.round(before.slot?.height ?? 0)} px`);
+      await desktop.page.locator('[data-step-marker="1"]:visible').click();
+      await desktop.page.locator('[data-marker-card="1"]').waitFor({ timeout: 5_000 });
+      await desktop.page.waitForTimeout(900);
+      const after = await checkScene(desktop.page, "desktop with a card open");
+      check("desktop with a card open: the scene keeps at least SCENE_MIN_PX of height", (after.slot?.height ?? 0) >= SCENE_MIN_PX, `${Math.round(after.slot?.height ?? 0)} px`);
+      const names = await desktop.page.locator("[data-lab-name]").evaluateAll((els) => els.map((e) => e.dataset.labName));
+      check("desktop with a card open: every lab is named on the scene", names.length === after.labs.length && after.labs.length === 3, names.join());
+      check("desktop: no console errors or THREE warnings", desktop.problems.length === 0, desktop.problems.join(" | "));
+    } finally {
+      await desktop.context.close();
+    }
+    const phone = await openPage(browser, "/box?shot=breakout");
+    try {
+      await sized(phone.page, 390, 844);
+      const scene = await checkScene(phone.page, "phone");
+      check("phone: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 844, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 844`);
+      check("phone: every lab is in frame", scene.labs.length === 3 && scene.labsCut.length === 0, scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", "));
+      check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
+    } finally {
+      await phone.context.close();
+    }
+  }
+
+  return [stepBox, stepPlayground, stepDebrief, stepWebGL, stepLayout];
 }
 
-// --- `node scripts/smoke-box.mjs [--port=3134]`: only Act 2's steps, against the production build ---
+// --- `node scripts/smoke-box.mjs [--port=3134] [--only=layout]`: only Act 2's steps (or the steps whose name has `--only`'s text), against the production build ---
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const { chromium } = await import("playwright");
   const { ROOT, startDevServer, stopDevServer, waitForServer } = await import("./lib/dev-server.mjs");
   const port = Number((process.argv.find((a) => a.startsWith("--port=")) ?? "--port=3134").slice(7));
   const base = `http://localhost:${port}`;
+  const only = (process.argv.find((a) => a.startsWith("--only=")) ?? "--only=").slice(7).toLowerCase();
   const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
   const check = (label, ok, detail = "") => {
     if (!ok) throw new Error(`${label}${detail ? ` (${detail})` : ""}`);
@@ -275,7 +334,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     await waitForServer(base);
     const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS });
     try {
-      for (const step of boxSteps({ check, openPage })) await step(browser);
+      for (const step of boxSteps({ check, openPage })) if (step.name.toLowerCase().includes(only)) await step(browser);
     } finally {
       await browser.close();
     }

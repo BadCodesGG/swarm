@@ -6,9 +6,13 @@ import type { BoxOverlay } from "@/engine/box/overlay";
 import type { LabId } from "@/lib/box/world-types";
 import { spreadPoints } from "./playground";
 
-/** A marker button's side, and the room kept between two, so each has a hit target of its own. */
+/** A marker button's side, and the room kept between two centres: past a side's diagonal, so two squares never touch however they lie. */
 const BUTTON = 28;
-const GAP = 32;
+const GAP = 40;
+/** A button stays at least this far inside the slot's edge, centre to edge. */
+const INSET = BUTTON / 2 + 2;
+/** Under this slot width (CSS px) link names are left off the map and OUTSIDE shows only where it is clear. */
+const SPARSE_BELOW = 480;
 
 const tone = (kind: string) => (kind === "held" ? "var(--haiku, #7ee2a8)" : "var(--escape, #ff4d7d)");
 const HALO = "0 0 3px #0a0d18, 0 0 3px #0a0d18, 0 0 6px #0a0d18";
@@ -47,13 +51,16 @@ export function WorldOverlay({
 }) {
   const { frame, labs, links, markers, outside, trails } = overlay;
   const k = frame.width < 640 ? 1.25 : 1;
+  // A phone's slot: rings of about 40 px leave no clean spot for a link's name beside its conduit.
+  const sparse = frame.width < SPARSE_BELOW;
   const layout = useMemo(() => {
-    const in_ = (p: { x: number; y: number }) => p.x >= frame.x && p.x <= frame.x + frame.width && p.y >= frame.y && p.y <= frame.y + frame.height;
-    const visible = markers.filter((m) => m.shown && in_(m));
-    const moved = spreadPoints(visible, GAP);
+    const in_ = (p: { x: number; y: number }, pad = 0) => p.x >= frame.x - pad && p.x <= frame.x + frame.width + pad && p.y >= frame.y - pad && p.y <= frame.y + frame.height + pad;
+    // A button just past the slot's edge is pulled inside it rather than lost; one far off stays off.
+    const visible = markers.filter((m) => m.shown && in_(m, BUTTON));
+    const moved = spreadPoints(visible, GAP, { x0: frame.x + INSET, y0: frame.y + INSET, x1: frame.x + frame.width - INSET, y1: frame.y + frame.height - INSET });
     const shownMarkers = visible.map((m, i) => ({ ...m, bx: moved[i].x, by: moved[i].y }));
     const shownLabs = labs.filter((l) => l.x + l.r > frame.x && l.x - l.r < frame.x + frame.width && l.y + l.r > frame.y && l.y - l.r < frame.y + frame.height);
-    const shownLinks = links.filter(in_);
+    const shownLinks = links.filter((l) => in_(l));
     const out = outside && in_(outside) ? outside : null;
     const text = layoutWorldLabels({
       bounds: { x0: frame.x + 2, y0: frame.y + 2, x1: frame.x + frame.width - 2, y1: frame.y + frame.height - 2 },
@@ -64,9 +71,10 @@ export function WorldOverlay({
       segments: trails,
       conduits: links.flatMap((l) => l.paths.map((points) => ({ link: l.index, points }))),
       k,
+      sparse,
     });
     return { text, markers: shownMarkers, links: shownLinks };
-  }, [frame, labs, links, markers, outside, trails, k]);
+  }, [frame, labs, links, markers, outside, trails, k, sparse]);
 
   if (!overlay.map) return null;
   return (

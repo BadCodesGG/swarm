@@ -89,6 +89,18 @@ describe("spreadPoints", () => {
     const pts = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
     expect(spreadPoints(pts, 30)).toEqual(pts);
   });
+  it("keeps every point inside the box it is given, and still apart", () => {
+    // Four markers crowding the slot's top right corner, two of them already past its edge.
+    const box = { x0: 0, y0: 0, x1: 300, y1: 200 };
+    const out = spreadPoints([{ x: 290, y: -6 }, { x: 296, y: 12 }, { x: 304, y: 4 }, { x: 282, y: 20 }], 40, box);
+    for (const p of out) {
+      expect(p.x).toBeGreaterThanOrEqual(box.x0);
+      expect(p.x).toBeLessThanOrEqual(box.x1);
+      expect(p.y).toBeGreaterThanOrEqual(box.y0);
+      expect(p.y).toBeLessThanOrEqual(box.y1);
+    }
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) expect(Math.hypot(out[i].x - out[j].x, out[i].y - out[j].y)).toBeGreaterThanOrEqual(39.5);
+  });
 });
 
 describe("spreadLine", () => {

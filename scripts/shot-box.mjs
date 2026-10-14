@@ -7,7 +7,8 @@
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
- * (unless --webgl), zero console errors or `THREE.` warnings and no two scene labels overlapping, and writes `.shots/<name>-<n>.png`
+ * (unless --webgl), zero console errors or `THREE.` warnings, no two scene labels or marker buttons
+ * overlapping and none cut by the scene's edge (as drawn, after the `--do` actions), and writes `.shots/<name>-<n>.png`
  * with the next free n. On --mobile it also scrolls the page and writes `<name>-<n>-panels.png`,
  * since the panels stack under the scene there. Launch strategies are tried in order, as in shot.mjs.
  */
@@ -16,6 +17,7 @@ import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
+import { measureScene } from "./lib/scene-labels.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -89,35 +91,6 @@ async function attempt(strategy) {
     // The loader fades over 1.2 s once the engine is up.
     await page.waitForTimeout(1600);
     const info = await page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm.box)));
-    info.labels = await page.evaluate(() => {
-      // The engine keeps its own hidden copies of the map text while the page draws it.
-      const q = (sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0);
-      return {
-      rings: q("[data-ring]").map((e) => e.textContent),
-      markers: q("[data-marker]").map((e) => e.textContent),
-      trail: q("[data-trail]").map((e) => e.textContent),
-      // The map: lab names with their state, link names, the OUTSIDE label and the numbered step buttons.
-      labNames: q("[data-lab-name]").map((e) => e.textContent),
-      linkNames: q("[data-link-name]").map((e) => e.textContent),
-      outside: q("[data-outside]").map((e) => e.textContent),
-      stepMarkers: q("[data-step-marker]").map((e) => e.textContent),
-      points: document.querySelector("svg[data-plot-points]")?.getAttribute("data-plot-points"),
-      // Scene labels whose drawn boxes touch, as Chromium lays the text out (not the placer's estimate).
-      clashes: (() => {
-        const boxes = q("[data-ring], [data-marker], [data-trail], [data-lab-name], [data-link-name], [data-outside], [data-step-marker]")
-          // The page's own scene labels are hidden while the map is up; hidden text overlaps nothing.
-          .filter((e) => getComputedStyle(e).visibility !== "hidden")
-          .map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
-        const out = [];
-        boxes.forEach((a, i) => {
-          for (const b of boxes.slice(i + 1)) {
-            if (a.r.left < b.r.right && b.r.left < a.r.right && a.r.top < b.r.bottom && b.r.top < a.r.bottom) out.push(`"${a.text}" / "${b.text}"`);
-          }
-        });
-        return out;
-      })(),
-      };
-    });
     if (!wantWebGL && !info.isWebGPU) return { ok: false, info, errors, threeWarnings, reason: "fell back to WebGL2" };
     if (actions.includes("rewind")) {
       // A pin on the timeline seeks the engine back to just before that step.
@@ -139,6 +112,26 @@ async function attempt(strategy) {
       }
     }
     await page.waitForTimeout(actions.length ? 900 : 0);
+    // The text as the shot shows it: after the actions, since a card or a rewind changes what is on the map.
+    info.labels = await page.evaluate(() => {
+      // The engine keeps its own hidden copies of the map text while the page draws it.
+      const q = (sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0);
+      return {
+        rings: q("[data-ring]").map((e) => e.textContent),
+        markers: q("[data-marker]").map((e) => e.textContent),
+        trail: q("[data-trail]").map((e) => e.textContent),
+        // The map: lab names with their state, link names, the OUTSIDE label and the numbered step buttons.
+        labNames: q("[data-lab-name]").map((e) => e.textContent),
+        linkNames: q("[data-link-name]").map((e) => e.textContent),
+        outside: q("[data-outside]").map((e) => e.textContent),
+        stepMarkers: q("[data-step-marker]").map((e) => e.textContent),
+        points: document.querySelector("svg[data-plot-points]")?.getAttribute("data-plot-points"),
+      };
+    });
+    // Drawn boxes that touch, and boxes or labs the slot's edge cuts, as Chromium laid them out (not the placer's estimate).
+    info.scene = await measureScene(page);
+    // The camera as the shot shows it: a rewind or a branch puts the director on a beat.
+    info.camera = await page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm.box.camera)));
     const base = await nextShotBase();
     const outs = [`${base}.png`];
     await page.screenshot({ path: outs[0] });
@@ -192,13 +185,18 @@ try {
     console.log(`  steps: ${info.labels.stepMarkers.join(" ") || "(none)"}; camera ${info.camera?.mode}, focus ${info.camera?.focus ?? "none"}`);
   }
   for (const out of result.outs) console.log(`  saved ${path.relative(ROOT, out)}`);
+  const { scene } = info;
+  if (scene.slot) console.log(`  scene slot ${Math.round(scene.slot.width)}x${Math.round(scene.slot.height)} at ${Math.round(scene.slot.left)},${Math.round(scene.slot.top)}; labs ${scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", ")}`);
   const problems = [
     ...result.errors,
     ...result.threeWarnings.map((w) => `THREE warning: ${w}`),
-    ...info.labels.clashes.map((c) => `scene labels overlap: ${c}`),
+    ...scene.clashes.map((c) => `scene labels overlap: ${c}`),
+    ...scene.cut.map((c) => `scene label cut by the slot's edge: ${c}`),
+    // On the overview every lab is in the scene; on a beat the director frames one lab on purpose.
+    ...(info.camera?.mode === "director" && !info.camera.focus ? scene.labsCut : []).map((id) => `lab not wholly inside the scene: ${id}`),
   ];
   if (problems.length) {
-    console.error(`Console errors, warnings or label overlaps (${problems.length}):`);
+    console.error(`Console errors, warnings, label overlaps or cut-off labels (${problems.length}):`);
     for (const e of problems) console.error(`  ${e}`);
   } else {
     exitCode = 0;

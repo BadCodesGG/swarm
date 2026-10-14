@@ -189,7 +189,7 @@ export interface BoxApp extends ExperienceApp {
   /** The map's positions on the canvas, projected through the camera; rebuilt each frame. */
   overlay(): BoxOverlay;
   camera: CameraControl;
-  /** Marks a numbered step as the one the page shows (null clears it) and flies to it. */
+  /** Marks a numbered step as the one the page shows (null clears it); the camera stays where it is. */
   selectStep(n: number | null): void;
   /** Shows or hides the engine's own map text and marker buttons (the page may draw its own). */
   showOverlay(visible: boolean): void;
@@ -793,14 +793,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
 
   // --- the map's text, markers and screen positions ---
   let overlayDom: OverlayDom | null = null;
+  // The camera stays put: the button and its pin light up, the card names the step, and every lab
+  // stays in the scene beside it (a flight to the lab cropped the others out of a short slot).
   const selectStep = (n: number | null) => {
     selected = n;
     bus.emit("step", { n });
-    const item = n === null ? undefined : markerSlots(director.items)[n - 1]?.item;
-    if (item && map) {
-      const f = frames.find((x) => x.id === item.lab);
-      if (f) flyTo(focusPose(f));
-    }
     touch();
   };
   overlayDom = mountOverlay(canvas, (n) => selectStep(selected === n ? null : n));

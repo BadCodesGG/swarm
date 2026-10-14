@@ -109,12 +109,35 @@ export interface XY {
   y: number;
 }
 
+/** A box on the screen, as `x0`..`x1` by `y0`..`y1`. */
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 /**
  * Pushes points apart until none is closer than `min` to another (or `rounds` run out), so buttons
- * that sit on one trail each keep a hit target of their own. Order-stable and pure.
+ * that sit on one trail each keep a hit target of their own. With `within`, every point is also
+ * kept inside that box (a button is never cut by the slot's edge), and pushed apart again from
+ * there. Order-stable and pure.
  */
-export function spreadPoints(points: readonly XY[], min: number, rounds = 60): XY[] {
+export function spreadPoints(points: readonly XY[], min: number, within?: Box, rounds = 60): XY[] {
   const p = points.map((q) => ({ ...q }));
+  const clamp = () => {
+    if (!within) return false;
+    let moved = false;
+    for (const q of p) {
+      const x = Math.min(within.x1, Math.max(within.x0, q.x));
+      const y = Math.min(within.y1, Math.max(within.y0, q.y));
+      if (x !== q.x || y !== q.y) moved = true;
+      q.x = x;
+      q.y = y;
+    }
+    return moved;
+  };
+  clamp();
   for (let r = 0; r < rounds; r++) {
     let moved = false;
     for (let i = 0; i < p.length; i++) {
@@ -138,7 +161,9 @@ export function spreadPoints(points: readonly XY[], min: number, rounds = 60): X
         moved = true;
       }
     }
-    if (!moved) break;
+    // A point pushed off the edge comes back; the next round pushes the pair apart along it.
+    const clamped = clamp();
+    if (!moved && !clamped) break;
   }
   return p;
 }

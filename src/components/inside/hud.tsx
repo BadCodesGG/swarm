@@ -367,7 +367,7 @@ export function Hud({ app }: { app: InsideApp }) {
           )}
         </div>
         {rightColumn ? (
-          <div className="flex max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3">
+          <div className="flex max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3 overflow-y-auto [&>*]:shrink-0">
             {recapShown ? <RecapCard app={app} onClose={dismissRecap} /> : null}
             {station ? <StationPanel app={app} station={station} onClose={closeStation} /> : selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
           </div>

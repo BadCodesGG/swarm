@@ -91,7 +91,8 @@ function cutMarks(cuts: IdleCut[], span: number) {
   let lastLabel = -1;
   return cuts.map((c) => {
     const at = span > 0 ? c.at / span : 0;
-    const label = lastLabel < 0 || at - lastLabel >= 0.14;
+    // A label hangs right of its line, so one near the end would run under the key hints.
+    const label = at <= 0.88 && (lastLabel < 0 || at - lastLabel >= 0.14);
     if (label) lastLabel = at;
     return { at, text: label ? idleCutLabel(c.removed) : null };
   });

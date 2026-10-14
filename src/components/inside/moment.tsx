@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { canShareMoment } from "@/engine/inside/params";
-import { leavesPage, momentSearch, type MomentState } from "./moment-url";
+import { clickLeavesPage } from "@/lib/leaves-page";
+import { momentSearch, type MomentState } from "./moment-url";
 import { sampleSize } from "./source-switcher";
 import { useTimeline } from "./use-engine";
 
@@ -40,9 +41,7 @@ export function useMomentSync(app: InsideApp) {
     // still loading that page would put it back on this one (a slow device never left /inside).
     let leaving = false;
     const onClick = (e: MouseEvent) => {
-      const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a[href]") : null;
-      const click = { href: a ? a.href : null, target: a?.target ?? "", button: e.button, modified: e.ctrlKey || e.metaKey || e.shiftKey || e.altKey };
-      if (leavesPage(click, window.location.href)) leaving = true;
+      if (clickLeavesPage(e)) leaving = true;
     };
     document.addEventListener("click", onClick, true);
     const id = window.setInterval(() => {

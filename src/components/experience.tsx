@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { clickLeavesPage } from "@/lib/leaves-page";
 import Image from "next/image";
 import { readPrefs, writePref, type Quality } from "@/engine/shared/prefs";
 
@@ -202,15 +203,29 @@ export default function Experience<A extends ExperienceApp>({
           started.dispose();
           return;
         }
-        dispose = () => started.dispose();
+        let stopped = false;
+        dispose = () => {
+          if (stopped) return;
+          stopped = true;
+          started.dispose();
+        };
         setApp(started);
       })
       .catch((err: unknown) => {
         if (!disposed) setFailure({ gate, message: err instanceof Error ? err.message : String(err) });
       });
 
+    // A click on a link to another page stops the engine at once: a scene drawn in software can hold
+    // the main thread so long that the router never gets to show the next page. `dispose` runs once,
+    // so the unmount below is then a no-op.
+    const onLeave = (ev: MouseEvent) => {
+      if (clickLeavesPage(ev)) dispose?.();
+    };
+    document.addEventListener("click", onLeave, true);
+
     return () => {
       disposed = true;
+      document.removeEventListener("click", onLeave, true);
       dispose?.();
       setApp(null);
     };

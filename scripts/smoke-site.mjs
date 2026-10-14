@@ -200,6 +200,20 @@ export async function stepSite(browser, h) {
         await page.waitForTimeout(250);
         const during = await h.inside(page);
         check("help: the window shortcuts are off while the sheet is open", during.rate === before.rate && during.selected === before.selected, `${before.rate}/${before.selected} to ${during.rate}/${during.selected}`);
+      } else {
+        // The sheet sits over the map: neither a wheel nor a drag on it may reach the camera behind.
+        const box = await sheet.boundingBox();
+        const at = { x: box.x + box.width / 2, y: box.y + 24 };
+        await page.mouse.move(at.x, at.y);
+        await page.keyboard.down("Control");
+        await page.mouse.wheel(0, -400);
+        await page.keyboard.up("Control");
+        await page.mouse.down();
+        await page.mouse.move(at.x + 60, at.y + 40);
+        await page.mouse.up();
+        await page.waitForTimeout(250);
+        const mode = await page.evaluate(() => window.__swarm.box.camera.mode);
+        check("help: a wheel or a drag on the box sheet leaves the camera with the director", mode === "director", mode);
       }
       await page.keyboard.press("?");
       await sheet.waitFor({ state: "detached" });

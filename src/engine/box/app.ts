@@ -336,6 +336,13 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
 
   const planOf = (lab: LabId, agent: number) => labOf(world, lab).state.plans[agent] ?? [];
 
+  /** The intercepted dialogue, rebuilt only when the world or its log has moved (the log only grows). */
+  let interceptCache: { world: World; n: number; lines: InterceptLine[] } | null = null;
+  const intercept = (): InterceptLine[] => {
+    if (interceptCache?.world !== world || interceptCache.n !== world.log.length) interceptCache = { world, n: world.log.length, lines: interceptLines(world) };
+    return interceptCache.lines;
+  };
+
   const makeSnapshot = (): BoxSnapshot => {
     const merged = mergeTallies(labs.map((l) => l.tally));
     const lone = labs.length === 1;
@@ -367,7 +374,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         links: shapes.map((s) => ({ index: s.index, kind: s.kind, name: s.name, labs: s.labs })),
         steps: [...steps],
         log: [...worldTally.log],
-        intercept: interceptLines(world),
+        intercept: intercept(),
         selected,
       },
     };
@@ -760,7 +767,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     const s = pageSlot();
     return e.clientX >= s.x && e.clientX <= s.x + s.width && e.clientY >= s.y && e.clientY <= s.y + s.height;
   };
-  const interactive = (t: EventTarget | null) => t instanceof Element && t.closest("button, a, input, select, textarea, label, summary, [role='dialog']") !== null;
+  const interactive = (t: EventTarget | null) => t instanceof Element && t.closest("button, a, input, select, textarea, label, summary, dialog, [role='dialog']") !== null;
   let drag: { x: number; y: number } | null = null;
   const onPointerDown = (e: PointerEvent) => {
     if (!map || e.button !== 0 || e.pointerType === "touch" || !inSlot(e) || interactive(e.target)) return;
@@ -775,8 +782,9 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   const onPointerUp = () => {
     drag = null;
   };
+  // A plain wheel scrolls the page (the HUD runs below the scene); Ctrl or Cmd, and a trackpad pinch, zooms the map.
   const onWheel = (e: WheelEvent) => {
-    if (!map || !inSlot(e) || interactive(e.target)) return;
+    if (!map || !(e.ctrlKey || e.metaKey) || !inSlot(e) || interactive(e.target)) return;
     e.preventDefault();
     takeCamera();
     freePose = zoomAbout(view, { x: e.clientX - origin().x, y: e.clientY - origin().y }, Math.exp(-e.deltaY * 0.0015), director.overview);
@@ -951,7 +959,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     camera: {} as unknown,
   };
   const unregister = registerDebug("box", debug);
+  let debugKey = "";
   const syncDebug = () => {
+    const key = `${version}:${overlayState.version}`;
+    if (key === debugKey) return;
+    debugKey = key;
     const merged = mergeTallies(labs.map((l) => l.tally));
     debug.seed = world.scenario.seed;
     debug.config = configOf(primary());
@@ -1163,7 +1175,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       bus.emit("reset", { seed: nextSeed });
     },
     loadScenario(scenario, from) {
-      build({ ...scenario, labs: scenario.labs.map((spec) => ({ ...spec, agents: spec.agents })) });
+      build(scenario);
       const flips = [...(from?.flips ?? [])].sort((a, b) => a.tick - b.tick);
       const tick = from?.tick ?? flips.reduce((n, f) => Math.max(n, f.tick), 0);
       if (tick > 0 || flips.length > 0) replayTo(tick, flips);

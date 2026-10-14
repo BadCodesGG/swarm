@@ -281,6 +281,34 @@ export function boxSteps({ check, openPage, software = false }) {
       check("desktop with a card open: the scene keeps at least SCENE_MIN_PX of height", (after.slot?.height ?? 0) >= SCENE_MIN_PX, `${Math.round(after.slot?.height ?? 0)} px`);
       const names = await desktop.page.locator("[data-lab-name]").evaluateAll((els) => els.map((e) => e.dataset.labName));
       check("desktop with a card open: every lab is named on the scene", names.length === after.labs.length && after.labs.length === 3, names.join());
+      // A plain wheel over the map scrolls the page down to the card; Ctrl and the wheel zooms the map.
+      const scroller = () =>
+        desktop.page.evaluate(() => {
+          let el = document.querySelector("[data-scene-slot]");
+          while (el && !(el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === "auto")) el = el.parentElement;
+          return el ? el.scrollTop : -1;
+        });
+      // The lower left of the slot: open map, clear of the labs, their text and the numbered buttons.
+      const mid = { x: after.slot.left + after.slot.width * 0.1, y: after.slot.top + after.slot.height * 0.85 };
+      const top0 = await scroller();
+      await desktop.page.mouse.move(mid.x, mid.y);
+      await desktop.page.mouse.wheel(0, 300);
+      await desktop.page.waitForTimeout(400);
+      const top1 = await scroller();
+      const plain = await desktop.page.evaluate(() => window.__swarm.box.camera.mode);
+      check("desktop: a plain wheel over the map scrolls the page and leaves the camera alone", top1 > top0 && plain === "director", `scrollTop ${top0} to ${top1}, camera ${plain}`);
+      // The page has scrolled, so aim again at the same spot of the slot.
+      const moved = await desktop.page.evaluate(() => {
+        const r = document.querySelector("[data-scene-slot]").getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+      });
+      await desktop.page.mouse.move(moved.left + moved.width * 0.1, Math.max(moved.top + moved.height * 0.85, 20));
+      await desktop.page.keyboard.down("Control");
+      await desktop.page.mouse.wheel(0, -200);
+      await desktop.page.keyboard.up("Control");
+      await desktop.page.waitForTimeout(300);
+      const zoomed = await desktop.page.evaluate(() => window.__swarm.box.camera.mode);
+      check("desktop: Ctrl and the wheel over the map zooms it", zoomed === "free", zoomed);
       check("desktop: no console errors or THREE warnings", desktop.problems.length === 0, desktop.problems.join(" | "));
     } finally {
       await desktop.context.close();

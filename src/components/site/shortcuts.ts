@@ -28,6 +28,7 @@ export const SHORTCUTS: Record<ActId, Shortcut[]> = {
     { keys: ["1", "to", "9"], does: "Open that numbered breakout step's card" },
     { keys: ["Escape"], does: "Close the open card" },
     { keys: ["Home"], does: "Hand the camera back to the director" },
+    { keys: ["Ctrl", "wheel"], does: "Zoom the map; drag it to pan" },
     { keys: ["Left", "Right"], does: "Rewind or run on, with the timeline slider focused" },
     { keys: ["?"], does: "Open this sheet" },
   ],

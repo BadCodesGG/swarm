@@ -319,6 +319,8 @@ export function boxSteps({ check, openPage, software = false }) {
       const scene = await checkScene(phone.page, "phone");
       check("phone: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 844, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 844`);
       check("phone: every lab is in frame", scene.labs.length === 3 && scene.labsCut.length === 0, scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", "));
+      const tickLeft = await phone.page.locator("[data-counter=tick]").evaluate((e) => Math.round(e.getBoundingClientRect().left));
+      check("phone: the counters start at the left edge", tickLeft < 40, `TICK at x=${tickLeft}`);
       check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
     } finally {
       await phone.context.close();

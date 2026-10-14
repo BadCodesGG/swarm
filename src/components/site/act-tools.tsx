@@ -59,10 +59,16 @@ export function HandoffNote() {
  * it only ever runs on the client, after the engine is up. `badge` and `note` off leave those to
  * the act's own header.
  */
-export function ActTools({ act, render, badge = true, note = true }: { act: ActId; render: ActRender; badge?: boolean; note?: boolean }) {
+export function ActTools({ act, render, badge = true, note = true, onTouring }: { act: ActId; render: ActRender; badge?: boolean; note?: boolean; onTouring?: (on: boolean) => void }) {
   const [touring, setTouring] = useState(() => shouldShowTour(act, { search: window.location.search, automated: navigator.webdriver === true }));
   const [help, setHelp] = useState(false);
   const fallback = onFallback(render);
+
+  // The act hears when the tour opens and closes (Inside holds its automatic agent card back meanwhile).
+  useEffect(() => {
+    onTouring?.(touring);
+    return () => onTouring?.(false);
+  }, [touring, onTouring]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

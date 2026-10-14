@@ -25,8 +25,8 @@ import { useMedia, useNarrow, useSelection, useStation } from "./use-engine";
 /** Fraction of the playback axis one Left / Right press moves. */
 const STEP = 0.02;
 
-/** The card's width (`w-80`): the desktop scene keeps clear of this column whether or not a card is open. */
-const CARD_COLUMN = 320;
+/** The card's width (`w-80`, `w-64` below 1100 px, where 320 would be most of the scene): the desktop scene keeps clear of this column whether or not a card is open. */
+const cardColumn = () => (window.innerWidth < 1100 ? 256 : 320);
 /** CSS px the station labels keep from the panels around the scene. */
 const SCENE_GAP = 8;
 
@@ -129,6 +129,8 @@ export function Hud({ app }: { app: InsideApp }) {
     returnTo.current = active instanceof HTMLElement && active !== document.body ? active : null;
   };
 
+  const holdCard = useCallback((on: boolean) => app.holdAutoSelect(on), [app]);
+
   const cycle = useCallback(
     (dir: 1 | -1) => {
       const active = document.activeElement;
@@ -191,7 +193,7 @@ export function Hud({ app }: { app: InsideApp }) {
       if (!h || !s || !w || !tl) return;
       const y = h.bottom + SCENE_GAP;
       const left = s.right + SCENE_GAP;
-      const right = Math.max(left + 1, w.right - CARD_COLUMN - SCENE_GAP);
+      const right = Math.max(left + 1, w.right - cardColumn() - SCENE_GAP);
       app.setFrame({ top: y, height: Math.max(1, tl.top - SCENE_GAP - y), left, width: right - left, fit: "stations" });
     };
     fit();
@@ -254,7 +256,7 @@ export function Hud({ app }: { app: InsideApp }) {
             <span className="font-semibold text-ink">INSIDE</span>
           </Link>
           <AudioToggle className="ml-auto" />
-          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} badge={false} />
+          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} badge={false} onTouring={holdCard} />
           <Link
             href="/inside/load"
             className={`pointer-events-auto flex min-h-11 items-center gap-1.5 rounded-xl border border-opus/45 bg-opus/8 px-3.5 text-sm font-semibold text-warn ${linkRing}`}
@@ -356,7 +358,7 @@ export function Hud({ app }: { app: InsideApp }) {
           </Link>
           <div className="grow" />
           <Counters app={app} />
-          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} />
+          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} onTouring={holdCard} />
           <AudioToggle />
         </header>
         {/* The strip wants 520 px; below that it takes its own row and the buttons wrap under it. */}
@@ -383,7 +385,7 @@ export function Hud({ app }: { app: InsideApp }) {
           )}
         </div>
         {rightColumn ? (
-          <div className="flex h-full max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3">
+          <div className="flex h-full max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3 max-[1099px]:w-64">
             {recapShown ? <RecapCard app={app} onClose={dismissRecap} /> : null}
             {station ? <StationPanel app={app} station={station} onClose={closeStation} /> : selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
           </div>

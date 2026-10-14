@@ -41,8 +41,13 @@ export function ModeBar({ mode, editing, onMode, onEdit }: { mode: Mode; editing
           </button>
         ))}
       </div>
-      <button type="button" aria-pressed={editing} data-edit-world onClick={() => onEdit(!editing)} className={`${button} max-[640px]:shrink-0`}>
+      {/* Not a fourth mode: an overlay on any of them, so it sits behind a rule, dashed, and says On or Off. */}
+      <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-rule" />
+      <button type="button" aria-pressed={editing} data-edit-world onClick={() => onEdit(!editing)} className={`${button} gap-2 border-dashed max-[640px]:shrink-0`}>
         Edit world
+        <span aria-hidden="true" className="font-mono text-[10px] tracking-[0.14em]">
+          {editing ? "ON" : "OFF"}
+        </span>
       </button>
     </div>
   );

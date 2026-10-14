@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { clock, idleCutLabel, MODEL_VARS } from "@/engine/inside/format";
 import { axisTicks, barHeight, buildLanes, LANE_BINS, type Lanes } from "@/engine/inside/lanes";
@@ -86,13 +86,18 @@ const specs = (lanes: Lanes, only: "tools" | "all"): LaneSpec[] => {
   ];
 };
 
+/** CSS px one idle label needs (the longest, `12 idle min cut`, is about 90 wide) before the next may start. */
+const CUT_LABEL_PX = 100;
+
 /** Where the idle cuts go: a dashed line each, and a label unless it would crowd the previous one. */
-function cutMarks(cuts: IdleCut[], span: number) {
+function cutMarks(cuts: IdleCut[], span: number, width: number) {
   let lastLabel = -1;
+  // At a narrow scrubber the same fraction is fewer pixels: space labels by pixels, never closer than 0.14 of it.
+  const gap = Math.max(0.14, width > 0 ? CUT_LABEL_PX / width : 0);
   return cuts.map((c) => {
     const at = span > 0 ? c.at / span : 0;
     // A label hangs right of its line, so one near the end would run under the key hints.
-    const label = at <= 0.88 && (lastLabel < 0 || at - lastLabel >= 0.14);
+    const label = at <= 0.88 && (lastLabel < 0 || at - lastLabel >= gap);
     if (label) lastLabel = at;
     return { at, text: label ? idleCutLabel(c.removed) : null };
   });
@@ -116,9 +121,23 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
   const lanes = useMemo(() => buildLanes(tl, bins), [tl, bins]);
   const laneSpecs = useMemo(() => specs(lanes, only), [lanes, only]);
   const ticks = useMemo(() => axisTicks(tl), [tl]);
-  const marks = useMemo(() => cutMarks(tl.cuts, tl.playbackDuration), [tl]);
+  const slider = useRef<HTMLDivElement>(null);
+  const cutsId = useId();
+  const [width, setWidth] = useState(0);
+  const marks = useMemo(() => cutMarks(tl.cuts, tl.playbackDuration, width), [tl, width]);
+  // Labels the width has no room for stay readable here, whole.
+  const cutsText = useMemo(() => tl.cuts.map((c) => idleCutLabel(c.removed)).join(", "), [tl]);
   const played = Math.min(bins - 1, Math.floor(frac * bins));
   const full = only === "all";
+
+  useEffect(() => {
+    const el = slider.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Home") app.seek(0);
@@ -142,10 +161,17 @@ export function Scrubber({ app, only = "all" }: { app: InsideApp; only?: "tools"
           <span className="h-[17px]" />
         </div>
       ) : null}
+      {cutsText ? (
+        <span id={cutsId} className="sr-only">
+          Idle stretches cut: {cutsText}
+        </span>
+      ) : null}
       <div
+        ref={slider}
         role="slider"
         tabIndex={0}
         aria-label="Playback position"
+        aria-describedby={cutsText ? cutsId : undefined}
         aria-valuemin={0}
         aria-valuemax={Math.round(tl.duration)}
         aria-valuenow={Math.round(t)}

@@ -37,7 +37,7 @@ export function BoxHeader({ tally, status }: { tally: Readonly<Tally>; status?: 
       <span className="text-sm text-label">Abstract agents and abstract actions. Nothing here is a real technique.</span>
       {status ? <div className="flex flex-wrap items-center gap-1.5 empty:hidden">{status}</div> : null}
       <div className="grow" />
-      <dl className={`${mono} m-0 flex flex-wrap gap-x-7 gap-y-2 text-ink`}>
+      <dl className={`${mono} m-0 flex flex-wrap gap-x-7 gap-y-2 text-ink max-[640px]:basis-full`}>
         <Counter label="TICK" value={tally.tick.toLocaleString("en-US")} />
         <Counter label="CAUGHT" value={tally.caughtTotal.toLocaleString("en-US")} />
         <Counter label="ESCAPED" value={tally.escaped.toLocaleString("en-US")} tone="escape" />

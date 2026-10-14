@@ -60,7 +60,7 @@ export function StationPanel({ app, station, onClose, sheet = false }: { app: In
         {shown.map((c) => (
           <li key={c.index} data-call className="grid grid-cols-[46px_minmax(0,1fr)_44px_38px] items-baseline gap-x-2" aria-label={c.isError ? "failed call" : undefined}>
             <span className="text-faint">{shortClock(c.start)}</span>
-            <span className="truncate">
+            <span className="truncate" title={`${agentName(tl.trace, c.agent)} ${c.tool}`}>
               <span style={{ color: MODEL_VARS[tl.trace.agents[c.agent]?.model ?? "other"] }}>{agentName(tl.trace, c.agent)}</span> <span className="text-body">{c.tool}</span>
               {c.isError ? <span className="ml-1.5 rounded-sm bg-error/15 px-1 text-[9px] text-error">ERROR</span> : null}
             </span>

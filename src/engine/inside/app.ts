@@ -90,6 +90,8 @@ export interface InsideApp extends ExperienceApp {
   selected(): number;
   /** Selects an agent (ring and brighter tether); -1 clears it and stops the automatic pick. */
   select(id: number): void;
+  /** While held (the first-visit tour is up) no card is picked for the visitor, and one picked for them closes; releasing lets the picking resume. */
+  holdAutoSelect(hold: boolean): void;
   /** The camera locks onto an agent (the director steps aside); -1 gives it back. */
   follow(id: number): void;
   following(): number;
@@ -183,6 +185,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   let stationSel: StationCategory | null = null;
   /** The visitor closed the card: stop picking one for them until the trace changes. */
   let dismissed = false;
+  let held = false;
   let followId = -1;
   let mode: CameraMode = "director";
   let frame: SceneFrame | null = null;
@@ -635,7 +638,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     particles.flush();
 
     swarm.updateMatrixWorld();
-    if (!dismissed && selected < 0 && debug.frame % AUTO_SELECT_FRAMES === 0) {
+    if (!dismissed && !held && selected < 0 && debug.frame % AUTO_SELECT_FRAMES === 0) {
       const pickId = featuredAgent(trace, t);
       if (pickId > 0) select(pickId, false);
     }
@@ -713,6 +716,11 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     pick,
     selected: () => selected,
     select: (id) => select(id),
+    holdAutoSelect: (hold) => {
+      held = hold;
+      // A card the link asked for stays; one picked for the visitor goes.
+      if (hold && params.select == null) select(-1, false);
+    },
     follow: (id) => {
       if (id >= 0 && id < trace.agents.length) {
         followId = id;

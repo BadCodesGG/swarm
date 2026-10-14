@@ -74,6 +74,9 @@ export async function stepHud(browser, h) {
     const cells = await stages.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
     const stripW = Math.round((await strip.boundingBox()).width);
     check("hud: at 960 px every stage is at least 24 px wide and the strip keeps its 520 px", cells.every((w) => w >= 24) && stripW >= 520, `stages ${cells.join(", ")} px, strip ${stripW} px`);
+    // The idle-cut labels are spaced by pixels: none sits on the one before it.
+    const cuts = await page.locator("[data-cut]").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).sort((a, b) => a.left - b.left));
+    check("hud: at 960 px no idle-cut label overlaps another", cuts.every((r, i) => i === 0 || r.left >= cuts[i - 1].right), `${cuts.length} labels`);
     await page.setViewportSize(view);
     await page.waitForTimeout(300);
 
@@ -135,6 +138,8 @@ export async function stepHud(browser, h) {
     const row = page.locator("[data-tool-row]").first();
     await row.waitFor({ state: "visible" });
     const key = await row.getAttribute("data-tool-row");
+    const rowHeights = await page.locator("[data-tool-row]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    check("hud: the tool-mix rows are at least 24 px tall", rowHeights.length > 0 && rowHeights.every((h) => h >= 24), `${rowHeights.join(", ")} px`);
     await row.click();
     await waitInside(page, (k) => window.__swarm.inside.station === k, key);
     const panel = page.locator("[data-station-panel]");
@@ -143,6 +148,7 @@ export async function stepHud(browser, h) {
     check("hud: a station panel lists its calls", calls > 0, `${key}: ${calls} calls`);
     const first = await panel.locator("[data-call]").first().textContent();
     check("hud: a call shows its time, agent, tool, duration and size", /\d+:\d\d/.test(first) && first.trim().length > 12, first);
+    check("hud: a truncated call cell names its agent and tool in a title", (await panel.locator("[data-call] > .truncate").first().getAttribute("title"))?.length > 3);
     check("hud: the station panel says there are no arguments", (await panel.textContent()).includes("no arguments"));
     await page.keyboard.press("Escape");
     await waitInside(page, () => window.__swarm.inside.station === null);

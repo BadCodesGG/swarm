@@ -449,7 +449,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
           </div>
           <div className="flex flex-col gap-3">
             {rewound ? (
-              <p className="m-0 font-mono text-xs text-muted" data-rewound>
+              <p className="m-0 rounded-[14px] border border-panel-border bg-panel px-[18px] py-3 font-mono text-xs text-muted" data-rewound>
                 At T+{clock(tl.at)}: {rewound.escapes} escaped, {rewound.crossings} breaches of another lab, {rewound.caught} caught.
               </p>
             ) : null}

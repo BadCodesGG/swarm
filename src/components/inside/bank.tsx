@@ -153,7 +153,7 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
                     data-tool-row={r.key}
                     aria-label={`Open the ${r.key} station: ${r.count} calls`}
                     onClick={() => onStation(r.key as StationCategory)}
-                    className="-mx-1 flex w-[calc(100%+8px)] items-center gap-2 rounded-sm border-0 bg-transparent px-1 text-[10px] text-muted outline-none hover:bg-white/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
+                    className="-mx-1 -my-[4.5px] flex min-h-6 w-[calc(100%+8px)] items-center gap-2 rounded-sm border-0 bg-transparent px-1 text-[10px] text-muted outline-none hover:bg-white/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
                   >
                     {body}
                   </button>

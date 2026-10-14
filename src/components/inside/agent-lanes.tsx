@@ -8,11 +8,11 @@ import { lanesOf } from "./trace-memo";
 
 /** Token values as hex: a canvas cannot read CSS variables. */
 const INK = "#dfe5ee";
-const THINK = "#5a6680";
+const THINK = "#7487b0";
 const WAIT = "#ffb54d";
-const ERROR = "#ff8aa0";
+const ERROR = "#ff5c80";
 const RETRY = "#4fd8eb";
-const COMPACT = "#ff8aa8";
+const COMPACT = "#c9b8ff";
 
 const BOX_FILL: Record<LaneBox["kind"], string> = { think: THINK, tool: INK, "waiting-on-you": WAIT };
 const MARK_FILL: Record<LaneMark["kind"], string> = { error: ERROR, retry: RETRY, compaction: COMPACT, pause: WAIT };
@@ -57,7 +57,7 @@ export function AgentLanes({ tl }: { tl: Timeline }) {
     ctx.globalAlpha = 0.9;
     for (const kind of ["think", "tool", "waiting-on-you"] as const) {
       ctx.fillStyle = BOX_FILL[kind];
-      ctx.globalAlpha = kind === "think" ? 0.5 : 0.95;
+      ctx.globalAlpha = kind === "think" ? 0.7 : 0.95;
       for (const b of plan.boxes) {
         if (b.kind !== kind) continue;
         ctx.fillRect(b.x0 * width, b.row * rowH, Math.max(1, (b.x1 - b.x0) * width), Math.max(1, rowH - gap));

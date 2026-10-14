@@ -109,8 +109,8 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
   const radar = radarPoints(
     RADAR.map((m) => s.modelMix[m]),
     100,
-    56,
-    40,
+    47,
+    30,
   );
   const pct = (m: ModelFamily) => (totalTokens > 0 ? Math.round((s.modelMix[m] / totalTokens) * 100) : 0);
   const lastCompaction = [...compactions].reverse().find((c) => c.t <= s.t);
@@ -170,13 +170,13 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
         <svg
           role="img"
           aria-label={totalTokens > 0 ? `Model mix: ${RADAR.map((m) => `${MODEL_NAMES[m]} ${pct(m)}%`).join(", ")}` : "Model mix: no tokens yet"}
-          viewBox="0 0 200 112"
+          viewBox="0 0 200 94"
           className="min-h-0 w-full grow"
         >
-          <polygon points="100,16 140,56 100,96 60,56" fill="none" stroke="var(--rule)" strokeWidth="0.6" />
-          <polygon points="100,36 120,56 100,76 80,56" fill="none" stroke="var(--rule)" strokeWidth="0.4" />
-          <line x1="100" y1="16" x2="100" y2="96" stroke="var(--rule)" strokeWidth="0.4" />
-          <line x1="60" y1="56" x2="140" y2="56" stroke="var(--rule)" strokeWidth="0.4" />
+          <polygon points="100,17 130,47 100,77 70,47" fill="none" stroke="var(--rule)" strokeWidth="0.6" />
+          <polygon points="100,32 115,47 100,62 85,47" fill="none" stroke="var(--rule)" strokeWidth="0.4" />
+          <line x1="100" y1="17" x2="100" y2="77" stroke="var(--rule)" strokeWidth="0.4" />
+          <line x1="70" y1="47" x2="130" y2="47" stroke="var(--rule)" strokeWidth="0.4" />
           {totalTokens > 0 ? (
             <>
               <polygon points={radar.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(79,216,235,0.2)" stroke="var(--sonnet)" strokeWidth="1.2" />
@@ -185,16 +185,16 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
               ))}
             </>
           ) : null}
-          <text x="100" y="9" textAnchor="middle" fontSize="8" fill="var(--opus)">
+          <text x="100" y="10" textAnchor="middle" fontSize="9" fill="var(--opus)">
             OPUS {pct("opus")}
           </text>
-          <text x="146" y="59" fontSize="8" fill="var(--sonnet)">
+          <text x="136" y="50" fontSize="9" fill="var(--sonnet)">
             SONNET {pct("sonnet")}
           </text>
-          <text x="100" y="108" textAnchor="middle" fontSize="8" fill="var(--haiku)">
+          <text x="100" y="90" textAnchor="middle" fontSize="9" fill="var(--haiku)">
             HAIKU {pct("haiku")}
           </text>
-          <text x="54" y="59" textAnchor="end" fontSize="8" fill="var(--fable)">
+          <text x="64" y="50" textAnchor="end" fontSize="9" fill="var(--fable)">
             FABLE {pct("fable")}
           </text>
         </svg>
@@ -208,27 +208,27 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
         </svg>
       </Panel>
 
-      <Panel title="CONTEXT" label="Orchestrator context" value="orchestrator">
+      <Panel title="CONTEXT" label="Orchestrator context" value={`${compact(s.context.tokens)} tok`}>
         <svg
           role="img"
           aria-label={`Orchestrator context ${ctxPct} percent of the window${lastCompaction ? `, compacted from ${compact(lastCompaction.preTokens)} to ${compact(lastCompaction.postTokens)}` : ""}`}
-          viewBox="0 0 200 112"
+          viewBox="0 0 200 94"
           className="min-h-0 w-full grow"
         >
-          <path d={arcPath(100, 44, 36, 1)} fill="none" stroke="var(--control)" strokeWidth="7" strokeLinecap="round" />
-          <path d={arcPath(100, 44, 36, s.context.fraction)} fill="none" stroke={s.context.fraction >= 0.8 ? "var(--escape-text)" : "var(--opus)"} strokeWidth="7" strokeLinecap="round" />
-          <text x="100" y="50" textAnchor="middle" fontSize="22" fontWeight="700" fill="var(--ink-strong)">
-            {ctxPct}
+          <path d={arcPath(100, 36, 28, 1)} fill="none" stroke="var(--control)" strokeWidth="6" strokeLinecap="round" />
+          <path d={arcPath(100, 36, 28, s.context.fraction)} fill="none" stroke={s.context.fraction >= 0.8 ? "var(--escape-text)" : "var(--opus)"} strokeWidth="6" strokeLinecap="round" />
+          <text x="100" y="42" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--ink-strong)">
+            {ctxPct}%
           </text>
-          <text x="100" y="62" textAnchor="middle" fontSize="7" fill="var(--label)">
-            % OF WINDOW, {compact(s.context.tokens)}
+          <text x="100" y="51" textAnchor="middle" fontSize="6.5" fill="var(--label)">
+            OF WINDOW
           </text>
-          <path d={sparkPath(ctxSeries, 200, 22, 76)} fill="none" stroke="var(--label)" strokeWidth="0.9" />
+          <path d={sparkPath(ctxSeries, 200, 18, 62)} fill="none" stroke="var(--label)" strokeWidth="0.9" />
           {compactions.map((c) => (
-            <line key={c.t} x1={(c.t / duration) * 200} y1="74" x2={(c.t / duration) * 200} y2="100" stroke="var(--escape-text)" strokeWidth="1" strokeDasharray="2 2" />
+            <line key={c.t} x1={(c.t / duration) * 200} y1="60" x2={(c.t / duration) * 200} y2="82" stroke="#c9b8ff" strokeWidth="1" strokeDasharray="2 2" />
           ))}
-          <line x1={nowX} y1="74" x2={nowX} y2="100" stroke="var(--opus)" strokeWidth="0.8" />
-          <text x="100" y="110" textAnchor="middle" fontSize="7.5" fill={lastCompaction ? "var(--escape-text)" : "var(--faint)"}>
+          <line x1={nowX} y1="60" x2={nowX} y2="82" stroke="var(--opus)" strokeWidth="0.8" />
+          <text x="100" y="92" textAnchor="middle" fontSize="8.5" fill={lastCompaction ? "#c9b8ff" : "var(--faint)"}>
             {lastCompaction ? `compacted ${compact(lastCompaction.preTokens)} to ${compact(lastCompaction.postTokens)}` : compactions.length > 0 ? "compacts later in the run" : "no compaction in this run"}
           </text>
         </svg>

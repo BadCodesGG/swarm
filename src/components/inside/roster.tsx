@@ -3,7 +3,7 @@
 import { useCallback, type KeyboardEvent } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { compact, MODEL_NAMES, MODEL_VARS, runClock } from "@/engine/inside/format";
-import { agentName, rosterAt, type RosterEntry, type RosterStatus } from "@/engine/inside/roster";
+import { rosterAt, type RosterEntry, type RosterStatus } from "@/engine/inside/roster";
 import { useEngineSnapshot, useSelection, useTimeline } from "./use-engine";
 
 const STATUS: Record<RosterStatus, { text: string; tone: string }> = {
@@ -82,11 +82,10 @@ export function Roster({ app, onClose }: { app: InsideApp; onClose: () => void }
                   <span className="min-w-0 grow truncate text-[13px] font-semibold text-ink">{e.id === 0 ? "Orchestrator" : e.label}</span>
                   <span className={`shrink-0 font-mono text-[9px] tracking-[0.1em] ${st.tone}`}>{following === e.id ? "FOLLOWING" : st.text}</span>
                 </span>
-                <span className="flex gap-2.5 pl-4 font-mono text-[10px] text-label">
+                <span className="flex gap-2.5 whitespace-nowrap pl-4 font-mono text-[10px] text-label">
                   <span style={{ color: m }}>{MODEL_NAMES[e.model].toLowerCase()}</span>
                   <span>{compact(e.tokens)} tok</span>
                   <span>{runClock(e.activeTime)} active</span>
-                  {e.id > 0 ? <span className="text-faint">{agentName(tl.trace, e.id)}</span> : null}
                 </span>
                 {e.excerpt ? <span className="line-clamp-2 pl-4 text-[11px] leading-snug text-muted [overflow-wrap:anywhere]">{e.excerpt}</span> : null}
               </button>

@@ -1,8 +1,8 @@
 /**
  * Every tool call and subagent launch of a trace paired with its outcome: when it started, how long
  * it took, how big the result was, whether it failed and who allowed it. Pure. A record carries no
- * arguments: the trace holds none except a launch's brief, which stays on its spawn event. Traces that predate a field (`size`, `permission`,
- * `isError`) simply leave it unset.
+ * arguments: the trace holds none except a launch's brief, which stays on its spawn event. Traces
+ * that predate a field (`size`, `permission`, `isError`) simply leave it unset.
  */
 
 import type { PermissionSource, SessionTrace, ToolCategory } from "./types";

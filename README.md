@@ -60,7 +60,7 @@ company. Each layer is grounded in published AI control research; the
 You can load a Claude Code session file (`~/.claude/projects/<project>/<session-id>.jsonl`) or its
 folder. It is parsed in a Web Worker in your browser and held in memory for that tab only: it is
 never uploaded, never stored, and gone on reload. The site has no API routes and no server code that
-could receive it. What is kept is each tool's and model's name, numbers (permission source, think time, token counts, result sizes), each subagent's label (its first 80 characters) and type, and capped excerpts: each prompt you typed (up to 2,000 characters) and the first 280 characters of each reply, each brief handed to a subagent and each hand-back. Other tools' arguments are not read, and their results are kept only as sizes. Nothing leaves the browser. Session text is untrusted input and is only ever rendered as text.
+could receive it. What is kept is each tool's and model's name, numbers (permission source, think time, token counts, result sizes), each subagent's label (its first 80 characters) and type, and capped excerpts: each prompt you typed (up to 2,000 characters) and the first 280 characters of each reply's opening text, each brief handed to a subagent and each hand-back. Other tools' arguments are not read, and of their results only the size, whether it failed and who allowed the call are kept. Nothing leaves the browser. Session text is untrusted input and is only ever rendered as text.
 
 Raw transcripts never enter this repository: `.gitignore` blocks `*.jsonl` except the scrubbed test
 fixture under `src/lib/trace/__fixtures__/`, which `scripts/scrub-fixture.mjs` made with every free

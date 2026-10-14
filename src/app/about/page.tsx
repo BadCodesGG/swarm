@@ -128,8 +128,9 @@ export default function AboutPage() {
               never uploaded, never stored, and gone when you close or reload the page. The site has no server code that could receive it. What
               is kept is each tool&apos;s and model&apos;s name, numbers (permission source, think time, token counts, result sizes), each
               subagent&apos;s label (its first 80 characters) and type, and capped excerpts: each prompt you typed (up to 2,000 characters) and
-              the first 280 characters of each reply, each brief handed to a subagent and each hand-back. Other tools&apos; arguments are not
-              read, their results are kept only as sizes, and nothing leaves the browser. The text that is shown is plain text only.
+              the first 280 characters of each reply&apos;s opening text, each brief handed to a subagent and each hand-back. Other
+              tools&apos; arguments are not read, of their results only the size, whether it failed and who allowed the call are kept, and
+              nothing leaves the browser. The text that is shown is plain text only.
             </p>
           </Section>
 

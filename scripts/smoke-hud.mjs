@@ -65,7 +65,8 @@ export async function stepHud(browser, h) {
     await target.click();
     await waitInside(page, (s) => Math.abs(window.__swarm.inside.t - s) < 1.5, start);
     check("hud: clicking a stage seeks to it", true, `t ${before.toFixed(1)} to ${(await timeOf(page)).toFixed(1)} for a stage at ${start}`);
-    await page.waitForFunction(() => document.querySelector("[data-stage][aria-current=step]") !== null);
+    const id = await target.getAttribute("data-stage");
+    await page.waitForFunction((i) => document.querySelector(`[data-stage="${i}"]`)?.getAttribute("aria-current") === "step", id, { timeout: 4000 }).catch(() => {});
     check("hud: that stage is lit", (await target.getAttribute("aria-current")) === "step");
 
     // --- a mid-run moment: the agents' roster ---

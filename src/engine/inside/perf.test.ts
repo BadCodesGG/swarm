@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { generateTrace } from "@/lib/trace/generate";
+import { TIERS } from "../shared/quality";
+import { planNebula } from "./nebula-plan";
 import { buildTimeline } from "@/lib/trace/timeline";
 import { TRACE_LIMITS, type SessionTrace, type TraceAgent, type TraceEvent } from "@/lib/trace/types";
 import { agentPose, featuredAgent, newPose, returnPose } from "./layout";
@@ -78,5 +81,20 @@ describe("a cap-sized trace stays responsive", () => {
     returnPose(small, 3, a);
     agentPose(small, 3, 153, b);
     expect([a.x, a.y, a.z]).toEqual([b.x, b.y, b.z]);
+  });
+});
+
+describe("the nebula", () => {
+  it("plans the largest sample at the hi tier in under 60 ms", () => {
+    const large = generateTrace(50, "large");
+    planNebula(large, 50, TIERS.hi.nebula); // warm the JIT and the per-trace indexes
+    const ms = time(() => planNebula(large, 50, TIERS.hi.nebula));
+    expect(ms).toBeLessThan(60);
+  });
+
+  it("plans a cap-sized trace within the same budget", () => {
+    const capped = capTrace();
+    planNebula(capped, 1, TIERS.hi.nebula);
+    expect(time(() => planNebula(capped, 1, TIERS.hi.nebula))).toBeLessThan(60);
   });
 });

@@ -17,6 +17,8 @@ export interface QualityLevel {
 export interface TierSettings {
   /** Act 1: size of the particle ring. */
   particleCap: number;
+  /** Act 1: points in the nebula, split across every cloud. */
+  nebula: number;
   /** Act 2: live agents in the crowd (trials never use this). */
   crowdSize: number;
   /** Highest device pixel ratio worth rendering at on a fine pointer. */
@@ -24,9 +26,9 @@ export interface TierSettings {
 }
 
 export const TIERS: Readonly<Record<Tier, TierSettings>> = {
-  hi: { particleCap: 20_000, crowdSize: 2_000, pixelRatio: 2 },
-  mid: { particleCap: 8_000, crowdSize: 800, pixelRatio: 1.5 },
-  lite: { particleCap: 3_000, crowdSize: 300, pixelRatio: 1.25 },
+  hi: { particleCap: 20_000, nebula: 60_000, crowdSize: 2_000, pixelRatio: 2 },
+  mid: { particleCap: 8_000, nebula: 24_000, crowdSize: 800, pixelRatio: 1.5 },
+  lite: { particleCap: 3_000, nebula: 8_000, crowdSize: 300, pixelRatio: 1.25 },
 };
 
 export interface QualityInputs {

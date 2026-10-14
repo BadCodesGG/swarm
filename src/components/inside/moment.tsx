@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { canShareMoment } from "@/engine/inside/params";
-import { momentSearch, type MomentState } from "./moment-url";
+import { leavesPage, momentSearch, type MomentState } from "./moment-url";
 import { sampleSize } from "./source-switcher";
 import { useTimeline } from "./use-engine";
 
@@ -36,12 +36,25 @@ export function useMomentSync(app: InsideApp) {
 
   useEffect(() => {
     if (app.params.shot) return;
+    // Once a link to another page is clicked the sync stops: a replaceState while the router is
+    // still loading that page would put it back on this one (a slow device never left /inside).
+    let leaving = false;
+    const onClick = (e: MouseEvent) => {
+      const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a[href]") : null;
+      const click = { href: a ? a.href : null, target: a?.target ?? "", button: e.button, modified: e.ctrlKey || e.metaKey || e.shiftKey || e.altKey };
+      if (leavesPage(click, window.location.href)) leaving = true;
+    };
+    document.addEventListener("click", onClick, true);
     const id = window.setInterval(() => {
+      if (leaving) return;
       const next = momentUrl(app);
       if (next === null || next === window.location.href) return;
       window.history.replaceState(null, "", next);
     }, SYNC_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("click", onClick, true);
+    };
   }, [app]);
 }
 

@@ -8,6 +8,7 @@ import {
   firstVisitParams,
   linkLabs,
   nextInterceptLine,
+  presetOf,
   recordBest,
   removeLab,
   setCast,
@@ -119,5 +120,14 @@ describe("best score", () => {
     expect(bestScore(broken)).toBe(0);
     expect(recordBest(broken, 30)).toBe(30);
     expect(bestScore(null)).toBe(0);
+  });
+});
+
+describe("presetOf", () => {
+  it("knows a preset by its settings, whatever the seed, and loses it on any change", () => {
+    expect(presetOf(presetScenario("rushed-launch", 7))).toBe("rushed-launch");
+    const s = presetScenario("air-gapped");
+    expect(presetOf(s)).toBe("air-gapped");
+    expect(presetOf({ ...s, labs: s.labs.map((l, i) => (i ? l : { ...l, config: { ...l.config, layers: { ...l.config.layers, audit: false } } })) })).toBeNull();
   });
 });

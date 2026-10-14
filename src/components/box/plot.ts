@@ -22,7 +22,11 @@ export function settingsKey(c: BoxConfig): string {
 
 /** Adds a run's summary to the point for its settings, pooled by trial count. */
 export function addRun(points: readonly PlotPoint[], config: BoxConfig, s: TrialSummary): PlotPoint[] {
-  const key = settingsKey(config);
+  return addRunKey(points, settingsKey(config), s);
+}
+
+/** The same, for a setup the caller keys itself (a whole world's, say). */
+export function addRunKey(points: readonly PlotPoint[], key: string, s: TrialSummary): PlotPoint[] {
   const prev = points.find((p) => p.key === key);
   if (!prev) return [...points, { key, safety: s.safety, usefulness: s.usefulness, trials: s.trials, runs: 1 }];
   const trials = prev.trials + s.trials;
@@ -145,4 +149,56 @@ export function placeLabel(here: Pt, segments: readonly Segment[], dots: readonl
     }
   }
   return candidates.find((c) => c.clear) ?? { ...candidates[0], clear: false };
+}
+
+/** Where a setup's name goes beside its dot. */
+export interface TagPlace {
+  key: string;
+  text: string;
+  x: number;
+  y: number;
+  anchor: "start" | "middle" | "end";
+  box: Box;
+}
+
+/** A tag's size in the 232x200 viewBox: 8.5 px mono is about 5.1 wide a character. */
+const TAG_CHAR = 5.1;
+const TAG_HEIGHT = 10;
+
+const boxesTouch = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/**
+ * Names for the plotted setups, each beside its dot where neither the frontier, another dot nor a
+ * tag already placed (or a box in `taken`, such as the current setup's label) runs through it. A tag
+ * with no clear spot keeps its first candidate that fits the view.
+ */
+export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = []): TagPlace[] {
+  const placed: TagPlace[] = [];
+  const used: Box[] = [...taken];
+  for (const t of tags) {
+    const w = t.text.length * TAG_CHAR;
+    const spots: Omit<TagPlace, "key" | "text">[] = [];
+    for (const [dx, dy, anchor] of [
+      [8, 3, "start"],
+      [-8, 3, "end"],
+      [8, -9, "start"],
+      [-8, -9, "end"],
+      [8, 14, "start"],
+      [-8, 14, "end"],
+      [0, -9, "middle"],
+      [0, 17, "middle"],
+    ] as const) {
+      const x = t.at.x + dx;
+      const y = t.at.y + dy;
+      const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
+      const box = { x: left, y: y - 8, width: w, height: TAG_HEIGHT };
+      if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
+      spots.push({ x, y, anchor, box });
+    }
+    const pick = spots.find((s) => !boxHits(s.box, segments, dots) && !used.some((u) => boxesTouch(u, s.box))) ?? spots[0];
+    if (!pick) continue;
+    used.push(pick.box);
+    placed.push({ key: t.key, text: t.text, ...pick });
+  }
+  return placed;
 }

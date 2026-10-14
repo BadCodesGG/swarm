@@ -127,6 +127,11 @@ export interface PanelProps {
   onPlay(play: boolean): void;
   onReset(): void;
   onRunTrials(): void;
+  /** The lab whose layers these are (`data-lab`), and its name for the panel's heading. */
+  lab: string;
+  labName: string;
+  /** More than one lab: the tally beside each layer is the whole world's, and the sliders (the lone Box's) go. */
+  world?: boolean;
   /** The run row sits at the panel's foot; false where the HUD shows it under the scene instead (phone and tablet). */
   withRun?: boolean;
 }
@@ -172,7 +177,7 @@ export function RunControls({ playing, running, onPlay, onReset, onRunTrials }: 
 }
 
 /** The controls: one switch per layer with what it caught and what it cost, two sliders, and the run controls. */
-export function Panel({ config, tally, playing, running, onConfig, onPlay, onReset, onRunTrials, withRun = true }: PanelProps) {
+export function Panel({ config, tally, playing, running, onConfig, onPlay, onReset, onRunTrials, withRun = true, lab, labName, world = false }: PanelProps) {
   const toggle = (layer: LayerId) => (on: boolean) => onConfig({ ...config, layers: { ...config.layers, [layer]: on } });
 
   const rowShell = (layer: LayerId, body: ReactNode) => {
@@ -196,13 +201,14 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
 
   return (
     <form
-      aria-label="Containment layers"
+      aria-label={`Containment layers of ${labName}`}
+      data-lab={lab}
       onSubmit={(e) => e.preventDefault()}
       className="box-border flex min-w-0 flex-[0_1_330px] flex-col max-[914px]:flex-[1_1_330px] gap-1.5 rounded-[14px] border border-panel-border bg-panel p-[18px]"
     >
       <div className="flex items-baseline justify-between pb-1.5 font-mono text-[10px]">
-        <span className="tracking-[0.14em] text-label">LAYERS, INSIDE OUT</span>
-        <span className="tracking-[0.1em] text-faint">CAUGHT / COST</span>
+        <span className="tracking-[0.14em] text-label">{world ? `${labName}, LAYERS INSIDE OUT` : "LAYERS, INSIDE OUT"}</span>
+        <span className="tracking-[0.1em] text-faint">{world ? "CAUGHT / COST, ALL LABS" : "CAUGHT / COST"}</span>
       </div>
 
       {LAYER_ORDER.map((layer) =>
@@ -210,7 +216,7 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
           layer,
           <>
             <LayerSwitch layer={layer} on={config.layers[layer]} onToggle={toggle(layer)} right={right(layer)} />
-            {layer === "monitor" ? (
+            {layer === "monitor" && !world ? (
               <Slider
                 name="monitor"
                 label="Flag above suspicion"
@@ -222,7 +228,7 @@ export function Panel({ config, tally, playing, running, onConfig, onPlay, onRes
                 dim={!config.layers.monitor}
               />
             ) : null}
-            {layer === "audit" ? (
+            {layer === "audit" && !world ? (
               <Slider
                 name="audit"
                 label="Review budget"

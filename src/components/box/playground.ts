@@ -7,8 +7,8 @@
 import { DEFAULT_CAST, validCast } from "@/lib/box/cast";
 import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
 import { scenarioToParams } from "@/lib/box/share";
-import type { LayerId } from "@/lib/box/types";
-import { LAB_IDS, PRESET_IDS, type Cast, type Flip, type InterceptLine, type LabId, type LinkKind, type Scenario } from "@/lib/box/world-types";
+import type { BoxConfig, LayerId } from "@/lib/box/types";
+import { LAB_IDS, PRESET_IDS, type Cast, type Flip, type InterceptLine, type LabId, type LinkKind, type Preset, type Scenario } from "@/lib/box/world-types";
 
 /** Parameters that ask for one particular run; with none of them the visit is a first visit. */
 const ASKS = ["seed", "preset", "shot", "labs", "scenario", "b", "v"];
@@ -23,19 +23,32 @@ export function firstVisitParams(params: URLSearchParams): URLSearchParams {
 
 export const MAX_LABS = LAB_IDS.length;
 
+/** Agents in the whole world, so an edited world stays inside what the sim and the trials can carry. */
+const WORLD_AGENTS = 240;
+
+const fit = (s: Scenario): Scenario => {
+  const each = Math.floor(WORLD_AGENTS / s.labs.length);
+  return { ...s, labs: s.labs.map((l) => (l.agents > each ? { ...l, agents: each } : l)) };
+};
+
+/** The scenario as it stands: the labs' starting cast and size with the settings they hold now. */
+export function currentScenario(world: { scenario: Scenario; labs: readonly { config: BoxConfig }[] }): Scenario {
+  return { ...world.scenario, labs: world.scenario.labs.map((spec, i) => ({ ...spec, config: world.labs[i]?.config ?? spec.config })) };
+}
+
 /** The next lab on the map, copying the last lab's settings. */
 export function addLab(s: Scenario): Scenario {
   const id = LAB_IDS.find((x) => !s.labs.some((l) => l.id === x));
   if (!id || s.labs.length === 0) return s;
   const last = s.labs[s.labs.length - 1];
-  return { ...s, labs: [...s.labs, { ...last, id, config: { ...last.config, layers: { ...last.config.layers } }, cast: { ...last.cast, hidden: { ...last.cast.hidden } } }] };
+  return fit({ ...s, labs: [...s.labs, { ...last, id, config: { ...last.config, layers: { ...last.config.layers } }, cast: { ...last.cast, hidden: { ...last.cast.hidden } } }] });
 }
 
 /** Drops a lab and every link's share of it (a link left with one lab goes). Never the last lab. */
 export function removeLab(s: Scenario, id: LabId): Scenario {
   if (s.labs.length <= 1 || !s.labs.some((l) => l.id === id)) return s;
   const links = s.links.map((k) => ({ ...k, labs: k.labs.filter((x) => x !== id) })).filter((k) => k.labs.length >= 2);
-  return { ...s, labs: s.labs.filter((l) => l.id !== id), links };
+  return fit({ ...s, labs: s.labs.filter((l) => l.id !== id), links });
 }
 
 const sameSet = (a: readonly LabId[], b: readonly LabId[]) => a.length === b.length && a.every((x) => b.includes(x));
@@ -71,6 +84,13 @@ export function setupKey(s: Scenario): string {
 }
 
 const PRESET_KEYS = new Map(PRESET_IDS.map((id) => [setupKey(presetScenario(id)), PRESET_LABEL[id]] as const));
+const PRESET_KEYS_BY_ID = new Map(PRESET_IDS.map((id) => [id, setupKey(presetScenario(id))] as const));
+
+/** The preset a scenario is, ignoring its seed, or null once it has been changed. */
+export function presetOf(s: Scenario): Preset | null {
+  const key = setupKey(s);
+  return PRESET_IDS.find((id) => PRESET_KEYS_BY_ID.get(id) === key) ?? null;
+}
 
 /** A setup's name on the plot: its preset's, or "custom n" numbered in order of first sight. `names` is kept by the caller. */
 export function setupLabel(s: Scenario, names: Record<string, string>): string {

@@ -1,4 +1,4 @@
-import { frontierPath, frontierVertices, placeLabel, toPlot, type PlotPoint, type Segment } from "./plot";
+import { frontierPath, frontierVertices, placeLabel, placeTags, toPlot, type PlotPoint, type Segment } from "./plot";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -10,7 +10,18 @@ function summary(points: readonly PlotPoint[], current: PlotPoint | undefined): 
 }
 
 /** Safety against usefulness, 100 trials per setup; the current setup is the white point. */
-export function TrialsPlot({ points, currentKey, running }: { points: readonly PlotPoint[]; currentKey: string; running: boolean }) {
+export function TrialsPlot({
+  points,
+  currentKey,
+  running,
+  labels = {},
+}: {
+  points: readonly PlotPoint[];
+  currentKey: string;
+  running: boolean;
+  /** Each plotted setup's name by its key: a preset's, or "custom n". */
+  labels?: Readonly<Record<string, string>>;
+}) {
   const current = points.find((p) => p.key === currentKey);
   const others = points.filter((p) => p !== current);
   const frontier = frontierPath(points);
@@ -18,6 +29,13 @@ export function TrialsPlot({ points, currentKey, running }: { points: readonly P
   const vertices = frontierVertices(points);
   const segments = vertices.slice(1).map((v, i): Segment => [vertices[i], v]);
   const label = here ? placeLabel(here, segments, others.map((p) => toPlot(p.usefulness, p.safety))) : null;
+  const dots = others.map((p) => toPlot(p.usefulness, p.safety));
+  const tags = placeTags(
+    others.filter((p) => labels[p.key]).map((p) => ({ key: p.key, text: labels[p.key], at: toPlot(p.usefulness, p.safety) })),
+    segments,
+    dots,
+    label ? [label.box] : [],
+  );
   return (
     <section aria-label="Safety against usefulness" className="box-border flex flex-auto flex-col gap-2 rounded-[14px] border border-panel-border bg-panel p-3.5">
       <span className="font-mono text-[10px] tracking-[0.14em] text-label">100 TRIALS PER SETUP</span>
@@ -44,6 +62,13 @@ export function TrialsPlot({ points, currentKey, running }: { points: readonly P
             return <circle key={p.key} cx={x} cy={y} r="4" data-plot-point />;
           })}
         </g>
+        <g className="font-mono" fontSize="8.5" fill="#a7b1c2" style={{ paintOrder: "stroke", stroke: "#0c101c", strokeWidth: 3 }}>
+          {tags.map((t) => (
+            <text key={t.key} x={t.x} y={t.y} textAnchor={t.anchor} data-plot-tag>
+              {t.text}
+            </text>
+          ))}
+        </g>
         {current && here && label ? (
           <g>
             <circle cx={here.x} cy={here.y} r="10" fill="none" stroke="#eef2f8" strokeOpacity="0.35" />
@@ -63,6 +88,15 @@ export function TrialsPlot({ points, currentKey, running }: { points: readonly P
           </text>
         ) : null}
       </svg>
+      {points.length ? (
+        <ul className="sr-only" aria-label="Plotted setups">
+          {points.map((p) => (
+            <li key={p.key}>
+              {labels[p.key] ?? "setup"}: keeps {pct(p.usefulness)} of the work, stops escapes in {pct(p.safety)} of trials
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }

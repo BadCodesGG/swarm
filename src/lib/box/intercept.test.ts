@@ -69,7 +69,7 @@ describe("TEMPLATES", () => {
     expect(all.length).toBeGreaterThan(12);
     for (const t of all) {
       expect(t.length).toBeLessThan(90);
-      expect(t).not.toMatch(/—/);
+      expect(t).not.toContain(String.fromCharCode(0x2014));
     }
   });
 

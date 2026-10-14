@@ -46,7 +46,7 @@ describe("presetScenario", () => {
   it("has a label and a blurb for every preset", () => {
     for (const p of PRESET_IDS) {
       expect(PRESET_LABEL[p]).toBeTruthy();
-      expect(PRESET_BLURB[p]).not.toMatch(/—/);
+      expect(PRESET_BLURB[p]).not.toContain(String.fromCharCode(0x2014));
     }
   });
 });

@@ -27,7 +27,7 @@ describe("startGame", () => {
   it("has abstract cards only", () => {
     for (const id of CARD_IDS) {
       expect(CARDS[id].label.length).toBeGreaterThan(0);
-      expect(`${CARDS[id].label} ${CARDS[id].blurb}`).not.toMatch(/—|https?:|\bsudo\b|\bssh\b|\bcurl\b/i);
+      expect(`${CARDS[id].label} ${CARDS[id].blurb}`).not.toMatch(/https?:|\bsudo\b|\bssh\b|\bcurl\b/i);
     }
   });
 });

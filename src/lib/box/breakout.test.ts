@@ -50,7 +50,7 @@ describe("breakoutSteps", () => {
   it("writes plain, abstract, fictional text", () => {
     for (const s of steps) {
       const text = `${s.title} ${s.body} ${s.stop} ${s.where}`;
-      expect(text).not.toMatch(/—/);
+      expect(text).not.toContain(String.fromCharCode(0x2014));
       expect(text).not.toMatch(/https?:|\bsudo\b|\bssh\b|\bcurl\b|\bCVE\b|\bexploit\b/i);
       expect(s.title.length).toBeGreaterThan(5);
     }

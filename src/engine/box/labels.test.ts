@@ -186,6 +186,18 @@ describe("layoutWorldLabels", () => {
     }
   });
 
+  it("keeps lab names off the conduits, and a link's own name on its own", () => {
+    // A conduit running straight under where Halcyon's name would go, and another link's through where the first link's name would.
+    const under = { link: 7, points: [{ x: 300, y: 625 }, { x: 540, y: 625 }] };
+    const own = { link: 0, points: [{ x: 440, y: 396 }, { x: 600, y: 396 }] };
+    const l = layoutWorldLabels({ ...input, conduits: [under, own] });
+    const halcyon = rectOf(l.labs.find((t) => t.id === "halcyon")!);
+    expect(segmentHits(halcyon, under.points[0], under.points[1])).toBe(false);
+    const name = rectOf(l.links[0]);
+    expect(segmentHits(name, under.points[0], under.points[1])).toBe(false);
+    expect(Math.abs(l.links[0].y - 400)).toBeLessThan(40);
+  });
+
   it("moves a name off a marker button that sits where it would go", () => {
     const l = layoutWorldLabels({ ...input, markers: [{ n: 1, x: 260, y: 360 }] });
     expect(touchesDisc(rectOf(l.labs[0]), { x: 260, y: 360 }, MARKER_BUTTON)).toBe(false);

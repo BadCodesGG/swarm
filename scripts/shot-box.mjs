@@ -98,7 +98,10 @@ async function attempt(strategy) {
       points: document.querySelector("svg[data-plot-points]")?.getAttribute("data-plot-points"),
       // Scene labels whose drawn boxes touch, as Chromium lays the text out (not the placer's estimate).
       clashes: (() => {
-        const boxes = [...document.querySelectorAll("[data-ring], [data-marker], [data-trail], [data-lab-name], [data-link-name], [data-outside]")].map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
+        const boxes = [...document.querySelectorAll("[data-ring], [data-marker], [data-trail], [data-lab-name], [data-link-name], [data-outside], [data-step-marker]")]
+          // The page's own scene labels are hidden while the map is up; hidden text overlaps nothing.
+          .filter((e) => getComputedStyle(e).visibility !== "hidden")
+          .map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
         const out = [];
         boxes.forEach((a, i) => {
           for (const b of boxes.slice(i + 1)) {

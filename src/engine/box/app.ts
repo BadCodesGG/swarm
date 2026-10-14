@@ -724,7 +724,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     };
     const linkViews: LinkView[] = shapes.map((s) => {
       const at = proj(s.at);
-      return { index: s.index, kind: s.kind, name: s.name, labs: s.labs, x: at.x, y: at.y, lit: lit(s.index) };
+      const paths = s.conduits.map((c) => [0, 4, 8, 12, 16].map((i) => proj(c.points[i])));
+      return { index: s.index, kind: s.kind, name: s.name, labs: s.labs, x: at.x, y: at.y, lit: lit(s.index), paths };
     });
     const numbered = stepItems(director.items);
     const markerViews: MarkerView[] = numbered.map((item, i) => {
@@ -759,6 +760,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       linkViews.map((l) => l.lit).join(),
       markerViews.map((m) => `${m.shown}${m.selected}${m.step ? 1 : 0}`).join(),
       outside ? 1 : 0,
+      runs.size,
     ].join("|");
     if (sig !== overlaySig) {
       overlaySig = sig;
@@ -773,6 +775,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         markers: markerViews,
         camera: { mode, reduced, focus: mode === "director" && act && map ? act.lab : null, pose: { ...pose }, scale: view.scale },
         outside,
+        trails: [...runs.values()].filter((r) => story >= r.tick).map((r): [Point, Point] => [proj(r.path.start), proj(r.path.end)]),
       };
     } else {
       overlayState = { ...overlayState, tick: world.tick, story };
@@ -1092,6 +1095,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       markers: [],
       camera: { mode: "director", reduced: false, focus: null, pose: { x: 0, y: 0, w: 760, h: 560 }, scale: 1 },
       outside: null,
+      trails: [],
     };
   }
 }

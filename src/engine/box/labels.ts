@@ -367,6 +367,8 @@ export interface WorldLabelsInput {
   outside: Point | null;
   /** Escape trails, which text stays off. */
   segments?: readonly [Point, Point][];
+  /** The links' conduits as screen polylines: every name stays off them, a link's own name excepted. */
+  conduits?: readonly { link: number; points: readonly Point[] }[];
   /** Text scale: 1 at the design's size. */
   k: number;
 }
@@ -410,11 +412,12 @@ function labSpots(l: WorldLabInput, k: number): { x: number; y: number; anchor: 
  * spot clear of the rings, the marker buttons, the trails and every box already placed (a label
  * with no clear spot takes the least crowded one: a name always shows).
  */
-export function layoutWorldLabels({ bounds, labs, links, markers, outside, segments = [], k }: WorldLabelsInput): WorldLabelLayout {
+export function layoutWorldLabels({ bounds, labs, links, markers, outside, segments = [], conduits = [], k }: WorldLabelsInput): WorldLabelLayout {
+  const chords = conduits.map((c) => ({ link: c.link, pieces: c.points.slice(1).map((q, i): [Point, Point] => [c.points[i], q]) }));
   const rings = labs.map((l) => ({ c: { x: l.x, y: l.y }, r: l.r + 3 }));
   const buttons = markers.map((m) => ({ c: { x: m.x, y: m.y }, r: MARKER_BUTTON * k + 2 }));
   const boxes: Rect[] = [];
-  const crowded = (r: Rect, own?: number): number => {
+  const crowded = (r: Rect, own?: number, link?: number): number => {
     let n = inside(r, bounds) ? 0 : 1;
     for (const b of boxes) if (overlaps(r, b)) n++;
     rings.forEach((d, i) => {
@@ -422,13 +425,14 @@ export function layoutWorldLabels({ bounds, labs, links, markers, outside, segme
     });
     for (const d of buttons) if (touchesDisc(r, d.c, d.r)) n++;
     for (const [p, q] of segments) if (segmentHits(grow(r, 2), p, q)) n++;
+    for (const c of chords) if (c.link !== link && c.pieces.some(([p, q]) => segmentHits(grow(r, 2), p, q))) n++;
     return n;
   };
-  const place = <T extends TextSpec>(spots: T[], own?: number): T => {
+  const place = <T extends TextSpec>(spots: T[], own?: number, link?: number): T => {
     let best = spots[0];
     let bestN = Infinity;
     for (const s of spots) {
-      const n = crowded(rectOf(s), own);
+      const n = crowded(rectOf(s), own, link);
       if (n < bestN) {
         best = s;
         bestN = n;
@@ -462,7 +466,7 @@ export function layoutWorldLabels({ bounds, labs, links, markers, outside, segme
     const spots = rows.map(
       ([dx, dy, anchor]): WorldLinkText => ({ index: l.index, text: l.name, lines: [l.name], x: l.x + dx * k, y: l.y + dy * k, anchor, fontSize: LINK_FONT * k, letterSpacing: 0.8 * k }),
     );
-    return place(spots);
+    return place(spots, undefined, l.index);
   });
 
   let outsideText: TextSpec | null = null;

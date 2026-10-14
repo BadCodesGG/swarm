@@ -42,6 +42,8 @@ export interface LinkView {
   y: number;
   /** The colour a crossing over it left: pink got in, green was turned away. */
   lit: "crossed" | "held" | null;
+  /** Its conduits as polylines (a handful of points each), CSS px. */
+  paths: { x: number; y: number }[][];
 }
 
 export interface MarkerView {
@@ -88,6 +90,8 @@ export interface BoxOverlay {
   camera: CameraView;
   /** The end of the latest escape trail, where "OUTSIDE" belongs. */
   outside: { x: number; y: number } | null;
+  /** Each escape trail on show, start to end, CSS px. */
+  trails: [{ x: number; y: number }, { x: number; y: number }][];
 }
 
 /** What `BoxApp.camera` lets the page do. */

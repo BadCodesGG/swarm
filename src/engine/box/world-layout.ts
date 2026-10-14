@@ -13,8 +13,8 @@ export const LAB_SCALE = 0.45;
 /** A lab's outer ring, world units, once there is more than one lab. */
 export const LAB_OUTER = RING_RADIUS.audit * LAB_SCALE;
 /** Local radii the world trails use: the trail runs out past the labs' edge, the escapee parks short of its end. */
-export const WORLD_TRAIL_RADIUS = 470;
-export const WORLD_ESCAPEE_RADIUS = 420;
+export const WORLD_TRAIL_RADIUS = 430;
+export const WORLD_ESCAPEE_RADIUS = 395;
 
 export interface LabFrame {
   id: LabId;
@@ -27,11 +27,11 @@ export interface LabFrame {
 
 /** One fixed slot per lab id; no two are closer than two outer rings plus a gap. */
 export const SLOTS: Readonly<Record<LabId, Point>> = {
-  meridian: { x: -150, y: 110 },
-  kestrel: { x: 160, y: 70 },
-  halcyon: { x: -20, y: -190 },
-  orrery: { x: -420, y: -170 },
-  vesper: { x: 350, y: -170 },
+  meridian: { x: -240, y: 90 },
+  kestrel: { x: 220, y: 90 },
+  halcyon: { x: -10, y: -170 },
+  orrery: { x: -500, y: -150 },
+  vesper: { x: 480, y: -150 },
 };
 
 export function labFrames(ids: readonly LabId[]): LabFrame[] {

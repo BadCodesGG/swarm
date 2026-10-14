@@ -62,6 +62,7 @@ const emptyOverlay = (): BoxOverlay => ({
   markers: [],
   camera: { mode: "director", reduced: true, focus: null, pose: { x: 0, y: 0, w: DESIGN.width, h: DESIGN.height }, scale: 1 },
   outside: null,
+  trails: [],
 });
 
 /** The DOM-free part of the still Box: state, snapshot, bus and debug entry. */

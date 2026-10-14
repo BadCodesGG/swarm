@@ -49,6 +49,10 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
   const root = document.createElement("div");
   root.dataset.worldOverlay = "";
   root.style.cssText = "position:fixed;inset:0;pointer-events:none;overflow:hidden";
+  // While the map is up, the page's own scene labels (drawn for one lone Box in the 760x560 frame) have nothing to name.
+  const style = document.createElement("style");
+  style.textContent = "html[data-box-map] [data-scene-slot] svg[viewBox=\"0 0 760 560\"]{visibility:hidden}";
+  root.appendChild(style);
   canvas.after(root);
   const els = new Map<string, HTMLElement>();
   let visible = true;
@@ -81,6 +85,8 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
     update(o, k) {
       const show = visible && o.map;
       root.style.display = show ? "" : "none";
+      if (show) document.documentElement.dataset.boxMap = "";
+      else delete document.documentElement.dataset.boxMap;
       if (!show) return;
       const slot = { x0: o.frame.x, y0: o.frame.y, x1: o.frame.x + o.frame.width, y1: o.frame.y + o.frame.height };
       const inSlot = (p: { x: number; y: number }) => p.x >= slot.x0 && p.x <= slot.x1 && p.y >= slot.y0 && p.y <= slot.y1;
@@ -94,6 +100,8 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
         links: links.map((l) => ({ index: l.index, name: l.name, x: l.x, y: l.y })),
         markers: markers.map((m) => ({ n: m.n, x: m.x, y: m.y })),
         outside,
+        segments: o.trails,
+        conduits: o.links.flatMap((l) => l.paths.map((points) => ({ link: l.index, points }))),
         k,
       });
 
@@ -143,6 +151,7 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
       }
     },
     dispose() {
+      delete document.documentElement.dataset.boxMap;
       root.remove();
       els.clear();
     },

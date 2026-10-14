@@ -33,7 +33,7 @@ export const TRAVEL_TICKS = 18;
 const LEAD_TICKS = 2;
 
 /** World units round the rings the overview keeps clear, enough for an escape trail to run out. */
-const OVERVIEW_PAD = 96;
+const OVERVIEW_PAD = 80;
 const FOCUS = { w: 520, h: 420 } as const;
 const PAIR_PAD = 70;
 

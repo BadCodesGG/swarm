@@ -97,13 +97,14 @@ export function createLinks(scene: Scene, u: BoxUniforms): Links {
     const along = bestS!;
 
     const dashOn = fract(along.mul(total).div(DASH)).lessThan(0.55).select(1, 0.15);
-    const base = stroke(dist.mul(px), px.mul(0.7)).mul(dashOn);
-    let col: Vec4Node = vec4(color(BLUE).mul(base.mul(0.55)), base.mul(0.55));
+    const base = stroke(dist.mul(px), px.mul(0.9)).mul(dashOn);
+    let col: Vec4Node = vec4(color(BLUE).mul(base.mul(0.8)), base.mul(0.8));
 
     // A path a crossing has used stays faintly lit.
     const litCol = mix(color(PINK), color(GREEN), litTone);
-    const solid = stroke(dist.mul(px), px.mul(1.1));
-    col = over(vec4(litCol.mul(solid.mul(lit).mul(0.6)), solid.mul(lit).mul(0.6)), col);
+    const solid = stroke(dist.mul(px), px.mul(1.6));
+    const aura = exp(dist.mul(px).div(5).pow(2).negate()).mul(lit).mul(0.22);
+    col = over(vec4(litCol.mul(solid.mul(lit).mul(0.9).add(aura)), solid.mul(lit).mul(0.9)), col);
 
     // The pulse: a bright head with the part it has travelled lit behind it.
     const pulseCol = mix(color(PINK), color(GREEN), pulseTone);

@@ -50,7 +50,7 @@ import { createLinks } from "./scene/links";
 import { createMarkers } from "./scene/markers";
 import { createPins } from "./scene/pins";
 import { createShells, type Shells } from "./scene/shells";
-import { breachTicks, escapeProgress, markerTick, reachLanded, reachProgress, settledTick, stepItems } from "./story";
+import { HELD_STOP, breachTicks, escapeProgress, markerSlots, markerTick, reachLanded, reachProgress, settledTick } from "./story";
 import {
   createTally,
   createWorldTally,
@@ -67,9 +67,12 @@ import {
   type WorldLogEntry,
 } from "./tally";
 import { fitView, pan, project, zoomAbout, type Frame, type View } from "./view";
-import { exitHeading, labFrames, linkShapes, outerRadius, routePoints, worldEscapePath, type LabFrame, type LinkShape } from "./world-layout";
+import { exitHeading, labFrames, linkShapes, outerRadius, pointAlong, routePoints, worldEscapePath, type LabFrame, type LinkShape } from "./world-layout";
 
 export type { Frame } from "./view";
+
+/** Where each escape sub-step sits between the broken outer ring and the trail's far end, as a fraction. */
+const BEAT_AT = [0.12, 0.34, 0.56, 0.78] as const;
 
 export interface BoxEvents {
   tick: StepReport;
@@ -684,7 +687,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   const selectStep = (n: number | null) => {
     selected = n;
     bus.emit("step", { n });
-    const item = n === null ? undefined : stepItems(director.items)[n - 1];
+    const item = n === null ? undefined : markerSlots(director.items)[n - 1]?.item;
     if (item && map) {
       const f = frames.find((x) => x.id === item.lab);
       if (f) flyTo(focusPose(f));
@@ -727,20 +730,19 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       const paths = s.conduits.map((c) => [0, 4, 8, 12, 16].map((i) => proj(c.points[i])));
       return { index: s.index, kind: s.kind, name: s.name, labs: s.labs, x: at.x, y: at.y, lit: lit(s.index), paths };
     });
-    const numbered = stepItems(director.items);
-    const markerViews: MarkerView[] = numbered.map((item, i) => {
-      const w = markerPlace(item);
+    const markerViews: MarkerView[] = markerSlots(director.items).map(({ item, beat }, i) => {
+      const w = markerPlace(item, beat);
       const at = proj(w);
       return {
         n: i + 1,
-        kind: item.kind === "escape" ? "escape" : "crossing",
+        kind: item.kind === "escape" ? "escape" : item.kind === "held" ? "held" : "crossing",
         lab: item.lab,
         tick: item.tick,
         x: at.x,
         y: at.y,
         wx: w.x,
         wy: w.y,
-        shown: story >= markerTick(item),
+        shown: story >= markerTick(item, beat ?? 0),
         selected: selected === i + 1,
         step: steps[i] ?? null,
       };
@@ -788,24 +790,21 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     return e && e.type === "contact" ? { index: linkIndex(e.link, e.from.lab, e.to) } : null;
   };
   /** Where a step's numbered button sits on the map. */
-  const markerPlace = (item: StoryItem): Point => {
+  const markerPlace = (item: StoryItem, beat: number | null = null): Point => {
     if (item.kind === "escape") {
       const run = runs.get(item.index);
       if (!run) return { x: 0, y: 0 };
+      // The sub-steps sit one after another on the trail, from the broken outer ring to the far end.
       const c = run.path.crossings[4];
-      const dx = run.path.end.x - run.path.start.x;
-      const dy = run.path.end.y - run.path.start.y;
-      const d = Math.hypot(dx, dy) || 1;
-      // Just past the broken ring, on the trail: the button must not hide the crack.
-      const push = map ? 22 : 0;
-      return { x: c.x + (dx / d) * push, y: c.y + (dy / d) * push };
+      const t = BEAT_AT[beat ?? 0];
+      return { x: c.x + (run.path.end.x - c.x) * t, y: c.y + (run.path.end.y - c.y) * t };
     }
     const e = storyEvents[item.index];
     if (!e || e.type !== "contact") return { x: 0, y: 0 };
     const shape = shapes.find((s) => s.index === linkIndex(e.link, e.from.lab, e.to));
     if (!shape) return { x: 0, y: 0 };
     const route = routePoints(shape, e.from.lab, e.to);
-    return route[route.length - 1];
+    return item.kind === "held" ? pointAlong(route, HELD_STOP) : route[route.length - 1];
   };
 
   // --- debug ---
@@ -915,14 +914,13 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     for (const s of shapes) if (!pulsing.has(s.index)) links.pulse(s.index, s.labs[0], s.labs[1], null, "crossed");
 
     // Pins under the numbered buttons.
-    const numbered = stepItems(items);
     pins.set(
-      numbered
-        .map((item, i) => ({ item, n: i + 1 }))
-        .filter(({ item }) => story >= markerTick(item) - 4)
-        .map(({ item, n }) => {
-          const at = markerPlace(item);
-          return { x: at.x, y: at.y, tone: "breach" as const, fade: Math.min(1, (story - markerTick(item) + 4) / 6), selected: selected === n };
+      markerSlots(items)
+        .map(({ item, beat }, i) => ({ item, beat, n: i + 1, at: markerTick(item, beat ?? 0) }))
+        .filter(({ at }) => story >= at - 4)
+        .map(({ item, beat, n, at }) => {
+          const p = markerPlace(item, beat);
+          return { x: p.x, y: p.y, tone: item.kind === "held" ? ("held" as const) : ("breach" as const), fade: Math.min(1, (story - at + 4) / 6), selected: selected === n };
         }),
     );
 

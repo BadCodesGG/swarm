@@ -49,7 +49,7 @@ export interface LinkView {
 export interface MarkerView {
   /** The step's number, from 1: the number on the button. */
   n: number;
-  kind: "escape" | "crossing";
+  kind: "escape" | "crossing" | "held";
   lab: LabId;
   tick: number;
   x: number;

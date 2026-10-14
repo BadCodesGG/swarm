@@ -76,7 +76,7 @@ describe("parseWorldParams", () => {
   it("reads a preset, its seed and its lab count", () => {
     const p = parseWorldParams(q("preset=breakout"));
     expect(p.scenario).toEqual(presetScenario("breakout"));
-    expect(p.scenario?.seed).toBe(20);
+    expect(p.scenario?.seed).toBe(140);
     expect(parseWorldParams(q("preset=default-lab&seed=9&labs=4")).scenario).toEqual(presetScenario("default-lab", 9, 4));
     expect(parseWorldParams(q("preset=air-gapped")).scenario?.links).toEqual([]);
     expect(parseWorldParams(q("preset=default-lab&labs=9")).scenario?.labs).toHaveLength(3);

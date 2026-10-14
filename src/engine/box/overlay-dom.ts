@@ -145,7 +145,7 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
           b.addEventListener("click", () => onPick(m.n));
           return b;
         }) as HTMLButtonElement;
-        put(el, `${markerStyle(m.selected, false)};left:${m.x.toFixed(1)}px;top:${m.y.toFixed(1)}px`, String(m.n));
+        put(el, `${markerStyle(m.selected, m.kind === "held")};left:${m.x.toFixed(1)}px;top:${m.y.toFixed(1)}px`, String(m.n));
         el.setAttribute("aria-label", `Marker ${m.n}, tick ${m.tick}${m.step ? `: ${m.step.title}` : ""}`);
         el.setAttribute("aria-pressed", String(m.selected));
       }

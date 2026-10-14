@@ -113,15 +113,15 @@ function reach(p: Point, dx: number, dy: number, r: number): number {
 }
 
 /** The straight run an escapee takes from where it stood, out through every shell. */
-export function escapePath(start: Point, heading: number): EscapePath {
+export function escapePath(start: Point, heading: number, radii: { trail: number; escapee: number } = { trail: TRAIL_RADIUS, escapee: ESCAPEE_RADIUS }): EscapePath {
   const dx = Math.cos(heading);
   const dy = Math.sin(heading);
-  const len = reach(start, dx, dy, TRAIL_RADIUS);
+  const len = reach(start, dx, dy, radii.trail);
   const along = (t: number): Point => ({ x: start.x + dx * t, y: start.y + dy * t });
   const crossings = LAYER_ORDER.map((layer): Crossing => {
     const t = reach(start, dx, dy, RING_RADIUS[layer]);
     return { layer, at: t / len, ...along(t) };
   });
-  const tEscapee = reach(start, dx, dy, ESCAPEE_RADIUS);
+  const tEscapee = reach(start, dx, dy, radii.escapee);
   return { start: { ...start }, end: along(len), escapeeAt: tEscapee / len, escapee: along(tEscapee), crossings };
 }

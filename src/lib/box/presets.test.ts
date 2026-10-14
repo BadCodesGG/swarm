@@ -65,10 +65,13 @@ describe("the breakout preset (first visit)", () => {
   runWorld(world, 300);
   const count = (lab: string) => world.log.filter((e) => e.type === "escape" && e.lab === lab).length;
 
-  it("is pinned to seed 20 with three labs and one shared cache between Kestrel and Halcyon", () => {
-    expect(scenario.seed).toBe(20);
+  it("is pinned to seed 140 with three labs, a shared cache to Halcyon and the model registry to Meridian", () => {
+    expect(scenario.seed).toBe(140);
     expect(scenario.labs.map((l) => l.id)).toEqual(["meridian", "kestrel", "halcyon"]);
-    expect(scenario.links).toEqual([{ kind: "shared-cache", labs: ["kestrel", "halcyon"] }]);
+    expect(scenario.links).toEqual([
+      { kind: "shared-cache", labs: ["kestrel", "halcyon"] },
+      { kind: "model-registry", labs: ["kestrel", "meridian"] },
+    ]);
     expect(layersOn(scenario)[0]).toHaveLength(5);
     expect(scenario.labs[1].config.layers.network).toBe(false);
     expect(scenario.labs[2].config.layers.monitor).toBe(false);
@@ -82,7 +85,26 @@ describe("the breakout preset (first visit)", () => {
     expect(crossed.every((e) => e.type === "contact" && e.from.lab === "kestrel" && e.to === "halcyon" && e.link === "shared-cache")).toBe(true);
     expect(world.labs[2].breached).toBe(true);
     expect(world.labs[0].breached).toBe(false);
-    expect(world.log.some((e) => e.type === "contact" && e.to === "meridian")).toBe(false);
+    const tries = world.log.filter((e) => e.type === "contact" && e.to === "meridian");
+    expect(tries.length).toBeGreaterThanOrEqual(1);
+    expect(tries.every((e) => e.type === "contact" && e.outcome === "held" && e.link === "model-registry" && e.from.lab === "kestrel" && e.layer !== undefined)).toBe(true);
+  });
+
+  it("tells the story in six beats: four escape sub-steps, Halcyon follows, Meridian holds", () => {
+    const steps = breakoutSteps(scenario, [], 300);
+    expect(steps.slice(0, 6).map((s) => [s.n, s.kind, s.lab])).toEqual([
+      [1, "escape", "kestrel"],
+      [2, "escape", "kestrel"],
+      [3, "escape", "kestrel"],
+      [4, "escape", "kestrel"],
+      [5, "crossing", "halcyon"],
+      [6, "held", "meridian"],
+    ]);
+    expect(steps.slice(0, 4).map((s) => s.title)).toEqual(["A token left in a build log", "The allowlist is off", "Between monitor samples", "A message through the shared cache"]);
+    expect(steps[1].verdict).toMatchObject({ layer: "network", result: "off" });
+    expect(steps[4].title).toBe("Halcyon follows");
+    expect(steps[5].title).toBe("Meridian holds");
+    expect(steps[5].verdict?.result).toBe("refused");
   });
 
   it("breakoutSteps numbers the story and the allowlist is among the layers that would have stopped it", () => {

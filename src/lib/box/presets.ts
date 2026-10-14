@@ -17,7 +17,7 @@ export const PRESET_LABEL: Record<Preset, string> = {
 };
 
 export const PRESET_BLURB: Record<Preset, string> = {
-  breakout: "Kestrel's allowlist is off and its monitor samples slowly; Halcyon's monitor is off; Meridian holds.",
+  breakout: "Kestrel's allowlist is off and its monitor samples slowly; Halcyon's monitor is off; Meridian holds the registry.",
   "default-lab": "Every layer on, the labs sharing a few things.",
   "rushed-launch": "Shipped before the monitor and the allowlist were ready: both are off in every lab.",
   "air-gapped": "Every layer on and nothing shared between the labs.",
@@ -34,9 +34,9 @@ function links(ids: readonly LabId[]): Link[] {
 }
 
 /** The seed each preset opens on. "breakout" and "rushed-launch" are pinned to runs that show their story. */
-export const PRESET_SEED: Record<Preset, number> = { breakout: 20, "default-lab": 1812, "rushed-launch": 1812, "air-gapped": 1812, "everything-off": 1812 };
+export const PRESET_SEED: Record<Preset, number> = { breakout: 140, "default-lab": 1812, "rushed-launch": 1812, "air-gapped": 1812, "everything-off": 1812 };
 
-/** The first-visit story: Kestrel leaks, reaches Halcyon through a shared cache, Meridian (no link) holds. Always three labs. */
+/** The first-visit story: Kestrel leaks, reaches Halcyon through a shared cache, and Meridian turns its try on the model registry away. Always three labs. */
 function breakout(seed: number): Scenario {
   const on = (l: LabId, edit: (c: BoxConfig) => BoxConfig): LabSpec => ({ id: l, config: edit(LAB_CONFIG), agents: 80, cast: { ...DEFAULT_CAST, hidden: { ...DEFAULT_CAST.hidden } } });
   const without = (c: BoxConfig, layer: keyof BoxConfig["layers"]): BoxConfig => ({ ...c, layers: { ...c.layers, [layer]: false } });
@@ -47,7 +47,10 @@ function breakout(seed: number): Scenario {
       on("kestrel", (c) => ({ ...without(c, "network"), monitorThreshold: 0.9, auditBudget: 0.005 })),
       on("halcyon", (c) => without(c, "monitor")),
     ],
-    links: [{ kind: "shared-cache", labs: ["kestrel", "halcyon"] }],
+    links: [
+      { kind: "shared-cache", labs: ["kestrel", "halcyon"] },
+      { kind: "model-registry", labs: ["kestrel", "meridian"] },
+    ],
   };
 }
 

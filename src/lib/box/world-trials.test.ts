@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { budgetMs } from "@/lib/test-budget";
 import { presetScenario } from "./presets";
 import { runTrials, trialSeed } from "./trials";
 import { DEFAULT_CONFIG } from "./types";
@@ -79,7 +80,7 @@ describe("runWorldTrials", () => {
     runWorldTrials(presetScenario("default-lab"), 100, 1);
     const three = performance.now() - t1;
     console.log(`100 world trials: ${Math.round(five)} ms (5 labs), ${Math.round(three)} ms (3 labs)`);
-    expect(five).toBeLessThan(6000);
-    expect(three).toBeLessThan(6000);
+    expect(five).toBeLessThan(budgetMs(6000));
+    expect(three).toBeLessThan(budgetMs(6000));
   }, 30_000);
 });

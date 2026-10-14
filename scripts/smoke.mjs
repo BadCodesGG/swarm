@@ -20,6 +20,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { boxSteps } from "./smoke-box.mjs";
@@ -75,8 +76,31 @@ function watch(page) {
  * Opens a route in a fresh context. `scripts()` waits past idle and returns the body of every script
  * the visit loaded, lazy chunks and prefetches included, not only the ones the HTML names.
  */
+/**
+ * With SMOKE_SHOTS=<dir> (CI sets it), every context saves a screenshot and the engine state of each
+ * page as it closes. A step closes its context in its own `finally` before a failure reaches the top,
+ * so this is the only point that still sees the page as it failed; CI uploads the folder on failure.
+ */
+const SHOTS = process.env.SMOKE_SHOTS ?? "";
+let shotCount = 0;
+function keepLastLook(context, route) {
+  const close = context.close.bind(context);
+  context.close = async (...args) => {
+    const n = String(++shotCount).padStart(2, "0");
+    const name = `${n}-${route.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "root"}`;
+    for (const [i, page] of context.pages().entries()) {
+      await mkdir(SHOTS, { recursive: true });
+      await page.screenshot({ path: path.join(SHOTS, `${name}-${i}.png`), timeout: 10_000 }).catch(() => {});
+      const state = await page.evaluate(() => JSON.stringify({ url: location.href, inside: window.__swarm?.inside ?? null }, (_, v) => (typeof v === "function" ? undefined : v))).catch((e) => String(e));
+      await writeFile(path.join(SHOTS, `${name}-${i}.json`), state).catch(() => {});
+    }
+    return close(...args);
+  };
+}
+
 async function openPage(browser, route, contextOptions = {}) {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1, ...contextOptions });
+  if (SHOTS) keepLastLook(context, route);
   const page = await context.newPage();
   const problems = watch(page);
   const bodies = [];

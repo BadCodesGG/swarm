@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { budgetMs } from "@/lib/test-budget";
 import { generateTrace } from "@/lib/trace/generate";
 import { TIERS } from "../shared/quality";
 import { planNebula } from "./nebula-plan";
@@ -49,7 +50,7 @@ describe("a cap-sized trace stays responsive", () => {
     narrate(tl, 129); // the first call may build per-trace indexes
     const ms = time(() => narrate(tl, 129.5));
     // The backward scan took 350 to 890 ms here.
-    expect(ms).toBeLessThan(60);
+    expect(ms).toBeLessThan(budgetMs(60));
   });
 
   it("poses every agent for a frame's three passes (agents, tethers, pick) quickly", () => {
@@ -63,7 +64,7 @@ describe("a cap-sized trace stays responsive", () => {
       featuredAgent(trace, 129.5);
     });
     // Recursing to the root cost about 142 ms a pass.
-    expect(ms).toBeLessThan(60);
+    expect(ms).toBeLessThan(budgetMs(60));
   });
 
   it("draws a frame of trails for a chain that has just returned without re-posing the chain per agent", () => {
@@ -79,7 +80,7 @@ describe("a cap-sized trace stays responsive", () => {
     };
     frame(152);
     const ms = time(() => frame(152.5));
-    expect(ms).toBeLessThan(60);
+    expect(ms).toBeLessThan(budgetMs(60));
   });
 
   it("puts the trail's end where the agent was when it returned", () => {
@@ -97,12 +98,12 @@ describe("the nebula", () => {
     const large = generateTrace(50, "large");
     planNebula(large, 50, TIERS.hi.nebula); // warm the JIT and the per-trace indexes
     const ms = time(() => planNebula(large, 50, TIERS.hi.nebula));
-    expect(ms).toBeLessThan(60);
+    expect(ms).toBeLessThan(budgetMs(60));
   });
 
   it("plans a cap-sized trace within the same budget", () => {
     const capped = capTrace();
     planNebula(capped, 1, TIERS.hi.nebula);
-    expect(time(() => planNebula(capped, 1, TIERS.hi.nebula))).toBeLessThan(60);
+    expect(time(() => planNebula(capped, 1, TIERS.hi.nebula))).toBeLessThan(budgetMs(60));
   });
 });

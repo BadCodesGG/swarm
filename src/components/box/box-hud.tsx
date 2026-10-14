@@ -90,7 +90,7 @@ const LIVE_BUCKET = 25;
  * through `app.setLayer`; trials run off the main thread.
  */
 export function BoxHud({ app }: { app: BoxApp }) {
-  const snap = useBoxSnapshot(app);
+  const [snap, refresh] = useBoxSnapshot(app);
   const overlay = useBoxOverlay(app);
   const { world } = snap;
   const multi = world.labs.length > 1;
@@ -155,6 +155,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
     if (was === undefined || was === on) return;
     app.setLayer(lab, layer, on);
     setFlipLog((f) => applyFlip(f, now.scenario, now.tick, lab, layer, on, was));
+    refresh();
   };
 
   const changeConfig = (next: BoxConfig) => {
@@ -165,6 +166,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
       // Only the lone Box offers sliders; they are the primary lab's own settings.
       for (const layer of LAYER_ORDER) if (cur.layers[layer] !== next.layers[layer]) setFlipLog((f) => applyFlip(f, now.scenario, now.tick, shown.id, layer, next.layers[layer], cur.layers[layer]));
       app.configure(next);
+      refresh();
       return;
     }
     for (const layer of LAYER_ORDER) if (cur.layers[layer] !== next.layers[layer]) setLayerFor(shown.id, layer, next.layers[layer]);
@@ -358,7 +360,13 @@ export function BoxHud({ app }: { app: BoxApp }) {
               <MarkerCard key={selectedMarker.n} n={selectedMarker.n} tick={selectedMarker.tick} step={selectedMarker.step} onClose={() => app.selectStep(null)} onReplayWith={(layer) => rerunWith(selectedMarker.lab, layer)} />
             ) : null}
             {!multi && escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={(layer) => rerunWith(shown.id, layer)} /> : null}
-            <BranchCard scenario={world.scenario} at={viewWorld?.tick ?? viewTick} live={world.tick} world={viewWorld} />
+            <BranchCard
+              scenario={world.scenario}
+              at={viewWorld?.tick ?? viewTick}
+              live={world.tick}
+              world={viewWorld}
+              hint={selectedMarker?.step?.stoppedBy[0] ? { lab: selectedMarker.lab, layer: selectedMarker.step.stoppedBy[0] } : null}
+            />
           </div>
           <div className="flex max-w-full min-w-0 flex-[1_1_260px] flex-col gap-3">
             <OutsidePanel escaped={tally.escaped} />

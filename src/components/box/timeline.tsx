@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { MarkerView } from "@/engine/box/overlay";
 import { clock, LAYER_NAME } from "@/engine/box/explain";
 import { compareBranch, snapshotWorld, type BranchOutcome } from "@/lib/box/branch";
 import { LAYER_ORDER, type LayerId } from "@/lib/box/types";
-import { labOf, type World } from "@/lib/box/world";
+import type { World } from "@/lib/box/world";
 import { LAB_NAME, type LabId, type Scenario } from "@/lib/box/world-types";
 import { button } from "./toolbar";
 
@@ -50,7 +50,8 @@ export function Timeline({
             aria-pressed={selected === m.n}
             aria-label={`Marker ${m.n} at tick ${m.tick}`}
             onClick={() => {
-              onCursor(m.tick);
+              // One tick before the step: a layer switched on at the step's own tick would be too late.
+              onCursor(Math.max(0, m.tick - 1));
               onPick(m.n);
             }}
             className={`absolute top-0 flex h-6 min-w-6 -translate-x-1/2 items-center justify-center rounded-full border px-1 font-mono text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none ${
@@ -94,17 +95,37 @@ const HORIZON_PAD = 60;
  * "Branch here with one switch flipped": rebuild the world at the scrubbed tick, flip one layer on in
  * one lab, run both on to the present (and a little past it) and put the two outcomes side by side.
  */
-export function BranchCard({ scenario, at, live, world }: { scenario: Scenario; at: number; live: number; world: World | null }) {
-  const [lab, setLab] = useState<LabId>(scenario.labs[0].id);
+export function BranchCard({
+  scenario,
+  at,
+  live,
+  world,
+  hint,
+}: {
+  scenario: Scenario;
+  at: number;
+  live: number;
+  world: World | null;
+  /** The lab and layer the selected step says would have stopped it: the branch starts there. */
+  hint?: { lab: LabId; layer: LayerId } | null;
+}) {
+  const [lab, setLab] = useState<LabId | null>(null);
   const [layer, setLayer] = useState<LayerId | "">("");
   const [stored, setResult] = useState<{ from: World | null; at: number; lab: LabId; layer: LayerId; base: BranchOutcome; branch: BranchOutcome } | null>(null);
   const [busy, setBusy] = useState(false);
   // A comparison belongs to the world it was run from; a new tick or world makes it stale.
   const result = stored && stored.from === world ? stored : null;
-  const labId = scenario.labs.some((l) => l.id === lab) ? lab : scenario.labs[0].id;
-  // The layers that are off in that lab at the scrubbed tick: the only ones a flip can change.
-  const off = useMemo(() => (world ? LAYER_ORDER.filter((l) => !labOf(world, labId).state.config.layers[l]) : []), [world, labId]);
-  const chosen: LayerId | null = layer && off.includes(layer) ? layer : (off[0] ?? null);
+  // The layers that are off in a lab at the scrubbed tick: the only ones a flip can change.
+  // The replayed world can lag the scenario by a render (a lab was just added): such a lab has nothing yet.
+  const offIn = (id: LabId): LayerId[] => {
+    const rt = world?.labs.find((l) => l.id === id);
+    return rt ? LAYER_ORDER.filter((l) => !rt.state.config.layers[l]) : [];
+  };
+  // Until the visitor picks one, the first lab that has something to switch on.
+  const has = (id: LabId | null | undefined): id is LabId => !!id && scenario.labs.some((l) => l.id === id);
+  const labId = has(lab) ? lab : has(hint?.lab) ? hint!.lab : (scenario.labs.find((l) => offIn(l.id).length > 0)?.id ?? scenario.labs[0].id);
+  const off = offIn(labId);
+  const chosen: LayerId | null = layer && off.includes(layer) ? layer : hint && hint.lab === labId && off.includes(hint.layer) ? hint.layer : (off[0] ?? null);
   const run = () => {
     if (!chosen) return;
     setBusy(true);

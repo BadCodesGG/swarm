@@ -62,7 +62,7 @@ export function WorldOverlay({
 
   if (!overlay.map) return null;
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden" data-world-overlay>
+    <div className="pointer-events-none fixed inset-0 overflow-hidden" data-world-labels>
       {layout.text.labs.map((t) => {
         const lab = labs.find((l) => l.id === t.id)!;
         const breached = lab.status === "breached";

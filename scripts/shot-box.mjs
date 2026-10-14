@@ -89,19 +89,22 @@ async function attempt(strategy) {
     // The loader fades over 1.2 s once the engine is up.
     await page.waitForTimeout(1600);
     const info = await page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm.box)));
-    info.labels = await page.evaluate(() => ({
-      rings: [...document.querySelectorAll("[data-ring]")].map((e) => e.textContent),
-      markers: [...document.querySelectorAll("[data-marker]")].map((e) => e.textContent),
-      trail: [...document.querySelectorAll("[data-trail]")].map((e) => e.textContent),
+    info.labels = await page.evaluate(() => {
+      // The engine keeps its own hidden copies of the map text while the page draws it.
+      const q = (sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0);
+      return {
+      rings: q("[data-ring]").map((e) => e.textContent),
+      markers: q("[data-marker]").map((e) => e.textContent),
+      trail: q("[data-trail]").map((e) => e.textContent),
       // The map: lab names with their state, link names, the OUTSIDE label and the numbered step buttons.
-      labNames: [...document.querySelectorAll("[data-lab-name]")].map((e) => e.textContent),
-      linkNames: [...document.querySelectorAll("[data-link-name]")].map((e) => e.textContent),
-      outside: [...document.querySelectorAll("[data-outside]")].map((e) => e.textContent),
-      stepMarkers: [...document.querySelectorAll("[data-step-marker]")].map((e) => e.textContent),
+      labNames: q("[data-lab-name]").map((e) => e.textContent),
+      linkNames: q("[data-link-name]").map((e) => e.textContent),
+      outside: q("[data-outside]").map((e) => e.textContent),
+      stepMarkers: q("[data-step-marker]").map((e) => e.textContent),
       points: document.querySelector("svg[data-plot-points]")?.getAttribute("data-plot-points"),
       // Scene labels whose drawn boxes touch, as Chromium lays the text out (not the placer's estimate).
       clashes: (() => {
-        const boxes = [...document.querySelectorAll("[data-ring], [data-marker], [data-trail], [data-lab-name], [data-link-name], [data-outside], [data-step-marker]")]
+        const boxes = q("[data-ring], [data-marker], [data-trail], [data-lab-name], [data-link-name], [data-outside], [data-step-marker]")
           // The page's own scene labels are hidden while the map is up; hidden text overlaps nothing.
           .filter((e) => getComputedStyle(e).visibility !== "hidden")
           .map((e) => ({ text: e.textContent, r: e.getBoundingClientRect() }));
@@ -113,14 +116,15 @@ async function attempt(strategy) {
         });
         return out;
       })(),
-    }));
+      };
+    });
     if (!wantWebGL && !info.isWebGPU) return { ok: false, info, errors, threeWarnings, reason: "fell back to WebGL2" };
     if (actions.includes("branch")) {
       await page.locator('[data-timeline-marker="1"]').click();
       await page.locator("[data-branch]").click();
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
     }
-    if (actions.includes("marker")) await page.locator('[data-step-marker="1"]').click();
+    if (actions.includes("marker") && !(await page.locator("[data-marker-card]").count())) await page.locator('[data-step-marker="1"]:visible').click();
     if (actions.includes("agent")) {
       await page.locator('[data-mode="agent"]').click();
       for (let i = 0; i < 3; i++) {

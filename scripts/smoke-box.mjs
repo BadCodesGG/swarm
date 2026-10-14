@@ -22,6 +22,10 @@
  * Every step fails on any console error, page error or `THREE.` warning (via `openPage`'s watcher).
  */
 
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
 const LAYERS = ["sandbox", "permissions", "network", "monitor", "audit"];
 const READY_TIMEOUT_MS = 60_000;
 /** All layers off: rogues act about every 2 s and need three to five steps. */
@@ -199,7 +203,7 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.waitForFunction(() => window.__swarm.box.markers.length > 0 && window.__swarm.box.markers.every((m) => m.title), null, { timeout: 30_000 });
       const markers = (await box(page)).markers;
       check("the breakout shot numbers its steps", markers.length >= 2, markers.map((m) => `${m.n}:${m.title}`).join(" | "));
-      await page.locator('[data-step-marker="1"]').click();
+      await page.locator('[data-step-marker="1"]:visible').click();
       const cardOne = page.locator('[data-marker-card="1"]');
       await cardOne.waitFor({ timeout: 5_000 });
       const text = await cardOne.innerText();
@@ -217,7 +221,7 @@ export function boxSteps({ check, openPage, software = false }) {
       const rows = await page.locator("[data-branch-result] tbody tr").allInnerTexts();
       check("a branch from a marker shows both outcomes side by side", rows.length === 4, rows.join(" / ").replace(/\s+/g, " "));
 
-      await page.locator('[data-step-marker="1"]').click();
+      // The pin on the timeline opened step 1's card too.
       const replay = page.locator("[data-replay-with]").first();
       await replay.waitFor({ timeout: 5_000 });
       const layer = await replay.getAttribute("data-replay-with");
@@ -232,4 +236,51 @@ export function boxSteps({ check, openPage, software = false }) {
   }
 
   return [stepBox, stepPlayground, stepDebrief, stepWebGL];
+}
+
+// --- `node scripts/smoke-box.mjs [--port=3134]`: only Act 2's steps, against the production build ---
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const { chromium } = await import("playwright");
+  const { ROOT, startDevServer, stopDevServer, waitForServer } = await import("./lib/dev-server.mjs");
+  const port = Number((process.argv.find((a) => a.startsWith("--port=")) ?? "--port=3134").slice(7));
+  const base = `http://localhost:${port}`;
+  const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
+  const check = (label, ok, detail = "") => {
+    if (!ok) throw new Error(`${label}${detail ? ` (${detail})` : ""}`);
+    console.log(`PASS  ${label}${detail ? ` (${detail})` : ""}`);
+  };
+  const openPage = async (browser, route) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    const problems = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") problems.push(m.text());
+      else if (m.text().includes("THREE.")) problems.push(`warning: ${m.text()}`);
+    });
+    page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+    const response = await page.goto(`${base}${route}`, { waitUntil: "load" });
+    return { context, page, problems, response };
+  };
+  if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
+    console.error("FAIL  no production build: run `npm run build` first");
+    process.exit(1);
+  }
+  let code = 1;
+  const server = startDevServer(port, "start");
+  try {
+    await waitForServer(base);
+    const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS });
+    try {
+      for (const step of boxSteps({ check, openPage })) await step(browser);
+    } finally {
+      await browser.close();
+    }
+    console.log("BOX SMOKE OK");
+    code = 0;
+  } catch (err) {
+    console.error(`box smoke failed: ${err.message}`);
+  } finally {
+    stopDevServer(server);
+  }
+  process.exit(code);
 }

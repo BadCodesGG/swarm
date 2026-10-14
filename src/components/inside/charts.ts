@@ -49,8 +49,8 @@ export interface ToolRow {
   share: number;
 }
 
-/** The used tool categories, biggest first, at most `max` (five fit a panel). */
-export function toolRows(mix: Record<ToolCategory, number>, max = 5): ToolRow[] {
+/** The used tool categories, biggest first, at most `max` (four fit a panel). */
+export function toolRows(mix: Record<ToolCategory, number>, max = 4): ToolRow[] {
   const rows = (Object.entries(mix) as [ToolCategory, number][]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, max);
   const top = rows[0]?.[1] ?? 0;
   return rows.map(([key, count]) => ({ key, count, share: top > 0 ? count / top : 0 }));
@@ -74,4 +74,12 @@ export function waitingShare(waiting: number, total: number): string {
   if (!(total > 0) || !(waiting > 0)) return "0%";
   const p = (waiting / total) * 100;
   return p < 1 ? "<1%" : `${Math.round(p)}%`;
+}
+
+/**
+ * A log line without its leading agent name: the engine's text starts with the name ("Sonnet 11 called
+ * Bash") and the panel prints the name in its own colour before it.
+ */
+export function logText(name: string, text: string): string {
+  return text.startsWith(`${name} `) ? text.slice(name.length + 1) : text;
 }

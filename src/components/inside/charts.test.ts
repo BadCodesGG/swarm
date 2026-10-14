@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { waitingShare, arcPath, callDuration, radarPoints, resultSize, sparkPath, toolRows } from "./charts";
+import { logText, waitingShare, arcPath, callDuration, radarPoints, resultSize, sparkPath, toolRows } from "./charts";
 
 describe("radarPoints", () => {
   it("puts the biggest share on its axis at the radius", () => {
@@ -31,10 +31,10 @@ describe("arcPath", () => {
 });
 
 describe("toolRows", () => {
-  it("lists the used categories biggest first, at most five", () => {
+  it("lists the used categories biggest first, at most four", () => {
     const mix = { web: 4, shell: 32, files: 5, edit: 7, agents: 6, advisor: 0, plan: 1, mcp: 2, other: 3 };
     const rows = toolRows(mix);
-    expect(rows.map((r) => r.key)).toEqual(["shell", "edit", "agents", "files", "web"]);
+    expect(rows.map((r) => r.key)).toEqual(["shell", "edit", "agents", "files"]);
     expect(rows[0].share).toBe(1);
   });
 });
@@ -56,5 +56,14 @@ describe("waitingShare", () => {
     expect(waitingShare(0.2, 100)).toBe("<1%");
     expect(waitingShare(0, 100)).toBe("0%");
     expect(waitingShare(5, 0)).toBe("0%");
+  });
+});
+
+describe("logText", () => {
+  it("drops the agent name the text starts with, only when it does", () => {
+    expect(logText("Sonnet 11", "Sonnet 11 called Bash")).toBe("called Bash");
+    expect(logText("Orchestrator", "Orchestrator started Fable 3")).toBe("started Fable 3");
+    expect(logText("Sonnet 11", "Bash failed for Sonnet 11")).toBe("Bash failed for Sonnet 11");
+    expect(logText("Sonnet 1", "Sonnet 11 called Bash")).toBe("Sonnet 11 called Bash");
   });
 });

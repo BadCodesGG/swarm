@@ -59,7 +59,7 @@ export function planLanes(lanes: readonly AgentLane[], toFrac: (t: number) => nu
 
 /** CSS px of canvas height: about 2 px a lane, kept between a thin strip and a bounded block. */
 export function laneHeight(rows: number): number {
-  return Math.min(48, Math.max(14, rows * 2));
+  return Math.min(34, Math.max(12, rows * 2));
 }
 
 export type LaneHit = { type: "mark"; mark: LaneMark } | { type: "box"; box: LaneBox };

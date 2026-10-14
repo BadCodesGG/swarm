@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { cycleAgent, type StationCategory } from "@/engine/inside/layout";
 import AudioToggle from "@/components/audio-toggle";
-import { BankBar, BankPanels } from "./bank";
+import { BankBar, BankPanels, BankToggle } from "./bank";
 import { Counters } from "./counters";
 import { AgentBar, DetailCard } from "./detail-card";
 import { KeyPanel } from "./key-panel";
@@ -349,6 +349,7 @@ export function Hud({ app }: { app: InsideApp }) {
           <div className="min-w-0 flex-1">
             <StageStrip app={app} />
           </div>
+          <BankToggle open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId} />
           {rosterToggle}
           <CopyMoment app={app} />
         </div>
@@ -374,8 +375,7 @@ export function Hud({ app }: { app: InsideApp }) {
       </div>
 
       <div ref={bottom} className="flex flex-col gap-2">
-        <BankBar app={app} open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId} />
-        {bankOpen ? <BankPanels app={app} id={bankId} onStation={openStation} /> : null}
+        {bankOpen ? <BankPanels app={app} id={bankId} onStation={openStation} /> : <BankBar app={app} open={false} hideToggle onToggle={() => setBankPref(true)} controls={bankId} />}
         <Timeline app={app} narrow={false} nextAgentRef={nextAgent} onNextAgent={() => cycle(1)} />
       </div>
       {status}

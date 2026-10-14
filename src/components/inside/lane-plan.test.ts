@@ -46,9 +46,9 @@ describe("planLanes", () => {
 
 describe("laneHeight", () => {
   it("grows with the agents and stays within a band", () => {
-    expect(laneHeight(1)).toBe(14);
-    expect(laneHeight(18)).toBe(36);
-    expect(laneHeight(120)).toBe(48);
+    expect(laneHeight(1)).toBe(12);
+    expect(laneHeight(12)).toBe(24);
+    expect(laneHeight(120)).toBe(34);
   });
 });
 

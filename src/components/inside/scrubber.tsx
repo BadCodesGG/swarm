@@ -77,11 +77,11 @@ const Lane = memo(function Lane({ spec, played }: { spec: LaneSpec; played: numb
 });
 
 const specs = (lanes: Lanes, only: "tools" | "all"): LaneSpec[] => {
-  const tools: LaneSpec = { label: "TOOLS", labelClass: "text-muted", heightPx: only === "tools" ? 26 : 24, counts: lanes.tools, color: () => "var(--muted)" };
+  const tools: LaneSpec = { label: "TOOLS", labelClass: "text-muted", heightPx: only === "tools" ? 26 : 20, counts: lanes.tools, color: () => "var(--muted)" };
   if (only === "tools") return [tools];
   return [
-    { label: "PROMPTS", labelClass: "text-warn", heightPx: 18, counts: lanes.prompts, color: () => "var(--opus)" },
-    { label: "AGENTS", labelClass: "text-[#c9b8ff]", heightPx: 18, counts: lanes.agents, color: (i) => MODEL_VARS[lanes.agentModel[i]] },
+    { label: "PROMPTS", labelClass: "text-warn", heightPx: 14, counts: lanes.prompts, color: () => "var(--opus)" },
+    { label: "AGENTS", labelClass: "text-[#c9b8ff]", heightPx: 14, counts: lanes.agents, color: (i) => MODEL_VARS[lanes.agentModel[i]] },
     tools,
   ];
 };
@@ -242,7 +242,7 @@ export function Timeline({
   return (
     <section
       aria-label="Timeline"
-      className="pointer-events-auto flex flex-wrap items-stretch gap-x-5 gap-y-3.5 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-[18px] py-3.5 backdrop-blur-[10px]"
+      className="pointer-events-auto flex flex-wrap items-stretch gap-x-5 gap-y-3 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-[18px] py-2.5 backdrop-blur-[10px]"
     >
       <div className="flex flex-col justify-between gap-2.5">
         <div className="flex items-center gap-3">
@@ -259,7 +259,7 @@ export function Timeline({
               type="button"
               aria-pressed={rate === r}
               onClick={() => app.setRate(r)}
-              className={`min-h-11 min-w-[52px] rounded-lg border-0 outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${
+              className={`min-h-9 min-w-[52px] rounded-lg border-0 outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${
                 rate === r ? "bg-control font-semibold text-ink-strong" : "bg-transparent text-label hover:text-ink"
               }`}
             >

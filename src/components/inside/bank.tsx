@@ -7,7 +7,7 @@ import { buildInstruments, type LogLine } from "@/engine/inside/instruments";
 import { STATIONS, type StationCategory } from "@/engine/inside/layout";
 import { agentName, rosterAt } from "@/engine/inside/roster";
 import type { ModelFamily, ToolCategory } from "@/lib/trace/types";
-import { arcPath, radarPoints, sparkPath, toolRows } from "./charts";
+import { arcPath, logText, radarPoints, sparkPath, toolRows } from "./charts";
 import { lanesOf } from "./trace-memo";
 import { useEngineSnapshot, useTimeline } from "./use-engine";
 
@@ -57,7 +57,7 @@ function useBank(app: InsideApp): BankSnap {
     const agents = rosterAt(tl, t)
       .filter((e) => e.id > 0 && e.status === "working")
       .sort((a, b) => b.tokens - a.tokens)
-      .slice(0, 5)
+      .slice(0, 4)
       .map((e) => ({ id: e.id, label: e.label, model: e.model, tokens: e.tokens }));
     const data = {
       t,
@@ -69,7 +69,7 @@ function useBank(app: InsideApp): BankSnap {
       toolMix,
       modelMix: ins.modelMixAt(t),
       agents,
-      log: ins.logAt(t, 6),
+      log: ins.logAt(t, 5),
     };
     // The playhead alone does not change the picture (the sparklines' "now" marker aside, which a
     // 10 Hz poll catches by its own value changing): the key is the numbers the panels print.
@@ -79,7 +79,7 @@ function useBank(app: InsideApp): BankSnap {
   return useEngineSnapshot(read, (a, b) => a.key === b.key, BANK_MS);
 }
 
-const frame = "pointer-events-auto flex h-[132px] min-w-0 flex-col gap-1.5 overflow-hidden rounded-[10px] border border-panel-border bg-panel px-3 py-2.5 font-mono";
+const frame = "pointer-events-auto flex h-[104px] min-w-0 flex-col gap-1 overflow-hidden rounded-[10px] border border-panel-border bg-panel px-2.5 py-2 font-mono";
 
 function Panel({ title, value, valueClass = "", children, label }: { title: string; value?: ReactNode; valueClass?: string; children: ReactNode; label: string }) {
   return (
@@ -109,8 +109,8 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
   const radar = radarPoints(
     RADAR.map((m) => s.modelMix[m]),
     100,
-    47,
-    30,
+    38,
+    22,
   );
   const pct = (m: ModelFamily) => (totalTokens > 0 ? Math.round((s.modelMix[m] / totalTokens) * 100) : 0);
   const lastCompaction = [...compactions].reverse().find((c) => c.t <= s.t);
@@ -119,7 +119,7 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
   return (
     <div id={id} data-bank className={`grid gap-2 ${narrow ? "grid-cols-2" : "grid-cols-6"}`}>
       <Panel title="AGENTS" label="Agents running" value={`${s.live} live`} valueClass="text-haiku">
-        <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[10px] text-body">
+        <ul className="m-0 flex list-none flex-col gap-[3px] p-0 text-[10px] text-body">
           {s.agents.length === 0 ? <li className="text-faint">none running</li> : null}
           {s.agents.map((a) => (
             <li key={a.id} className="flex items-center gap-1.5">
@@ -132,7 +132,7 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
       </Panel>
 
       <Panel title="TOOL MIX" label="Tool mix" value={`${s.calls} calls`}>
-        <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[10px] text-muted">
+        <ul className="m-0 flex list-none flex-col gap-[3px] p-0 text-[10px] text-muted">
           {rows.length === 0 ? <li className="text-faint">no calls yet</li> : null}
           {rows.map((r) => {
             const body = (
@@ -170,41 +170,41 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
         <svg
           role="img"
           aria-label={totalTokens > 0 ? `Model mix: ${RADAR.map((m) => `${MODEL_NAMES[m]} ${pct(m)}%`).join(", ")}` : "Model mix: no tokens yet"}
-          viewBox="0 0 200 94"
+          viewBox="0 0 200 70"
           className="min-h-0 w-full grow"
         >
-          <polygon points="100,17 130,47 100,77 70,47" fill="none" stroke="var(--rule)" strokeWidth="0.6" />
-          <polygon points="100,32 115,47 100,62 85,47" fill="none" stroke="var(--rule)" strokeWidth="0.4" />
-          <line x1="100" y1="17" x2="100" y2="77" stroke="var(--rule)" strokeWidth="0.4" />
-          <line x1="70" y1="47" x2="130" y2="47" stroke="var(--rule)" strokeWidth="0.4" />
+          <polygon points="100,16 122,38 100,60 78,38" fill="none" stroke="var(--rule)" strokeWidth="0.6" />
+          <polygon points="100,27 111,38 100,49 89,38" fill="none" stroke="var(--rule)" strokeWidth="0.4" />
+          <line x1="100" y1="16" x2="100" y2="60" stroke="var(--rule)" strokeWidth="0.4" />
+          <line x1="78" y1="38" x2="122" y2="38" stroke="var(--rule)" strokeWidth="0.4" />
           {totalTokens > 0 ? (
             <>
               <polygon points={radar.map((p) => `${p.x},${p.y}`).join(" ")} fill="rgba(79,216,235,0.2)" stroke="var(--sonnet)" strokeWidth="1.2" />
               {radar.map((p, i) => (
-                <circle key={RADAR[i]} cx={p.x} cy={p.y} r="2.4" fill={MODEL_VARS[RADAR[i]]} />
+                <circle key={RADAR[i]} cx={p.x} cy={p.y} r="2.2" fill={MODEL_VARS[RADAR[i]]} />
               ))}
             </>
           ) : null}
-          <text x="100" y="10" textAnchor="middle" fontSize="9" fill="var(--opus)">
+          <text x="100" y="9" textAnchor="middle" fontSize="9" fill="var(--opus)">
             OPUS {pct("opus")}
           </text>
-          <text x="136" y="50" fontSize="9" fill="var(--sonnet)">
+          <text x="128" y="41" fontSize="9" fill="var(--sonnet)">
             SONNET {pct("sonnet")}
           </text>
-          <text x="100" y="90" textAnchor="middle" fontSize="9" fill="var(--haiku)">
+          <text x="100" y="69" textAnchor="middle" fontSize="9" fill="var(--haiku)">
             HAIKU {pct("haiku")}
           </text>
-          <text x="64" y="50" textAnchor="end" fontSize="9" fill="var(--fable)">
+          <text x="72" y="41" textAnchor="end" fontSize="9" fill="var(--fable)">
             FABLE {pct("fable")}
           </text>
         </svg>
       </Panel>
 
       <Panel title="TOKENS / MIN" label="Tokens per minute" value={compact(s.rate)} valueClass="text-ink-strong">
-        <svg role="img" aria-label={`Token rate across the run, now ${compact(s.rate)} a minute`} viewBox="0 0 200 84" preserveAspectRatio="none" className="min-h-0 w-full grow">
-          <path d={`${sparkPath(rateSeries, 200, 80)}L200 80L0 80Z`} fill="rgba(79,216,235,0.1)" stroke="none" />
-          <path d={sparkPath(rateSeries, 200, 80)} fill="none" stroke="var(--sonnet)" strokeWidth="1.3" vectorEffect="non-scaling-stroke" />
-          <line x1={nowX} y1="0" x2={nowX} y2="84" stroke="var(--opus)" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
+        <svg role="img" aria-label={`Token rate across the run, now ${compact(s.rate)} a minute`} viewBox="0 0 200 70" preserveAspectRatio="none" className="min-h-0 w-full grow">
+          <path d={`${sparkPath(rateSeries, 200, 66, 2)}L200 68L0 68Z`} fill="rgba(79,216,235,0.1)" stroke="none" />
+          <path d={sparkPath(rateSeries, 200, 66, 2)} fill="none" stroke="var(--sonnet)" strokeWidth="1.3" vectorEffect="non-scaling-stroke" />
+          <line x1={nowX} y1="0" x2={nowX} y2="70" stroke="var(--opus)" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
         </svg>
       </Panel>
 
@@ -212,34 +212,33 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
         <svg
           role="img"
           aria-label={`Orchestrator context ${ctxPct} percent of the window${lastCompaction ? `, compacted from ${compact(lastCompaction.preTokens)} to ${compact(lastCompaction.postTokens)}` : ""}`}
-          viewBox="0 0 200 94"
+          viewBox="0 0 200 70"
           className="min-h-0 w-full grow"
         >
-          <path d={arcPath(100, 36, 28, 1)} fill="none" stroke="var(--control)" strokeWidth="6" strokeLinecap="round" />
-          <path d={arcPath(100, 36, 28, s.context.fraction)} fill="none" stroke={s.context.fraction >= 0.8 ? "var(--escape-text)" : "var(--opus)"} strokeWidth="6" strokeLinecap="round" />
-          <text x="100" y="42" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--ink-strong)">
+          <path d={arcPath(42, 40, 26, 1)} fill="none" stroke="var(--control)" strokeWidth="5" strokeLinecap="round" />
+          <path d={arcPath(42, 40, 26, s.context.fraction)} fill="none" stroke={s.context.fraction >= 0.8 ? "var(--escape-text)" : "var(--opus)"} strokeWidth="5" strokeLinecap="round" />
+          <text x="42" y="44" textAnchor="middle" fontSize="15" fontWeight="700" fill="var(--ink-strong)">
             {ctxPct}%
           </text>
-          <text x="100" y="51" textAnchor="middle" fontSize="6.5" fill="var(--label)">
-            OF WINDOW
-          </text>
-          <path d={sparkPath(ctxSeries, 200, 18, 62)} fill="none" stroke="var(--label)" strokeWidth="0.9" />
-          {compactions.map((c) => (
-            <line key={c.t} x1={(c.t / duration) * 200} y1="60" x2={(c.t / duration) * 200} y2="82" stroke="#c9b8ff" strokeWidth="1" strokeDasharray="2 2" />
-          ))}
-          <line x1={nowX} y1="60" x2={nowX} y2="82" stroke="var(--opus)" strokeWidth="0.8" />
-          <text x="100" y="92" textAnchor="middle" fontSize="8.5" fill={lastCompaction ? "#c9b8ff" : "var(--faint)"}>
-            {lastCompaction ? `compacted ${compact(lastCompaction.preTokens)} to ${compact(lastCompaction.postTokens)}` : compactions.length > 0 ? "compacts later in the run" : "no compaction in this run"}
-          </text>
+          <g transform="translate(92 0)">
+            <path d={sparkPath(ctxSeries, 108, 38, 8)} fill="none" stroke="var(--label)" strokeWidth="0.9" />
+            {compactions.map((c) => (
+              <line key={c.t} x1={(c.t / duration) * 108} y1="4" x2={(c.t / duration) * 108} y2="50" stroke="#c9b8ff" strokeWidth="1" strokeDasharray="2 2" />
+            ))}
+            <line x1={(nowX / 200) * 108} y1="4" x2={(nowX / 200) * 108} y2="50" stroke="var(--opus)" strokeWidth="0.8" />
+            <text x="54" y="64" textAnchor="middle" fontSize="8" fill={lastCompaction ? "#c9b8ff" : "var(--faint)"}>
+              {lastCompaction ? `compacted ${compact(lastCompaction.preTokens)} to ${compact(lastCompaction.postTokens)}` : compactions.length > 0 ? "compacts later" : "no compaction"}
+            </text>
+          </g>
         </svg>
       </Panel>
 
       <Panel title="LOG" label="Live log" value="live">
-        <ul className="m-0 flex list-none flex-col gap-1 overflow-hidden p-0 text-[10px] text-muted" data-log>
+        <ul className="m-0 flex list-none flex-col gap-[2px] overflow-hidden p-0 text-[10px] text-muted" data-log>
           {s.log.length === 0 ? <li className="text-faint">nothing yet</li> : null}
           {s.log.map((l, i) => (
             <li key={`${l.t}-${i}`} className="truncate">
-              <span className="text-rule">{shortClock(l.t)}</span> <span style={{ color: MODEL_VARS[tl.trace.agents[l.agent]?.model ?? "other"] }}>{agentName(tl.trace, l.agent)}</span> {l.text}
+              <span className="text-rule">{shortClock(l.t)}</span> <span style={{ color: MODEL_VARS[tl.trace.agents[l.agent]?.model ?? "other"] }}>{agentName(tl.trace, l.agent)}</span> {logText(agentName(tl.trace, l.agent), l.text)}
             </li>
           ))}
         </ul>
@@ -248,26 +247,33 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
   );
 }
 
-/** The bank's bar: the toggle and, while collapsed, one row of numbers; `children` (the toolbar) sit at the right. */
-export function BankBar({ app, open, onToggle, children, controls }: { app: InsideApp; open: boolean; onToggle: () => void; children?: ReactNode; controls: string }) {
+/** The button that opens and closes the six panels. */
+export function BankToggle({ open, onToggle, controls }: { open: boolean; onToggle: () => void; controls: string }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={controls}
+      data-bank-toggle
+      onClick={onToggle}
+      className="pointer-events-auto flex min-h-8 shrink-0 items-center gap-1.5 rounded-md border border-panel-border bg-panel px-2.5 font-mono text-[10px] tracking-[0.14em] text-label outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
+    >
+      INSTRUMENTS
+      <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true" className={open ? "rotate-180" : ""}>
+        <path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+/** The collapsed bank: one row of numbers, with the toggle (unless it lives elsewhere) and `children` (the toolbar). */
+export function BankBar({ app, open, onToggle, children, controls, hideToggle = false }: { app: InsideApp; open: boolean; onToggle: () => void; children?: ReactNode; controls: string; hideToggle?: boolean }) {
   const s = useBank(app);
   const tl = useTimeline(app);
   const last = s.log[s.log.length - 1];
   return (
     <div className="flex min-w-0 items-center gap-x-4 gap-y-1.5 font-mono max-sm:flex-wrap max-sm:gap-x-2">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={controls}
-        data-bank-toggle
-        onClick={onToggle}
-        className="pointer-events-auto flex min-h-8 shrink-0 items-center gap-1.5 rounded-md border border-panel-border bg-panel px-2.5 text-[10px] tracking-[0.14em] text-label outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
-      >
-        INSTRUMENTS
-        <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true" className={open ? "rotate-180" : ""}>
-          <path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      </button>
+      {hideToggle ? null : <BankToggle open={open} onToggle={onToggle} controls={controls} />}
       {open ? null : (
         <dl className="m-0 flex min-w-0 items-baseline gap-x-3.5 overflow-hidden whitespace-nowrap text-[11px] max-sm:order-last max-sm:basis-full max-sm:justify-between" aria-label="Instruments, summary" data-bank-summary>
           <Num label="LIVE" value={`${s.live}`} />
@@ -276,7 +282,7 @@ export function BankBar({ app, open, onToggle, children, controls }: { app: Insi
           <Num label="CTX" value={`${Math.round(s.context.fraction * 100)}%`} />
           {last ? (
             <span className="hidden min-w-0 max-w-[34ch] truncate text-faint lg:inline">
-              {clock(last.t)} {agentName(tl.trace, last.agent)} {last.text}
+              {clock(last.t)} {agentName(tl.trace, last.agent)} {logText(agentName(tl.trace, last.agent), last.text)}
             </span>
           ) : null}
         </dl>

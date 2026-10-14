@@ -3,8 +3,8 @@
  *
  * INFERRED. The trace has no notion of a stage. This is a heuristic read off the tool category mix
  * over time, and the HUD must label it as inferred. The run is cut into equal time windows; each
- * window scores against each stage by the share of its calls in the categories that stage usually
- * uses; then the best non-decreasing assignment of stages to windows is found (a stage never
+ * window scores against each stage by how far its share of calls in the categories that stage usually
+ * uses rises above those categories' share over the whole run; then the best non-decreasing assignment of stages to windows is found (a stage never
  * recurs, and switching costs a little so stages do not flicker). The result is contiguous, in
  * order, covers [0, duration] and has at most six stages; a stage nothing pointed to is absent.
  * Pure.
@@ -44,29 +44,42 @@ const AFFINITY: Record<StageId, Partial<Record<ToolCategory, number>>> = {
 
 export const STAGE_WINDOWS = 24;
 /** Cost of moving to the next stage, so one odd window does not split a stage. */
-const SWITCH_COST = 0.15;
-/** The first window leans PLAN and the last leans DELIVER: a run opens by orienting and closes by reporting. */
-const EDGE_BONUS = 0.4;
+const SWITCH_COST = 0.04;
+/** The first windows lean PLAN and the last lean DELIVER: a run opens by orienting and closes by reporting. */
+const EDGE_BONUS = 0.06;
+const EDGE_WINDOWS = 2;
+/** A stage shorter than this many windows is folded into its neighbour. */
+const MIN_WINDOWS = 2;
 
 export function inferStages(trace: SessionTrace, windows = STAGE_WINDOWS): Stage[] {
   const duration = trace.duration;
   if (!(duration > 0) || windows < 1) return [];
   const mix = Array.from({ length: windows }, () => new Map<ToolCategory, number>());
+  const overall = new Map<ToolCategory, number>();
+  let all = 0;
   for (const e of trace.events) {
     if (e.kind !== "call" && e.kind !== "spawn") continue;
     const w = Math.min(windows - 1, Math.max(0, Math.floor((e.t / duration) * windows)));
     const c = e.category ?? "other";
     mix[w].set(c, (mix[w].get(c) ?? 0) + 1);
+    overall.set(c, (overall.get(c) ?? 0) + 1);
+    all++;
   }
   const S = STAGE_IDS.length;
+  // A window is scored by how far each category's share sits above that category's share over the
+  // whole run, so a run that is shell-heavy throughout does not read as VERIFY everywhere.
   const score = mix.map((m, w) => {
     let total = 0;
     for (const n of m.values()) total += n;
     return STAGE_IDS.map((id, s) => {
       let v = 0;
-      if (total > 0) for (const [c, n] of m) v += ((AFFINITY[id][c] ?? 0) * n) / total;
-      if (w === 0 && s === 0) v += EDGE_BONUS;
-      if (w === windows - 1 && s === S - 1) v += EDGE_BONUS;
+      if (total > 0 && all > 0) {
+        for (const [c, weight] of Object.entries(AFFINITY[id]) as [ToolCategory, number][]) {
+          v += weight * ((m.get(c) ?? 0) / total - (overall.get(c) ?? 0) / all);
+        }
+      }
+      if (w < EDGE_WINDOWS && s === 0) v += EDGE_BONUS;
+      if (w >= windows - EDGE_WINDOWS && s === S - 1) v += EDGE_BONUS;
       return v;
     });
   });
@@ -92,6 +105,17 @@ export function inferStages(trace: SessionTrace, windows = STAGE_WINDOWS): Stage
   for (let w = windows - 1; w >= 0; w--) {
     label[w] = s;
     s = from[w][s];
+  }
+
+  // Fold a stage shorter than MIN_WINDOWS into the stage before it (the first one into the next).
+  for (let w = 0; w < windows; ) {
+    let e = w;
+    while (e + 1 < windows && label[e + 1] === label[w]) e++;
+    if (e - w + 1 < MIN_WINDOWS && windows > MIN_WINDOWS) {
+      const into = w > 0 ? label[w - 1] : e + 1 < windows ? label[e + 1] : label[w];
+      for (let k = w; k <= e; k++) label[k] = into;
+    }
+    w = e + 1;
   }
 
   const stages: Stage[] = [];

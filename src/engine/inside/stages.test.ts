@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createTraceBuilder } from "@/lib/trace/build";
+import { feed, fixtureFiles } from "@/lib/trace/__fixtures__/read";
 import { generateTrace } from "@/lib/trace/generate";
 import { agent, trace } from "@/lib/trace/test-trace";
 import type { ToolCategory, TraceEvent } from "@/lib/trace/types";
@@ -22,6 +24,34 @@ describe("inferStages", () => {
       const t = generateTrace(3, size);
       expectCovering(inferStages(t), t.duration);
     }
+  });
+
+  it("finds at least three distinct stages in every sample, small to large, seeds 1 and 50", () => {
+    for (const size of ["small", "medium", "large"] as const) {
+      for (const seed of [1, 50]) {
+        const t = generateTrace(seed, size);
+        const stages = inferStages(t);
+        expectCovering(stages, t.duration);
+        expect(new Set(stages.map((x) => x.id)).size, `${size} ${seed}: ${stages.map((x) => x.id).join(" ")}`).toBeGreaterThanOrEqual(3);
+        expect(stages.length).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  it("finds at least two stages in the real-looking fixture session", () => {
+    const b = createTraceBuilder();
+    feed(b, fixtureFiles());
+    const r = b.finish();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const stages = inferStages(r.trace);
+    expectCovering(stages, r.trace.duration);
+    expect(stages.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("gives every stage at least two windows of the run", () => {
+    const t = generateTrace(1, "medium");
+    for (const s of inferStages(t)) expect(s.end - s.start).toBeGreaterThanOrEqual((2 / 24) * t.duration - 1e-6);
   });
 
   it("follows the tool mix: planning, then reading, then editing, then running", () => {

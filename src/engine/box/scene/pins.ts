@@ -1,7 +1,7 @@
 /**
  * Where each breakout step happened: a ring of light under the numbered button the page draws
  * there (pink for a breach, green for a held reach), with a slow pulse running out of it. The
- * ring is sized in screen px so it sits under a 44 px button at any zoom.
+ * ring is sized in screen px so it sits under a 36 px button at any zoom.
  */
 
 import { Mesh, MeshBasicNodeMaterial, type Scene } from "three/webgpu";
@@ -11,8 +11,8 @@ import { dynamicAttribute, premultiplied, quadGeometry, stroke, type BoxUniforms
 export const PIN_CAPACITY = 16;
 /** Half the quad's side, CSS px. */
 const HALF_PX = 54;
-/** The ring's radius, CSS px: just outside a 44 px button. */
-const RING_PX = 25;
+/** The ring's radius, CSS px: just outside a 36 px button. */
+const RING_PX = 21;
 
 export interface Pin {
   x: number;

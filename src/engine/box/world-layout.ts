@@ -8,13 +8,16 @@
 import { LAB_NAME, LINK_LABEL, type LabId, type Link, type LinkKind } from "@/lib/box/world-types";
 import { escapeHeading, escapePath, RING_RADIUS, type EscapePath, type Point } from "./layout";
 
-/** Lab-local units to world units once there is more than one lab. */
-export const LAB_SCALE = 0.45;
-/** A lab's outer ring, world units, once there is more than one lab. */
+/** Lab-local units to world units for two or three labs: big enough that the three fill the scene slot. */
+export const LAB_SCALE = 0.6;
+/** The same for four or five labs, which need the room. */
+export const CROWDED_SCALE = 0.45;
+/** A lab's outer ring, world units, at `LAB_SCALE`. */
 export const LAB_OUTER = RING_RADIUS.audit * LAB_SCALE;
-/** Local radii the world trails use: the trail runs out past the labs' edge, the escapee parks short of its end. */
-export const WORLD_TRAIL_RADIUS = 430;
-export const WORLD_ESCAPEE_RADIUS = 395;
+/** World units an escape trail runs out past a lab's outer ring (room for its four numbered markers), at each scale. */
+const TRAIL_BEYOND = { wide: 140, crowded: 90 } as const;
+/** World units the escapee parks short of its trail's far end. */
+const ESCAPEE_SHORT = 20;
 
 export interface LabFrame {
   id: LabId;
@@ -25,7 +28,7 @@ export interface LabFrame {
   scale: number;
 }
 
-/** One fixed slot per lab id; no two are closer than two outer rings plus a gap. */
+/** One fixed slot per lab id for four or five labs; no two are closer than two outer rings plus a gap. */
 export const SLOTS: Readonly<Record<LabId, Point>> = {
   meridian: { x: -240, y: 90 },
   kestrel: { x: 220, y: 90 },
@@ -34,10 +37,26 @@ export const SLOTS: Readonly<Record<LabId, Point>> = {
   vesper: { x: 480, y: -150 },
 };
 
+/** The slots for two or three labs: wider apart and bigger, the third below the pair, so the trio fills a 3:2 slot. */
+export const WIDE_SLOTS: Readonly<Partial<Record<LabId, Point>>> = {
+  meridian: { x: -280, y: 20 },
+  kestrel: { x: 280, y: 20 },
+  halcyon: { x: 0, y: -250 },
+};
+
+const isWide = (ids: readonly LabId[]) => ids.length <= 3 && ids.every((id) => WIDE_SLOTS[id]);
+
 export function labFrames(ids: readonly LabId[]): LabFrame[] {
   if (ids.length === 1) return [{ id: ids[0], x: 0, y: 0, scale: 1 }];
-  return ids.map((id) => ({ id, ...SLOTS[id], scale: LAB_SCALE }));
+  if (isWide(ids)) return ids.map((id) => ({ id, ...WIDE_SLOTS[id]!, scale: LAB_SCALE }));
+  return ids.map((id) => ({ id, ...SLOTS[id], scale: CROWDED_SCALE }));
 }
+
+/** World units a trail from this lab runs out past its outer ring. */
+const trailBeyond = (f: LabFrame): number => (f.scale >= LAB_SCALE ? TRAIL_BEYOND.wide : TRAIL_BEYOND.crowded);
+
+/** How far from a lab's centre its trail's far end is, world units. */
+export const trailReach = (f: LabFrame): number => outerRadius(f) + trailBeyond(f);
 
 export const toWorld = (f: LabFrame, p: Point): Point => ({ x: f.x + p.x * f.scale, y: f.y + p.y * f.scale });
 export const toLocal = (f: LabFrame, p: Point): Point => ({ x: (p.x - f.x) / f.scale, y: (p.y - f.y) / f.scale });
@@ -65,6 +84,32 @@ export function worldBounds(frames: readonly LabFrame[], pad = 0): Box {
   return box;
 }
 
+/**
+ * What the overview must keep in view: every lab's rings, the name under each, and the far end of
+ * the trail an escape from it would run (with room for its markers and the per-agent spread). Unlike
+ * a flat pad, it leaves no empty margin where no trail can go.
+ */
+export function overviewBounds(frames: readonly LabFrame[]): Box {
+  const box = worldBounds(frames);
+  if (frames.length < 2) return box;
+  const c = centroid(frames);
+  for (const f of frames) {
+    box.y0 = Math.min(box.y0, f.y - outerRadius(f) - NAME_ROOM);
+    const heading = Math.hypot(f.x - c.x, f.y - c.y) < 1 ? 0.12 : Math.atan2(f.y - c.y, f.x - c.x);
+    const reach = trailReach(f);
+    const x = f.x + Math.cos(heading) * reach;
+    const y = f.y + Math.sin(heading) * reach;
+    box.x0 = Math.min(box.x0, x - TRAIL_ROOM);
+    box.x1 = Math.max(box.x1, x + TRAIL_ROOM);
+    box.y0 = Math.min(box.y0, y - TRAIL_ROOM);
+    box.y1 = Math.max(box.y1, y + TRAIL_ROOM);
+  }
+  return box;
+}
+/** World units kept under a lab for its name, and round a trail's end for its marker and the OUTSIDE tag. */
+const NAME_ROOM = 40;
+const TRAIL_ROOM = 30;
+
 export const centroid = (points: readonly Point[]): Point => ({
   x: points.reduce((n, p) => n + p.x, 0) / Math.max(1, points.length),
   y: points.reduce((n, p) => n + p.y, 0) / Math.max(1, points.length),
@@ -84,7 +129,8 @@ export function exitHeading(frames: readonly LabFrame[], frame: LabFrame, agent:
 
 /** A lab-local escape run laid on the map. */
 export function worldEscapePath(frames: readonly LabFrame[], frame: LabFrame, start: Point, heading: number): EscapePath {
-  const local = frames.length === 1 ? escapePath(start, heading) : escapePath(start, heading, { trail: WORLD_TRAIL_RADIUS, escapee: WORLD_ESCAPEE_RADIUS });
+  const trail = RING_RADIUS.audit + trailBeyond(frame) / frame.scale;
+  const local = frames.length === 1 ? escapePath(start, heading) : escapePath(start, heading, { trail, escapee: trail - ESCAPEE_SHORT / frame.scale });
   const w = (p: Point) => toWorld(frame, p);
   return {
     start: w(local.start),

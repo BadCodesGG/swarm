@@ -72,7 +72,9 @@ import { exitHeading, labFrames, linkShapes, outerRadius, pointAlong, routePoint
 export type { Frame } from "./view";
 
 /** Where each escape sub-step sits between the broken outer ring and the trail's far end, as a fraction. */
-const BEAT_AT = [0.12, 0.34, 0.56, 0.78] as const;
+const BEAT_AT = [0.1, 0.38, 0.66, 0.94] as const;
+/** World units each sub-step's button sits off the trail, alternating sides so the four never touch. */
+const BEAT_OFF = 22;
 
 export interface BoxEvents {
   tick: StepReport;
@@ -796,8 +798,13 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       if (!run) return { x: 0, y: 0 };
       // The sub-steps sit one after another on the trail, from the broken outer ring to the far end.
       const c = run.path.crossings[4];
-      const t = BEAT_AT[beat ?? 0];
-      return { x: c.x + (run.path.end.x - c.x) * t, y: c.y + (run.path.end.y - c.y) * t };
+      const b = beat ?? 0;
+      const t = BEAT_AT[b];
+      const dx = run.path.end.x - c.x;
+      const dy = run.path.end.y - c.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const off = map ? (b % 2 === 0 ? BEAT_OFF : -BEAT_OFF) : 0;
+      return { x: c.x + dx * t - (dy / d) * off, y: c.y + dy * t + (dx / d) * off };
     }
     const e = storyEvents[item.index];
     if (!e || e.type !== "contact") return { x: 0, y: 0 };

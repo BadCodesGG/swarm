@@ -3,14 +3,17 @@ import { LAB_IDS, type Link } from "@/lib/box/world-types";
 import { RING_RADIUS } from "./layout";
 import {
   LAB_OUTER,
+  CROWDED_SCALE,
   LAB_SCALE,
   SEGMENTS,
-  SLOTS,
+  WIDE_SLOTS,
   centroid,
   exitHeading,
   labFrames,
   linkShapes,
   outerRadius,
+  overviewBounds,
+  trailReach,
   pointAlong,
   polylineLength,
   routePoints,
@@ -25,20 +28,42 @@ describe("labFrames", () => {
     expect(labFrames(["kestrel"])).toEqual([{ id: "kestrel", x: 0, y: 0, scale: 1 }]);
   });
 
-  it("gives each lab the same slot whoever else is in the world", () => {
+  it("gives each lab the same slot whoever else is in a world of two or three, and of four or five", () => {
     const three = labFrames(["meridian", "kestrel", "halcyon"]);
-    const five = labFrames([...LAB_IDS]);
-    for (const f of three) expect(five.find((g) => g.id === f.id)).toEqual(f);
+    const two = labFrames(["meridian", "kestrel"]);
+    for (const f of two) expect(three.find((g) => g.id === f.id)).toEqual(f);
     expect(three.every((f) => f.scale === LAB_SCALE)).toBe(true);
+    const five = labFrames([...LAB_IDS]);
+    const four = labFrames(LAB_IDS.slice(0, 4));
+    for (const f of four) expect(five.find((g) => g.id === f.id)).toEqual(f);
+    expect(five.every((f) => f.scale === CROWDED_SCALE)).toBe(true);
   });
 
   it("leaves room between every pair of labs, at any count", () => {
-    const frames = labFrames([...LAB_IDS]);
-    for (const a of frames) {
-      for (const b of frames) {
-        if (a.id === b.id) continue;
-        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(2 * LAB_OUTER + 40);
+    for (const n of [2, 3, 4, 5]) {
+      const frames = labFrames(LAB_IDS.slice(0, n));
+      for (const a of frames) {
+        for (const b of frames) {
+          if (a.id === b.id) continue;
+          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(outerRadius(a) + outerRadius(b) + 60);
+        }
       }
+    }
+  });
+
+  it("sizes the overview of three labs to a 3:2 slot, with every trail's far end inside it", () => {
+    const frames = labFrames(["meridian", "kestrel", "halcyon"]);
+    const b = overviewBounds(frames);
+    expect((b.x1 - b.x0) / (b.y1 - b.y0)).toBeGreaterThan(1.3);
+    expect((b.x1 - b.x0) / (b.y1 - b.y0)).toBeLessThan(1.8);
+    const c = centroid(frames);
+    for (const f of frames) {
+      const h = Math.atan2(f.y - c.y, f.x - c.x);
+      const end = { x: f.x + Math.cos(h) * trailReach(f), y: f.y + Math.sin(h) * trailReach(f) };
+      expect(end.x).toBeGreaterThan(b.x0);
+      expect(end.x).toBeLessThan(b.x1);
+      expect(end.y).toBeGreaterThan(b.y0);
+      expect(end.y).toBeLessThan(b.y1);
     }
   });
 
@@ -53,8 +78,8 @@ describe("labFrames", () => {
   it("bounds the rings with the padding", () => {
     const frames = labFrames(["meridian", "kestrel"]);
     const b = worldBounds(frames, 10);
-    expect(b.x0).toBeCloseTo(SLOTS.meridian.x - LAB_OUTER - 10);
-    expect(b.x1).toBeCloseTo(SLOTS.kestrel.x + LAB_OUTER + 10);
+    expect(b.x0).toBeCloseTo(WIDE_SLOTS.meridian!.x - LAB_OUTER - 10);
+    expect(b.x1).toBeCloseTo(WIDE_SLOTS.kestrel!.x + LAB_OUTER + 10);
     expect(outerRadius(frames[0])).toBeCloseTo(LAB_OUTER);
   });
 });

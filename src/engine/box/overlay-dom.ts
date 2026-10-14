@@ -30,7 +30,7 @@ function markerStyle(selected: boolean, held: boolean): string {
   const face = selected
     ? `background:${tone};color:#070910;border:2px solid #f6f8fc;box-shadow:0 0 18px ${tone}`
     : `background:rgba(7,9,16,0.85);color:${tone};border:1.5px solid ${tone}`;
-  return `position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;padding:0;cursor:pointer;pointer-events:auto;font:700 13px ${FONT};display:flex;align-items:center;justify-content:center;${face}`;
+  return `position:absolute;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;padding:0;cursor:pointer;pointer-events:auto;font:700 12px ${FONT};display:flex;align-items:center;justify-content:center;${face}`;
 }
 
 const anchorShift = (a: TextSpec["anchor"]) => (a === "middle" ? "-50%" : a === "end" ? "-100%" : "0");

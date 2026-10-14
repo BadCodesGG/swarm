@@ -387,7 +387,7 @@ export interface WorldLabelLayout {
 export const LAB_FONT = 12;
 export const LINK_FONT = 10;
 /** Half the side of a marker button at a text scale of 1: the design's 44 px. */
-export const MARKER_BUTTON = 22;
+export const MARKER_BUTTON = 18;
 
 /** Spots for a lab's block (its name, then its state) round its ring. */
 function labSpots(l: WorldLabInput, k: number): { x: number; y: number; anchor: Anchor }[] {

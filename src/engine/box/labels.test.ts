@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createState, rogueCount } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, type BoxConfig } from "@/lib/box/types";
-import { escapePath, homes, ringPoint, toDesign } from "./layout";
-import { FRAME_BOX, layoutLabels, overlaps, rectOf, segmentHits, type LabelLayout, type Rect } from "./labels";
+import { escapePath, homes, ringPoint, toDesign, type Point } from "./layout";
+import { FRAME_BOX, layoutLabels, layoutWorldLabels, MARKER_BUTTON, overlaps, rectOf, segmentHits, touchesDisc, type LabelLayout, type Rect } from "./labels";
 import { parseBoxParams, runToEscape, SHOT_ESCAPE, simRng } from "./params";
 import { createTally, record, type EscapeRecord, type Marker, type Tally } from "./tally";
 
@@ -145,5 +145,71 @@ describe("layoutLabels", () => {
       expect(clashes(layout, tally.lastEscape)).toEqual([]);
       expect(layout.markers.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("layoutWorldLabels", () => {
+  const bounds: Rect = { x0: 0, y0: 0, x1: 900, y1: 700 };
+  // The breakout's three labs as the overview lays them on a 900x700 slot.
+  const labs = [
+    { id: "meridian", name: "MERIDIAN", status: "HELD", x: 260, y: 230, r: 95 },
+    { id: "kestrel", name: "KESTREL", status: "BREACHED", x: 590, y: 270, r: 95 },
+    { id: "halcyon", name: "HALCYON", status: "BREACHED", x: 420, y: 520, r: 95 },
+  ];
+  const links = [{ index: 0, name: "Shared cache", x: 520, y: 400 }];
+  const markers = [
+    { n: 1, x: 690, y: 215 },
+    { n: 2, x: 462, y: 434 },
+  ];
+  const input = { bounds, labs, links, markers, outside: { x: 790, y: 150 }, k: 1 };
+
+  const boxesOf = (l: ReturnType<typeof layoutWorldLabels>) => [...l.labs, ...l.links, ...(l.outside ? [l.outside] : [])].map(rectOf);
+
+  it("names every lab beside its ring and keeps all the boxes apart", () => {
+    const l = layoutWorldLabels(input);
+    expect(l.labs.map((t) => t.id)).toEqual(["meridian", "kestrel", "halcyon"]);
+    for (const t of l.labs) expect(t.lines).toEqual([labs.find((x) => x.id === t.id)!.name, labs.find((x) => x.id === t.id)!.status]);
+    const boxes = boxesOf(l);
+    boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
+  });
+
+  it("keeps every box inside the slot and off the rings, the marker buttons and the trails", () => {
+    const trail: [Point, Point] = [{ x: 640, y: 250 }, { x: 800, y: 150 }];
+    const l = layoutWorldLabels({ ...input, segments: [trail] });
+    for (const r of boxesOf(l)) {
+      expect(r.x0).toBeGreaterThanOrEqual(0);
+      expect(r.x1).toBeLessThanOrEqual(900);
+      expect(r.y1).toBeLessThanOrEqual(700);
+      for (const lab of labs) expect(touchesDisc(r, lab, lab.r)).toBe(false);
+      for (const m of markers) expect(touchesDisc(r, m, MARKER_BUTTON)).toBe(false);
+      expect(segmentHits(r, trail[0], trail[1])).toBe(false);
+    }
+  });
+
+  it("moves a name off a marker button that sits where it would go", () => {
+    const l = layoutWorldLabels({ ...input, markers: [{ n: 1, x: 260, y: 360 }] });
+    expect(touchesDisc(rectOf(l.labs[0]), { x: 260, y: 360 }, MARKER_BUTTON)).toBe(false);
+  });
+
+  it("is the same every time", () => {
+    expect(layoutWorldLabels(input)).toEqual(layoutWorldLabels(input));
+  });
+
+  it("scales its text, and still finds clear spots on a small slot", () => {
+    const small = layoutWorldLabels({
+      bounds: { x0: 0, y0: 0, x1: 380, y1: 300 },
+      labs: [
+        { id: "a", name: "MERIDIAN", status: "HELD", x: 90, y: 90, r: 50 },
+        { id: "b", name: "KESTREL", status: "BREACHED", x: 280, y: 110, r: 50 },
+      ],
+      links: [{ index: 0, name: "Shared cache", x: 185, y: 100 }],
+      markers: [],
+      outside: null,
+      k: 1.2,
+    });
+    expect(small.labs[0].fontSize).toBeCloseTo(14.4);
+    const boxes = boxesOf(small);
+    boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
+    expect(small.outside).toBeNull();
   });
 });

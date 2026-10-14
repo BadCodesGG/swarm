@@ -135,7 +135,7 @@ const square = (c: Point, half: number): Rect => ({ x0: c.x - half, y0: c.y - ha
 const gapTo = (r: Rect, p: Point) => Math.hypot(Math.max(r.x0 - p.x, 0, p.x - r.x1), Math.max(r.y0 - p.y, 0, p.y - r.y1));
 
 /** Whether a box reaches into a disc. */
-function touchesDisc(r: Rect, c: Point, radius: number): boolean {
+export function touchesDisc(r: Rect, c: Point, radius: number): boolean {
   const dx = c.x - Math.min(Math.max(c.x, r.x0), r.x1);
   const dy = c.y - Math.min(Math.max(c.y, r.y0), r.y1);
   return dx * dx + dy * dy < radius * radius;
@@ -336,4 +336,148 @@ export function layoutLabels({
     }
   }
   return best!.layout;
+}
+
+// --- the world: lab names, link names and the OUTSIDE label, in screen px ---
+
+/** A lab on the screen: its centre and outer ring, CSS px. */
+export interface WorldLabInput {
+  id: string;
+  name: string;
+  status: string;
+  x: number;
+  y: number;
+  r: number;
+}
+export interface WorldLinkInput {
+  index: number;
+  name: string;
+  /** Where the name belongs, on the link. */
+  x: number;
+  y: number;
+}
+export interface WorldLabelsInput {
+  /** The scene slot, CSS px; no label box may leave it. */
+  bounds: Rect;
+  labs: readonly WorldLabInput[];
+  links: readonly WorldLinkInput[];
+  /** Numbered marker buttons, CSS px centre; labels keep clear of them. */
+  markers: readonly { n: number; x: number; y: number }[];
+  /** Where the OUTSIDE label goes (the end of an escape trail), or null. */
+  outside: Point | null;
+  /** Escape trails, which text stays off. */
+  segments?: readonly [Point, Point][];
+  /** Text scale: 1 at the design's size. */
+  k: number;
+}
+export interface WorldLabText extends TextSpec {
+  id: string;
+}
+export interface WorldLinkText extends TextSpec {
+  index: number;
+}
+export interface WorldLabelLayout {
+  labs: WorldLabText[];
+  links: WorldLinkText[];
+  outside: TextSpec | null;
+}
+
+export const LAB_FONT = 12;
+export const LINK_FONT = 10;
+/** Half the side of a marker button at a text scale of 1: the design's 44 px. */
+export const MARKER_BUTTON = 22;
+
+/** Spots for a lab's block (its name, then its state) round its ring. */
+function labSpots(l: WorldLabInput, k: number): { x: number; y: number; anchor: Anchor }[] {
+  const below = l.y + l.r + 16 * k;
+  const above = l.y - l.r - 10 * k - 1.3 * LAB_FONT * k;
+  const side = l.r * 0.72;
+  return [
+    { x: l.x, y: below, anchor: "middle" },
+    { x: l.x, y: above, anchor: "middle" },
+    { x: l.x + side, y: below + 4 * k, anchor: "start" },
+    { x: l.x - side, y: below + 4 * k, anchor: "end" },
+    { x: l.x + l.r + 10 * k, y: l.y, anchor: "start" },
+    { x: l.x - l.r - 10 * k, y: l.y, anchor: "end" },
+    { x: l.x, y: below + 22 * k, anchor: "middle" },
+    { x: l.x, y: above - 22 * k, anchor: "middle" },
+  ];
+}
+
+/**
+ * Where the map's text goes: each lab's name and state beside its ring, each link's name by its
+ * conduit, and the OUTSIDE label at the end of a trail. Placed in that order, each at the first
+ * spot clear of the rings, the marker buttons, the trails and every box already placed (a label
+ * with no clear spot takes the least crowded one: a name always shows).
+ */
+export function layoutWorldLabels({ bounds, labs, links, markers, outside, segments = [], k }: WorldLabelsInput): WorldLabelLayout {
+  const rings = labs.map((l) => ({ c: { x: l.x, y: l.y }, r: l.r + 3 }));
+  const buttons = markers.map((m) => ({ c: { x: m.x, y: m.y }, r: MARKER_BUTTON * k + 2 }));
+  const boxes: Rect[] = [];
+  const crowded = (r: Rect, own?: number): number => {
+    let n = inside(r, bounds) ? 0 : 1;
+    for (const b of boxes) if (overlaps(r, b)) n++;
+    rings.forEach((d, i) => {
+      if (i !== own && touchesDisc(r, d.c, d.r)) n++;
+    });
+    for (const d of buttons) if (touchesDisc(r, d.c, d.r)) n++;
+    for (const [p, q] of segments) if (segmentHits(grow(r, 2), p, q)) n++;
+    return n;
+  };
+  const place = <T extends TextSpec>(spots: T[], own?: number): T => {
+    let best = spots[0];
+    let bestN = Infinity;
+    for (const s of spots) {
+      const n = crowded(rectOf(s), own);
+      if (n < bestN) {
+        best = s;
+        bestN = n;
+        if (n === 0) break;
+      }
+    }
+    boxes.push(rectOf(best));
+    return best;
+  };
+
+  const labTexts = labs.map((l, i): WorldLabText => {
+    const spots = labSpots(l, k).map(
+      (s): WorldLabText => ({ id: l.id, text: l.name, lines: [l.name, l.status], x: s.x, y: s.y, anchor: s.anchor, fontSize: LAB_FONT * k, letterSpacing: 1.8 * k }),
+    );
+    return place(spots, i);
+  });
+
+  const linkTexts = links.map((l): WorldLinkText => {
+    const rows: [number, number, Anchor][] = [
+      [0, -9, "middle"],
+      [0, 17, "middle"],
+      [0, -23, "middle"],
+      [0, 31, "middle"],
+      [46, -9, "middle"],
+      [-46, -9, "middle"],
+      [46, 17, "middle"],
+      [-46, 17, "middle"],
+      [14, -4, "start"],
+      [-14, -4, "end"],
+    ];
+    const spots = rows.map(
+      ([dx, dy, anchor]): WorldLinkText => ({ index: l.index, text: l.name, lines: [l.name], x: l.x + dx * k, y: l.y + dy * k, anchor, fontSize: LINK_FONT * k, letterSpacing: 0.8 * k }),
+    );
+    return place(spots);
+  });
+
+  let outsideText: TextSpec | null = null;
+  if (outside) {
+    const rows: [number, number, Anchor][] = [
+      [10, -8, "start"],
+      [10, 16, "start"],
+      [-10, -8, "end"],
+      [-10, 16, "end"],
+      [0, -14, "middle"],
+    ];
+    const spots = rows.map(
+      ([dx, dy, anchor]): TextSpec => ({ text: "OUTSIDE", lines: ["OUTSIDE"], x: outside.x + dx * k, y: outside.y + dy * k, anchor, fontSize: LINK_FONT * k, letterSpacing: 1.6 * k }),
+    );
+    outsideText = place(spots);
+  }
+  return { labs: labTexts, links: linkTexts, outside: outsideText };
 }

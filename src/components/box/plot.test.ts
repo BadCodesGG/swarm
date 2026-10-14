@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, type BoxConfig } from "@/lib/box/types";
-import { addRun, boxHits, frontierPath, placeLabel, settingsKey, toPlot } from "./plot";
+import { addRun, boxHits, frontierPath, placeLabel, placeTags, settingsKey, toPlot } from "./plot";
 
 const networkOff: BoxConfig = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
 
@@ -90,5 +90,31 @@ describe("placeLabel", () => {
     const wall: [{ x: number; y: number }, { x: number; y: number }][] = [];
     for (let y = 0; y <= 200; y += 6) wall.push([{ x: 0, y }, { x: 232, y }]);
     expect(placeLabel(here, wall, []).clear).toBe(false);
+  });
+});
+
+describe("placeTags", () => {
+  const at = (x: number, y: number) => ({ x, y });
+  it("puts a lone tag beside its dot, inside the view", () => {
+    const [t] = placeTags([{ key: "a", text: "Breakout", at: at(100, 80) }], [], [at(100, 80)]);
+    expect(t.anchor).toBe("start");
+    expect(t.box.x).toBeGreaterThan(100);
+  });
+  it("keeps two tags for neighbouring dots from overlapping", () => {
+    const tags = placeTags(
+      [
+        { key: "a", text: "Default lab", at: at(100, 80) },
+        { key: "b", text: "Air gapped", at: at(104, 84) },
+      ],
+      [],
+      [at(100, 80), at(104, 84)],
+    );
+    const [a, b] = tags.map((t) => t.box);
+    const apart = a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+    expect(apart).toBe(true);
+  });
+  it("turns left near the right edge", () => {
+    const [t] = placeTags([{ key: "a", text: "Everything off", at: at(224, 60) }], [], [at(224, 60)]);
+    expect(t.anchor).toBe("end");
   });
 });

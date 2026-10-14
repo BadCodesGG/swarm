@@ -41,7 +41,7 @@ export function MarkerCard({
     <section
       aria-label={`Marker ${n} detail`}
       onKeyDown={onKey}
-      className="flex flex-col gap-3 rounded-[14px] border border-escape/45 bg-[linear-gradient(180deg,rgba(255,77,125,0.1),rgba(255,77,125,0.03))] px-[18px] py-4"
+      className="flex flex-col gap-2 rounded-[14px] border border-escape/45 bg-[linear-gradient(180deg,rgba(255,77,125,0.1),rgba(255,77,125,0.03))] px-4 py-3"
       data-marker-card={n}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -54,11 +54,11 @@ export function MarkerCard({
       </div>
       {step ? (
         <>
-          <h3 className="m-0 text-xl font-bold tracking-[-0.01em] text-ink">{step.title}</h3>
-          <p className="m-0 text-sm text-muted">{step.body}</p>
-          <div className="flex flex-col gap-2 rounded-lg bg-white/[0.04] px-3 py-2.5">
+          <h3 className="m-0 text-base font-bold tracking-[-0.01em] text-ink">{step.title}</h3>
+          <p className="m-0 text-xs leading-snug text-muted">{step.body}</p>
+          <div className="flex flex-col gap-1 rounded-lg bg-white/[0.04] px-3 py-2">
             <span className="font-mono text-[10px] tracking-[0.14em] text-haiku">WOULD HAVE STOPPED IT</span>
-            <span className="text-sm text-body" data-stopped-by>
+            <span className="text-sm font-semibold text-body" data-stopped-by>
               {step.stoppedBy.length > 0 ? step.stoppedBy.map((l) => LAYER_NAME[l]).join(", ") : "No single layer."}
             </span>
             <span className="text-xs text-label">{step.stop}</span>

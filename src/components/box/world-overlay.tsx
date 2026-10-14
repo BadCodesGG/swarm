@@ -62,7 +62,12 @@ export function WorldOverlay({
 
   if (!overlay.map) return null;
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden" data-world-labels>
+    <div
+      className="pointer-events-none fixed inset-0 overflow-hidden"
+      data-world-labels
+      // Text that starts inside the scene may run past its edge: show only the scene.
+      style={{ clipPath: `inset(${frame.y}px calc(100% - ${frame.x + frame.width}px) calc(100% - ${frame.y + frame.height}px) ${frame.x}px)` }}
+    >
       {layout.text.labs.map((t) => {
         const lab = labs.find((l) => l.id === t.id)!;
         const breached = lab.status === "breached";

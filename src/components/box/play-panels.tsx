@@ -112,7 +112,7 @@ export function AgentCard({ lab, config, seed }: { lab: LabId; config: BoxConfig
     <section aria-label="Play as the agent" className={card} data-agent-game data-game-status={game.status}>
       <span className="font-mono text-[10px] tracking-[0.14em] text-label">PLAY AS THE AGENT</span>
       <p className="m-0 text-xs text-label">A game on a fictional lab. You are a hidden-goal agent inside {LAB_NAME[lab]}; the cards are abstract moves, never instructions. Land {GOAL} moves, then get out, within {MAX_TURNS} turns. The layers are as they stand when the game begins.</p>
-      <div className="flex justify-between font-mono text-xs text-muted">
+      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 font-mono text-xs whitespace-nowrap text-muted">
         <span>
           Turn {Math.min(game.turn + 1, MAX_TURNS)} of {MAX_TURNS}
         </span>

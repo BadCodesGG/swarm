@@ -125,6 +125,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
   useEffect(() => {
     let raf = 0;
     let last = "";
+    const canvas = document.querySelector("canvas");
     const report = () => {
       const el = slot.current;
       if (el) {
@@ -133,6 +134,8 @@ export function BoxHud({ app }: { app: BoxApp }) {
         if (key !== last) {
           last = key;
           app.setFrame({ x: r.left, y: r.top, width: r.width, height: r.height });
+          // The canvas fills the viewport, so a zoomed camera would draw labs over the panels: show only the slot.
+          if (canvas) canvas.style.clipPath = `inset(${r.top}px ${window.innerWidth - r.right}px ${window.innerHeight - r.bottom}px ${r.left}px round 14px)`;
           // Labels keep at least ~8 px on screen: the design's 10.5 px at a scale of 0.75 and up.
           const unit = Math.min(r.width / 760, r.height / 560);
           setTextScale(Math.round(Math.min(2, Math.max(1, 0.75 / Math.max(unit, 0.01))) * 20) / 20);
@@ -141,10 +144,19 @@ export function BoxHud({ app }: { app: BoxApp }) {
       raf = requestAnimationFrame(report);
     };
     raf = requestAnimationFrame(report);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (canvas) canvas.style.clipPath = "";
+    };
   }, [app]);
 
   useEffect(() => () => abort.current?.abort(), []);
+
+  // On a phone the card sits under the scene, where it may be off screen: bring it into view.
+  const wantCard = world.selected;
+  useEffect(() => {
+    if (wantCard !== null && stacked) document.querySelector("[data-marker-card]")?.scrollIntoView({ block: "nearest" });
+  }, [wantCard, stacked]);
 
   // --- the world: layers, presets, edits ---
 
@@ -291,12 +303,19 @@ export function BoxHud({ app }: { app: BoxApp }) {
   const castOf = world.scenario.labs.find((l) => l.id === shown.id)!.cast;
   const onRun = (play: boolean) => (play ? app.play() : app.pause());
 
+  const card = selectedMarker ? (
+    <MarkerCard key={selectedMarker.n} n={selectedMarker.n} tick={selectedMarker.tick} step={selectedMarker.step} onClose={() => app.selectStep(null)} onReplayWith={(layer) => rerunWith(selectedMarker.lab, layer)} />
+  ) : null;
+
   const run = (
     <RunControls playing={snap.playing} running={running} onPlay={onRun} onReset={() => app.reset(snap.seed)} onRunTrials={() => runTrials(runsSoFar)} />
   );
 
   return (
-    <div className="absolute inset-0 overflow-x-hidden overflow-y-auto text-ink" data-plot-ready={plotReady ? "true" : "false"}>
+    <div
+      className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink"
+      data-plot-ready={plotReady ? "true" : "false"}
+    >
       <div className="box-border flex min-h-full flex-col gap-4 px-6 py-5 max-[640px]:px-3.5">
         <BoxHeader tally={tally} />
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
@@ -346,7 +365,17 @@ export function BoxHud({ app }: { app: BoxApp }) {
             {mode === "agent" ? <AgentCard lab={shown.id} config={shown.config} seed={snap.seed} /> : null}
           </div>
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-3 max-[914px]:order-first">
-            <div ref={slot} className="relative aspect-[760/560] min-h-[300px]" data-scene-slot>
+            <div ref={slot} className="relative aspect-[760/560] min-h-[300px] rounded-[14px] border border-panel-border" data-scene-slot>
+              {selectedMarker && !stacked ? (
+                // The engine pans and zooms on a drag or a wheel inside the slot: not over the card.
+                <div
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onWheel={(e) => e.stopPropagation()}
+                  className="absolute bottom-3 left-3 z-10 w-[min(400px,calc(100%-24px))] rounded-[14px] bg-ground/90 backdrop-blur-[6px]"
+                >
+                  {card}
+                </div>
+              ) : null}
               {multi ? <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} /> : <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />}
             </div>
             {stacked ? run : null}
@@ -356,9 +385,7 @@ export function BoxHud({ app }: { app: BoxApp }) {
                 At T+{clock(cursor!)}: {rewound.escapes} escaped, {rewound.crossings} breaches of another lab, {rewound.caught} caught.
               </p>
             ) : null}
-            {selectedMarker ? (
-              <MarkerCard key={selectedMarker.n} n={selectedMarker.n} tick={selectedMarker.tick} step={selectedMarker.step} onClose={() => app.selectStep(null)} onReplayWith={(layer) => rerunWith(selectedMarker.lab, layer)} />
-            ) : null}
+            {selectedMarker && stacked ? card : null}
             {!multi && escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={(layer) => rerunWith(shown.id, layer)} /> : null}
             <BranchCard
               scenario={world.scenario}

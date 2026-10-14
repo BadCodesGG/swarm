@@ -27,8 +27,8 @@ export interface TierSettings {
 
 export const TIERS: Readonly<Record<Tier, TierSettings>> = {
   hi: { particleCap: 20_000, nebula: 60_000, crowdSize: 2_000, pixelRatio: 2 },
-  mid: { particleCap: 8_000, nebula: 24_000, crowdSize: 800, pixelRatio: 1.5 },
-  lite: { particleCap: 3_000, nebula: 8_000, crowdSize: 300, pixelRatio: 1.25 },
+  mid: { particleCap: 8_000, nebula: 30_000, crowdSize: 800, pixelRatio: 1.5 },
+  lite: { particleCap: 3_000, nebula: 16_000, crowdSize: 300, pixelRatio: 1.25 },
 };
 
 export interface QualityInputs {

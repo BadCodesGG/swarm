@@ -14,7 +14,7 @@ describe("planNebula", () => {
   });
 
   it("never spends more points than the tier's budget, and every point belongs to a slot with points", () => {
-    for (const budget of [8_000, 24_000, 60_000]) {
+    for (const budget of [16_000, 30_000, 60_000]) {
       const p = planNebula(generateTrace(7, "large"), 7, budget);
       expect(p.count).toBeLessThanOrEqual(budget);
       expect(p.count).toBeGreaterThan(budget * 0.9);

@@ -99,6 +99,9 @@ export async function stepImport(browser, h) {
 
         const stray = log.requests.filter((r) => !allowed(r, h.BASE));
         check("import: no request beyond this site's own assets and routes", stray.length === 0, stray.map((r) => `${r.method} ${r.url}`).join(" | "));
+        // The moment sync runs once a second: give it two to prove it never touches an upload's URL.
+        await page.waitForTimeout(2200);
+        check("import: an upload offers no link to copy", (await page.locator("[data-copy-moment]").count()) === 0);
         const stored = await page.evaluate(() => ({
           keys: Object.keys(localStorage).filter((k) => !k.startsWith("swarm-")),
           session: sessionStorage.length,

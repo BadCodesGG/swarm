@@ -2,7 +2,7 @@
  * Takes a reproducible screenshot of the Act 1 hero frame from the production build.
  *
  *   npm run build && node scripts/shot.mjs [--seed=50] [--t=944] [--source=medium] [--rate=4]
- *     [--webgl] [--mobile] [--name=hero] [--port=3127] [--query=select=5]
+ *     [--webgl] [--mobile] [--name=hero] [--port=3127] [--query=select=5] [--click=[data-roster-toggle]]
  *
  * Starts `next start`, opens `/inside?shot=hero&source=..&seed=..&t=..` in Playwright Chromium at
  * 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch), waits for the shot clock to settle and the
@@ -86,6 +86,11 @@ async function attempt(strategy) {
     await page.waitForFunction(() => window.__swarm?.inside?.settled === true, null, { timeout: 120_000 });
     // The loader fades over 1.2 s once the engine is up.
     await page.waitForTimeout(1600);
+    // --click=<selector>[,<selector>]: opens a panel (the roster, a station) before the shot.
+    for (const sel of value("click", "").split(",").filter(Boolean)) {
+      await page.locator(sel).first().click();
+      await page.waitForTimeout(600);
+    }
     const info = await page.evaluate(() => ({ ...window.__swarm.inside }));
     info.labels = await page.evaluate(() => ({
       stations: [...document.querySelectorAll("[data-station]")].map((e) => e.textContent),

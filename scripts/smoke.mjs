@@ -21,6 +21,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
 import { boxSteps } from "./smoke-box.mjs";
+import { stepHud } from "./smoke-hud.mjs";
 import { stepImport } from "./smoke-import.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
@@ -415,6 +416,7 @@ const STEPS = [
   stepLanding,
   stepInside,
   stepInsidePhone,
+  (browser) => stepHud(browser, { openPage, check, inside, waitInside, blur }),
   ...boxSteps({ check, openPage, software: SOFTWARE }),
   (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside }),
   stepAbout,

@@ -41,4 +41,5 @@ npm run test:smoke     # Boots the built site and drives both acts in Chromium
 - **Session text is untrusted input.** It renders as text only, never as HTML.
 - **Any route that sets metadata goes through `pageMetadata()` in `src/lib/site.ts`.** `SITE_URL`
   defaults to the production domain; `NEXT_PUBLIC_SITE_URL` overrides it. The share image is the static `public/og.jpg`.
+- **The first-visit tours skip scripted browsers and `?shot=` frames** (so a dialog never meets the smoke and shot scripts); `?tour=1` shows one, and `scripts/smoke-site.mjs` uses it. Any new key an act answers goes in `src/components/site/shortcuts.ts` too.
 - **No em dashes** in copy, comments or docs.

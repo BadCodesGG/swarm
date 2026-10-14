@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test on the production build.
  *
- *   npm run build && npm run test:smoke [-- --port=3132] [--allow-software]
+ *   npm run build && npm run test:smoke [-- --port=3132] [--allow-software] [--only=site]
  *
  * Boots `next start` (it refuses to run without a build: dev mode hides prerender problems) and
  * drives it in Playwright Chromium. Prints a line per assertion, exits 1 on the first failure.
@@ -15,6 +15,8 @@
  *      /about, and has no sideways scroll at 390 px.
  *   6. about: `/about` is 200, says Act 2 is a simulation and uploads stay in the browser, cites each
  *      source by title and link, has no sideways scroll at 390 px, and its og:image is a 1200x630 JPEG.
+ *   7. site: both acts' first-visit tours (shown once, skippable, storage may throw), the ? sheet, the Inside to
+ *      Box hand-off, the WebGL 2 badge and the new landing, About and Box copy (see smoke-site.mjs).
  */
 
 import { existsSync } from "node:fs";
@@ -23,6 +25,7 @@ import { chromium } from "playwright";
 import { boxSteps } from "./smoke-box.mjs";
 import { stepHud } from "./smoke-hud.mjs";
 import { stepImport } from "./smoke-import.mjs";
+import { stepSite } from "./smoke-site.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -410,15 +413,18 @@ async function stepInsidePhone(browser) {
   }
 }
 
+/** [name, step]; `--only=site` (comma-separated names) runs just those, for working on one step. */
 const STEPS = [
-  stepLanding,
-  stepInside,
-  stepInsidePhone,
-  (browser) => stepHud(browser, { openPage, check, inside, waitInside, blur }),
-  ...boxSteps({ check, openPage, software: SOFTWARE }),
-  (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside }),
-  stepAbout,
+  ["landing", stepLanding],
+  ["inside", stepInside],
+  ["phone", stepInsidePhone],
+  ["hud", (browser) => stepHud(browser, { openPage, check, inside, waitInside, blur })],
+  ...boxSteps({ check, openPage, software: SOFTWARE }).map((step, i) => [`box${i + 1}`, step]),
+  ["import", (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside })],
+  ["about", stepAbout],
+  ["site", (browser) => stepSite(browser, { BASE, SOFTWARE, VIEWPORT, openPage, check, inside, waitInside, watch })],
 ];
+const ONLY = value("only", "").split(",").filter(Boolean);
 
 if (!existsSync(path.join(ROOT, ".next", "BUILD_ID"))) {
   console.error("FAIL  no production build: run `npm run build` first (the smoke test serves `next start`)");
@@ -432,7 +438,7 @@ try {
   console.log(`serving the production build on ${BASE}`);
   const browser = await chromium.launch({ headless: true, channel: "chromium", args: BROWSER_ARGS });
   try {
-    for (const step of STEPS) await step(browser);
+    for (const [name, step] of STEPS) if (ONLY.length === 0 || ONLY.includes(name)) await step(browser);
   } finally {
     await browser.close();
   }

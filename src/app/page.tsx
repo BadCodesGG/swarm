@@ -73,17 +73,27 @@ const INSIDE_ART = (
 
 const BOX_ART = (
   <svg viewBox="0 0 88 72" aria-hidden="true" className={doorArt}>
-    <circle cx="40" cy="36" r="30" fill="none" stroke="#5a77b0" strokeWidth="1" />
-    <circle cx="40" cy="36" r="23" fill="none" stroke="#7d98cf" strokeWidth="1" />
-    <circle cx="40" cy="36" r="16" fill="none" stroke="#3a4560" strokeWidth="1" strokeDasharray="2 3" />
-    <circle cx="40" cy="36" r="9" fill="#101830" stroke="#cddcff" strokeWidth="1" />
-    <circle cx="37" cy="34" r="1.3" fill="#d6e4ff" />
-    <circle cx="42" cy="38" r="1.3" fill="#d6e4ff" />
-    <circle cx="40" cy="32" r="1.3" fill="#d6e4ff" />
-    <circle cx="44" cy="34" r="1.3" fill="#d6e4ff" />
-    <path d="M48 34 C 58 30, 64 28, 70 27" fill="none" stroke="#ff4d7d" strokeWidth="1.2" strokeDasharray="2 2" />
-    <path d="M70 22 L 67 26 L 71 29 L 68 33" fill="none" stroke="#ff4d7d" strokeWidth="1.6" />
-    <circle cx="80" cy="25" r="2.6" fill="#ff4d7d" />
+    {/* Three labs, each a few rings round a crowd; the shared things between them are the dashed links. */}
+    <path d="M24 24 L 64 24" stroke="#3a4560" strokeDasharray="2 3" />
+    <path d="M24 24 L 44 56" stroke="#3a4560" strokeDasharray="2 3" />
+    <path d="M64 24 L 44 56" stroke="#ff4d7d" strokeWidth="1.2" strokeDasharray="2 2" />
+    {[
+      [24, 24],
+      [64, 24],
+      [44, 56],
+    ].map(([x, y]) => (
+      <g key={`${x}-${y}`}>
+        <circle cx={x} cy={y} r="14" fill="none" stroke="#5a77b0" strokeWidth="1" />
+        <circle cx={x} cy={y} r="9.5" fill="none" stroke="#7d98cf" strokeWidth="1" />
+        <circle cx={x} cy={y} r="5" fill="#101830" stroke="#cddcff" strokeWidth="1" />
+        <circle cx={x - 1.4} cy={y - 1} r="0.9" fill="#d6e4ff" />
+        <circle cx={x + 1.6} cy={y + 1.2} r="0.9" fill="#d6e4ff" />
+        <circle cx={x + 0.4} cy={y - 2} r="0.9" fill="#d6e4ff" />
+      </g>
+    ))}
+    <path d="M71 18 L 69 22 L 72 25 L 70 29" fill="none" stroke="#ff4d7d" strokeWidth="1.6" />
+    <circle cx="82" cy="14" r="2.6" fill="#ff4d7d" />
+    <path d="M72 22 C 76 20, 79 17, 82 14" fill="none" stroke="#ff4d7d" strokeWidth="1.2" strokeDasharray="2 2" />
   </svg>
 );
 
@@ -196,9 +206,10 @@ export default function Home() {
             An AI that does real work is not one mind. It is a swarm: one voice that plans, and many that search, read, write and report back.
           </p>
           <nav aria-label="Acts" className="mt-2 flex max-w-[600px] flex-col gap-3">
-            <Door href="/inside" n="01" title="Inside" line="Watch an agent swarm think, replayed from a sample session or your own." tone="opus" art={INSIDE_ART} />
-            <Door href="/box" n="02" title="The Box" line="A simulation. Switch the guardrails off one by one and see what gets out." tone="escape" art={BOX_ART} />
+            <Door href="/inside" n="01" title="Inside" line="Fly through an agent swarm, replayed from a sample session or from your own. Your session never leaves your browser." tone="opus" art={INSIDE_ART} />
+            <Door href="/box" n="02" title="The Box" line="A labelled simulation of three fictional labs. Switch the guardrails off one by one, then defend them or play the agent." tone="escape" art={BOX_ART} />
           </nav>
+          <p className="m-0 max-w-[600px] font-mono text-xs leading-relaxed text-faint">Each act opens with a short tour. Press ? inside either one for its keys.</p>
         </div>
         <div className="relative flex min-w-0 justify-center">{SWARM_ART}</div>
       </main>

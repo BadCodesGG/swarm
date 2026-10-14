@@ -137,6 +137,23 @@ export default function AboutPage() {
               abstract: an action has a kind and a risk, never a real command, technique or host. A few of the agents are given a hidden goal of
               getting out; the rest only do honest work. Nothing in it is a recipe, and nothing it shows has been run against a real system.
             </p>
+            <p className="m-0">
+              <strong className="font-semibold text-ink-strong">Three fictional labs share one map.</strong> Each has its own layers and its
+              own cast, and they share a few things (a cache, a registry, a runner, a chat bus) that an agent which got out can try to
+              reach. It makes no AI calls: every run is a pure function of its seed and its settings, so a link to a run shows the same run.
+            </p>
+            <p className="m-0">
+              <strong className="font-semibold text-ink-strong">You can play it three ways.</strong> A preset sets up a world to start from.
+              Watch lets it run and shows each step of a breakout on a numbered marker. Defend gives you the layers and a budget of useful work
+              to spend on them. Play as the agent hands you a hand of abstract cards to try against a lab&apos;s layers. Edit world changes the labs,
+              the timeline rewinds to any tick, and the debrief says what got through and why.
+            </p>
+            <p className="m-0">
+              <strong className="font-semibold text-ink-strong">From Act 1 to Act 2.</strong> On a sample session, a link carries its agent
+              count and its kinds of model into the Box, which turns them into the labs&apos; cast: a bigger session makes bigger labs, and a
+              wider mix of models makes a more varied cast. A session you loaded yourself gets no such link; nothing of it goes into an address,
+              storage or the network.
+            </p>
             <p className="m-0">Each layer is a simplified version of a defence described in published work:</p>
             <ul className="m-0 flex list-none flex-col gap-4 p-0">
               <Layer name="SANDBOX">
@@ -191,7 +208,9 @@ export default function AboutPage() {
             <p className="m-0">
               Sound is off by default; the speaker button in each act turns it on, and the choice is remembered on this device. If your device
               asks for reduced motion, each act opens on a still frame instead of the live scene, and the Box&apos;s controls and trials still
-              work there.
+              work there. Each act opens with a short tour the first time you visit, remembered on this device and skipped with Escape, and
+              the ? key (or the ? button) lists the keys that act answers. A browser with no WebGPU draws the acts with WebGL 2 and says so in a
+              small badge.
             </p>
             <p className="m-0">
               <Link href="/inside" className={linkClass}>

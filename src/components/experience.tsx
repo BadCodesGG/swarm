@@ -146,7 +146,7 @@ export default function Experience<A extends ExperienceApp>({
   /** The canvas's accessible name. */
   label: string;
   /** Rendered over the canvas once the engine is running (HUD, panel). */
-  overlay?: (app: A) => ReactNode;
+  overlay?: (app: A, ctx: { still: boolean }) => ReactNode;
 }) {
   const [gate, setGate] = useState<Gate>("probing");
   const [load, setLoad] = useState<LoadState>({ fraction: 0, label: "Preparing" });
@@ -266,10 +266,10 @@ export default function Experience<A extends ExperienceApp>({
       {app && overlay && stillGate && withStillApp ? (
         <div className="absolute inset-0 flex flex-col">
           <StillBar gate={stillGate} onEnter={enterAnyway} />
-          <div className="relative min-h-0 flex-1">{overlay(app)}</div>
+          <div className="relative min-h-0 flex-1">{overlay(app, { still: true })}</div>
         </div>
       ) : null}
-      {app && overlay && running ? overlay(app) : null}
+      {app && overlay && running ? overlay(app, { still: false }) : null}
     </main>
   );
 }

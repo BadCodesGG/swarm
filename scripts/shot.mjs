@@ -91,6 +91,13 @@ async function attempt(strategy) {
       stations: [...document.querySelectorAll("[data-station]")].map((e) => e.textContent),
       probes: [...document.querySelectorAll("[data-probe]")].map((e) => e.textContent),
     }));
+    // Where the shot's focus and the orchestrator land on the canvas (CSS px), for zoomed crops.
+    info.focusAt = await page.evaluate(() => {
+      const s = window.__swarm.inside;
+      const o = s.overlay?.();
+      const anchor = o?.anchors?.find((a) => a.id === s.camera.agent) ?? null;
+      return { focus: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), r: Math.round(anchor.r) } : null, core: o?.core ? { x: Math.round(o.core.x), y: Math.round(o.core.y) } : null };
+    });
     if (!wantWebGL && !info.isWebGPU) return { ok: false, info, errors, threeWarnings, reason: "fell back to WebGL2" };
     const out = await nextShotPath();
     await page.screenshot({ path: out });
@@ -126,6 +133,12 @@ try {
     `  ${info.isWebGPU ? "WebGPU" : "WebGL2"}, tier ${info.tier}, ${info.source} seed ${info.seed}, t=${info.t.toFixed(2)} rate ${info.rate}, ` +
       `frame ${info.frame}, ${info.agentsAlive} subagents live, ${info.streaks} streaks, ${info.probes} probes, selected ${info.selected}, ` +
       `active [${info.activeStations.join(", ")}]`,
+  );
+  const cam = info.camera ?? {};
+  console.log(
+    `  camera ${cam.mode} ${cam.kind} agent ${cam.agent} flight ${cam.flight} distance ${cam.distance}; ` +
+      `focus at ${info.focusAt?.focus ? `${info.focusAt.focus.x},${info.focusAt.focus.y} r${info.focusAt.focus.r}` : "(none)"}; ` +
+      `core at ${info.focusAt?.core ? `${info.focusAt.core.x},${info.focusAt.core.y}` : "(none)"}`,
   );
   console.log(`  stations: ${info.labels.stations.join(" | ")}`);
   console.log(`  probes: ${info.labels.probes.join(" | ") || "(none)"}`);

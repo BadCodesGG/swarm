@@ -156,7 +156,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   const spokes = createSpokes(swarm, u);
   const pulses = createPulses(scene, u);
   const post = createPost(renderer, scene, camera, {
-    bloom: { strength: isWebGPU ? 0.75 : 0.6, radius: 0.55, threshold: 0.82 },
+    bloom: { strength: isWebGPU ? 0.5 : 0.4, radius: 0.5, threshold: 0.9 },
     vignette: 0.7,
     grain: 0.022,
   });
@@ -583,6 +583,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     events: 0,
     duration: 0,
     screenOf,
+    /** The projected label anchors this frame, for scripted crops. */
+    overlay: () => overlay,
     /** Agent `id`'s spawn time, trace seconds, or null. */
     spawnTOf: (id: number) => trace?.agents[id]?.spawnT ?? null,
     counters: null as null | { tokens: number; toolCalls: number; agentsSpawned: number; agentsActive: number; elapsed: number },

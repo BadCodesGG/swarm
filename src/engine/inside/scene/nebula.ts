@@ -17,7 +17,7 @@
  */
 
 import { Color, InstancedBufferAttribute, Mesh, Vector4, type Object3D } from "three/webgpu";
-import { attribute, clamp, cos, dot, exp, float, length, max, mix, modelViewMatrix, sin, smoothstep, uniform, uniformArray, varying, vec2, vec3, vec4 } from "three/tsl";
+import { attribute, clamp, cos, dot, exp, float, length, max, mix, modelViewMatrix, sin, smoothstep, step, uniform, uniformArray, varying, vec2, vec3, vec4 } from "three/tsl";
 import type { SessionTrace } from "@/lib/trace/types";
 import { agentPose, newPose, stationPos } from "../layout";
 import { cloudAt, DUST_SLOT, newCloudState, planNebula, RADIUS_SIGMAS, RETURNED_DIM, SLOTS, STATION_SLOT0, type NebulaPlan } from "../nebula-plan";
@@ -36,6 +36,8 @@ const DENSITY_CAP = 0.85;
 const CORE_DENSITY = 0.079;
 /** The effective width of that density falloff, in sigmas. */
 const DENSITY_SIGMA = 1.25;
+/** The hi tier's point budget: the size and brightness of a grain are tuned to it. */
+const FULL_BUDGET = 60_000;
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
 export interface Nebula {
@@ -58,6 +60,9 @@ export interface Nebula {
 export function createNebula(parent: Object3D, budget: number, u: InsideUniforms): Nebula {
   // Three vec4 per slot: (x, y, z, sigma), (r, g, b, lit fraction) and (offset to the parent, points in the slot).
   const data = uniformArray(Array.from({ length: SLOTS * 3 }, () => new Vector4()), "vec4");
+  /** The orchestrator's cloud again, as plain uniforms: (x, y, z, sigma) and its lit point count. */
+  const root = uniform(new Vector4(0, 0, 0, 1));
+  const rootLit = uniform(0);
   const time = uniform(0);
 
   const aLocal = attribute("aLocal", "vec4");
@@ -97,29 +102,47 @@ export function createNebula(parent: Object3D, budget: number, u: InsideUniforms
   const depthCue = varying(mix(float(0.55), float(1.1), smoothstep(-1.5, 1.5, offsetView.z))) as unknown as FloatNode;
   const viewDepth = max(modelViewMatrix.mul(vec4(where.xyz, 1)).z.negate(), 0.1);
 
-  const radius = aMeta.y;
+  // A smaller point budget (the lite tier) draws each grain a little larger and brighter, so a cloud
+  // reads as a nebula on every tier; the density cap keeps the sum the same where they pile up.
+  const budgetScale = Math.min(2, Math.sqrt(FULL_BUDGET / Math.max(budget, 1)));
+  const sizeScale = Math.min(1.5, Math.sqrt(budgetScale));
+  // Sprites grow with depth to the 0.7 power (`spriteMaterial`); grains take a little more, so they
+  // stay about a pixel from any distance the director stands at instead of thinning into nothing.
+  const depthRatio = max(viewDepth.div(DESIGN_DEPTH), 1);
+  const radius = aMeta.y.mul(sizeScale).mul(depthRatio.pow(0.2));
   const glowing = isGlow;
-  const quad = mix(radius.mul(1.7).add(0.6), radius.mul(3).add(2.5), glowing).mul(litV.greaterThan(0.001).select(float(1), float(0)));
+  const haloRadius = radius.mul(3).add(2.5);
+  const quad = mix(radius.mul(1.7).add(0.6), haloRadius, glowing).mul(litV.greaterThan(0.001).select(float(1), float(0)));
 
   // Expected overlap at this point's pixel: the lit points of its cloud per screen pixel there, times
   // this point's footprint. Past the cap, each point gives up light so the sum stays under it.
   const sigmaPx = sigma.mul(u.pixelScale).div(viewDepth);
   const litCount = toParent.w.mul(look.w);
   const density = litCount.mul(CORE_DENSITY).mul(exp(across2.div(-2 * DENSITY_SIGMA * DENSITY_SIGMA))).div(sigmaPx.mul(sigmaPx));
-  const boost = max(viewDepth.div(DESIGN_DEPTH), 1).pow(0.7);
+  const boost = depthRatio.pow(0.7);
   const radiusScreen = radius.mul(boost).mul(u.pixelScale).div(viewDepth.mul(DESIGN_PX_PER_UNIT));
   const footprint = radiusScreen.mul(radiusScreen).mul(Math.PI / 4);
-  const crowd = density.mul(footprint).mul(isFilament.select(float(0.3), float(1)));
+  // Returned clouds pile up round the orchestrator, so its density counts against every other cloud's
+  // points too; its own points already carry it.
+  // (A plain 0/1 mask, not a conditional: a branch that first emits a node shared with the main flow
+  // leaves it unset for the points that skip the branch.)
+  const sigma0Px = root.w.mul(u.pixelScale).div(viewDepth);
+  const offset0 = modelViewMatrix.mul(vec4(centre.sub(root.xyz), 0)).xy.div(root.w);
+  const density0 = rootLit.mul(CORE_DENSITY).mul(exp(dot(offset0, offset0).div(-2 * DENSITY_SIGMA * DENSITY_SIGMA))).div(sigma0Px.mul(sigma0Px));
+  const others = density0.mul(step(0.5, aMeta.x));
+  const crowd = density.add(others).mul(footprint).mul(isFilament.select(float(0.3), float(1)));
   const gain = varying(float(DENSITY_CAP).div(max(crowd, DENSITY_CAP))) as unknown as FloatNode;
 
   const material = spriteMaterial(centre, quad, (rPx) => {
     const x = rPx.div(radius);
     const point = exp(x.mul(x).mul(-4));
-    const h = rPx.div(radius.mul(3).add(2.5));
-    const halo = exp(h.mul(h).mul(-2)).mul(0.22).mul(glowing);
+    // A windowed gaussian: zero at the quad's edge, so a halo never shows its square.
+    const h = rPx.div(haloRadius);
+    const window = clamp(float(1).sub(h.mul(h)), 0, 1);
+    const halo = exp(h.mul(h).mul(-2)).mul(window).mul(0.22).mul(glowing);
     const tint = varying(look.rgb.mul(phase.mul(0.3).add(0.85))) as unknown as Vec3Node;
     const white = glowing.mul(point).mul(0.3);
-    const strength = phase.mul(0.5).add(0.6).mul(lit).mul(depthCue).mul(dim).mul(gain);
+    const strength = phase.mul(0.5).add(0.75).mul(budgetScale).mul(lit).mul(depthCue).mul(dim).mul(gain);
     const rgb = tint.mul(point.mul(strength).add(halo.mul(lit).mul(gain))).add(vec3(1, 0.97, 0.92).mul(white).mul(lit).mul(gain));
     // Distance cue: what lies well past the focus softens and loses some colour, so far clusters are hazy nebulae.
     const far = varying(smoothstep(1.7, 4.5, viewDepth.div(u.focus))) as unknown as FloatNode;
@@ -214,6 +237,10 @@ export function createNebula(parent: Object3D, budget: number, u: InsideUniforms
         arr[s * 3].set(pose.x, pose.y, pose.z, sigma);
         arr[s * 3 + 1].set(colour.r * gain, colour.g * gain, colour.b * gain, fill);
         radii[s] = fill > 0 ? sigma * RADIUS_SIGMAS : 0;
+        if (s === 0) {
+          root.value.set(pose.x, pose.y, pose.z, Math.max(sigma, 1e-3));
+          rootLit.value = n * fill;
+        }
       }
     },
     tokensAt: (id, t) => {

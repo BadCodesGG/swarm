@@ -113,7 +113,7 @@ export default function AboutPage() {
         <div className="flex max-w-[44rem] flex-col gap-14 text-[17px] leading-[1.6] text-body">
           <Section id="act-1" eyebrow="ACT 1, INSIDE" title="A session, replayed">
             <p className="m-0">
-              One orchestrator plans; subagents spawn out of it, work and fold back; every tool call flies to a station for its kind (shell,
+              One orchestrator plans; subagents spawn out of it, work and fold back; tool calls fly to a station for their kind (shell,
               files, edits, the web and the rest), and every web call leaves the boundary.
             </p>
             <p className="m-0">
@@ -126,8 +126,10 @@ export default function AboutPage() {
               <strong className="font-semibold text-ink-strong">Your own session never leaves your browser.</strong> You can load a Claude Code
               session file, or its folder with its subagents. It is parsed in a Web Worker on your device and kept in memory for that tab; it is
               never uploaded, never stored, and gone when you close or reload the page. The site has no server code that could receive it. What
-              is read is the brief handed to each subagent (its first 280 characters) and numbers (permission source, think time, compaction token
-              counts, result sizes). Tool arguments and results are not read, and nothing leaves the browser. The text that is shown is plain text only.
+              is kept is each tool&apos;s and model&apos;s name, numbers (permission source, think time, token counts, result sizes), each
+              subagent&apos;s label (its first 80 characters) and type, and capped excerpts: each prompt you typed (up to 2,000 characters) and
+              the first 280 characters of each reply, each brief handed to a subagent and each hand-back. Other tools&apos; arguments are not
+              read, their results are kept only as sizes, and nothing leaves the browser. The text that is shown is plain text only.
             </p>
           </Section>
 

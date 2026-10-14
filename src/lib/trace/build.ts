@@ -268,7 +268,7 @@ export function createTraceBuilder(limitOverrides: Partial<TraceLimits> = {}): T
         return;
       }
       const input = isObj(b.input) ? b.input : {};
-      // The brief is the one piece of tool input read; every other argument is dropped.
+      // A spawn is the only tool call whose input is read: the brief plus the four fields below; every other argument is dropped.
       const brief = typeof input.prompt === "string" ? takeExcerpt(input.prompt, limits.excerpt) : undefined;
       const event = push({ tMs, file: fs, kind: "spawn", category: "agents", tool: name, excerpt: brief });
       const rec: SpawnRec = {

@@ -11,8 +11,8 @@ WebGPU (and WebGL 2 where WebGPU is missing).
 ## The two acts
 
 **Act 1, Inside** (`/inside`) replays an AI coding session as a 3D swarm: the orchestrator at the
-core, subagents spawning out of it and folding back when they return, every tool call flying to a
-station for its kind, and every web call leaving the boundary. A camera director flies the nebula
+core, subagents spawning out of it and folding back when they return, tool calls flying to a
+station for their kind, and every web call leaving the boundary. A camera director flies the nebula
 of agent clusters, or you take the camera. Scrub it, run it at 1x, 20x or 200x, click any agent
 for what it was doing, and read the instrument panels (stages, tool mix, model mix, tokens per
 minute, context, a log) and the recap card. On a sample, "Copy link to this moment" shares the
@@ -60,7 +60,7 @@ company. Each layer is grounded in published AI control research; the
 You can load a Claude Code session file (`~/.claude/projects/<project>/<session-id>.jsonl`) or its
 folder. It is parsed in a Web Worker in your browser and held in memory for that tab only: it is
 never uploaded, never stored, and gone on reload. The site has no API routes and no server code that
-could receive it. What is read is the brief handed to each subagent (its first 280 characters) and numbers (permission source, think time, compaction token counts, result sizes). Tool arguments and results are not read. Nothing leaves the browser. Session text is untrusted input and is only ever rendered as text.
+could receive it. What is kept is each tool's and model's name, numbers (permission source, think time, token counts, result sizes), each subagent's label (its first 80 characters) and type, and capped excerpts: each prompt you typed (up to 2,000 characters) and the first 280 characters of each reply, each brief handed to a subagent and each hand-back. Other tools' arguments are not read, and their results are kept only as sizes. Nothing leaves the browser. Session text is untrusted input and is only ever rendered as text.
 
 Raw transcripts never enter this repository: `.gitignore` blocks `*.jsonl` except the scrubbed test
 fixture under `src/lib/trace/__fixtures__/`, which `scripts/scrub-fixture.mjs` made with every free

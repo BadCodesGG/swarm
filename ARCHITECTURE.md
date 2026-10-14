@@ -267,7 +267,7 @@ blobs; nothing is read on the main thread) and `loadSession` posts it to `trace/
    `postTokens`/`durationMs`), and capped excerpts (human prompt text where `origin.kind === "human"`,
    a turn's first text block, `handbackReport.text`, and the Agent call's `input.prompt`, the brief
    handed to each subagent, first 280 characters). An `isCompactSummary` record is never a prompt.
-   Tool arguments and results are not read: no other `input` field, no result text. `cwd`, `gitBranch`,
+   Other tools' arguments and results are not read: no other `input` field, no result text beyond the hand-back. `cwd`, `gitBranch`,
    `serverClassifierContext`, attachments, hook output, `bridge-session` ids, thinking,
    signatures, encrypted advisor content, `toolUseResult` bodies and `file-history-*` are never
    copied. Unknown `type`s are counted and ignored. Nothing leaves the browser.

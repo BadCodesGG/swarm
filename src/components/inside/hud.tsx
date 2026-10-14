@@ -267,7 +267,7 @@ export function Hud({ app }: { app: InsideApp }) {
           type="button"
           aria-keyshortcuts="A"
           onClick={() => cycle(1)}
-          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:absolute focus-visible:inset-x-4 focus-visible:top-20 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-layer-1"
+          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-panel px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:absolute focus-visible:inset-x-4 focus-visible:top-20 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-layer-1"
         >
           Select the next agent (A)
         </button>
@@ -277,7 +277,7 @@ export function Hud({ app }: { app: InsideApp }) {
           </div>
         ) : null}
         {station ? (
-          <div className="pointer-events-auto max-h-[34vh] min-h-0 overflow-y-auto rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.9)] p-3.5">
+          <div className="pointer-events-auto max-h-[34vh] min-h-0 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-3.5">
             <StationPanel app={app} station={station} sheet onClose={closeStation} />
           </div>
         ) : null}
@@ -302,7 +302,7 @@ export function Hud({ app }: { app: InsideApp }) {
             aria-modal="true"
             tabIndex={-1}
             aria-label="Selected agent details"
-            className="pointer-events-auto absolute inset-x-0 bottom-0 z-10 max-h-[78%] overflow-y-auto rounded-t-[18px] outline-none border border-b-0 border-panel-border bg-[rgba(12,16,28,0.96)] px-4 pt-4 pb-6 shadow-[0_-18px_48px_rgba(0,0,0,0.5)]"
+            className="pointer-events-auto absolute inset-x-0 bottom-0 z-10 flex max-h-[78%] flex-col rounded-t-[18px] outline-none border border-b-0 border-panel-border bg-panel shadow-[0_-18px_48px_rgba(0,0,0,0.5)]"
           >
             <DetailCard
               key={selected}
@@ -325,7 +325,8 @@ export function Hud({ app }: { app: InsideApp }) {
 
   return (
     <div className="pointer-events-none absolute inset-0 grid min-h-[640px] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 px-6 py-5 font-sans text-ink">
-      <div ref={top} className="flex flex-col gap-2">
+      {/* The toolbar and the dock are bands to the viewport's edges: the scene runs under them but never shows through. */}
+      <div ref={top} className="-mx-6 -mt-5 flex flex-col gap-2 bg-chrome px-6 pt-5 pb-2.5 backdrop-blur-[10px]">
         <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2.5 pr-2 font-mono text-[13px] tracking-[0.12em] text-label hover:text-white ${linkRing}`}>
             {LOGO}
@@ -374,7 +375,7 @@ export function Hud({ app }: { app: InsideApp }) {
         ) : null}
       </div>
 
-      <div ref={bottom} className="flex flex-col gap-2">
+      <div ref={bottom} className="-mx-6 -mb-5 flex flex-col gap-2 bg-chrome px-6 pt-2.5 pb-5 backdrop-blur-[10px]">
         {bankOpen ? <BankPanels app={app} id={bankId} onStation={openStation} /> : <BankBar app={app} open={false} hideToggle onToggle={() => setBankPref(true)} controls={bankId} />}
         <Timeline app={app} narrow={false} nextAgentRef={nextAgent} onNextAgent={() => cycle(1)} />
       </div>

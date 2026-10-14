@@ -34,6 +34,7 @@ describe("narrate", () => {
       call(20, 1, "web", "WebSearch"),
       call(21, 2, "web", "WebSearch"),
       call(22, 3, "edit", "Edit"),
+      { t: 95, agent: 0, kind: "prompt" },
     ],
   );
   const tl = buildTimeline(tr);
@@ -49,7 +50,9 @@ describe("narrate", () => {
 
   it("covers the quiet states", () => {
     expect(narrate(tl, 0.5)).toBe("The session is starting. The orchestrator is reading the first prompt.");
-    expect(narrate(tl, 99.9)).toBe("Nothing is running. The session is waiting for the next prompt.");
+    // Waiting on you only where the orchestrator's lane says so: the silence before your next prompt.
+    expect(narrate(tl, 92)).toBe("Nothing is running. The session is waiting for the next prompt.");
+    expect(narrate(tl, 99.9)).toBe("The orchestrator is thinking on its own.");
     expect(narrate(tl, 100)).toBe("The session is over. The orchestrator and three helpers made six tool calls.");
     expect(narrate(buildTimeline(trace([agent(0, -1, 0, "opus", 0, 100)], [])), 0)).toBe("Nothing has happened yet.");
   });

@@ -220,7 +220,7 @@ export function Timeline({
   if (narrow) {
     const shown = shownRate(rate);
     return (
-      <section aria-label="Timeline" className="pointer-events-auto flex flex-col gap-2.5 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 py-3">
+      <section aria-label="Timeline" className="pointer-events-auto flex flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-3.5 py-3">
         <Scrubber app={app} only="tools" />
         <div className="flex items-center gap-2.5">
           <PlayButton app={app} playing={playing} size={44} />
@@ -243,7 +243,7 @@ export function Timeline({
   return (
     <section
       aria-label="Timeline"
-      className="pointer-events-auto flex flex-wrap items-stretch gap-x-5 gap-y-3 rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.86)] px-[18px] py-2.5 backdrop-blur-[10px]"
+      className="pointer-events-auto flex flex-wrap items-stretch gap-x-5 gap-y-3 rounded-[14px] border border-panel-border bg-panel px-[18px] py-2.5 backdrop-blur-[10px]"
     >
       <div className="flex flex-col justify-between gap-2.5">
         <div className="flex items-center gap-3">

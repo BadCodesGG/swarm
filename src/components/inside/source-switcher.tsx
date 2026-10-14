@@ -49,7 +49,7 @@ export function SourceSwitcher({ app, narrow }: { app: InsideApp; narrow: boolea
     <div
       role="group"
       aria-label="Session source"
-      className={`pointer-events-auto rounded-xl border border-[rgba(150,172,214,0.18)] bg-[rgba(12,16,28,0.78)] p-1 backdrop-blur-[10px] ${
+      className={`pointer-events-auto rounded-xl border border-[rgba(150,172,214,0.18)] bg-panel p-1 backdrop-blur-[10px] ${
         narrow ? "grid grid-cols-[auto_repeat(3,minmax(0,1fr))] items-center" : "flex items-center"
       }`}
     >

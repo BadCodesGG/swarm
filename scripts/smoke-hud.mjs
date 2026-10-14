@@ -164,6 +164,23 @@ export async function stepHud(browser, h) {
     await waitInside(big.page, () => window.__swarm.inside.selected === 0);
     const card = big.page.locator("[data-detail-card]");
     await card.waitFor({ state: "visible" });
+    // --- Follow and Jump are pinned to the card's bottom edge: on screen with no scrolling, at this 1280x720 viewport too ---
+    const view = big.page.viewportSize();
+    const cardBox = await card.boundingBox();
+    const follow = await card.getByRole("button", { name: "Follow" }).boundingBox();
+    check(
+      "hud: the orchestrator card's Follow and Jump row is on screen without scrolling",
+      cardBox !== null && follow !== null && follow.y >= cardBox.y && follow.y + follow.height <= cardBox.y + cardBox.height + 1 && follow.y + follow.height <= view.height + 1,
+      `follow bottom ${follow && Math.round(follow.y + follow.height)}, card bottom ${cardBox && Math.round(cardBox.y + cardBox.height)}, viewport ${view.height}`,
+    );
+    // --- the NOW line and the card's badge read the same lane: waiting on you in both or in neither ---
+    await big.page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+    await big.page.keyboard.press("Space");
+    await waitInside(big.page, () => window.__swarm.inside.playing === false);
+    await big.page.waitForTimeout(600);
+    const now = await big.page.locator("[data-narration]").textContent();
+    const state = await card.locator("[data-state]").getAttribute("data-state");
+    check("hud: the NOW line and the orchestrator's badge agree on waiting on you", /waiting for the next prompt/.test(now) === (state === "waiting-on-you"), `now "${now}", badge ${state}`);
     const marks = card.locator("[data-eye=compactions]");
     check("hud: the orchestrator's card marks the compaction", (await marks.count()) === 1 && /Earlier detail was summarised here/.test(await marks.textContent()) && /tokens/.test(await marks.textContent()), (await marks.count()) ? await marks.textContent() : "none");
     check("hud: the large sample logged no console errors", big.problems.length === 0, big.problems.join(" | "));

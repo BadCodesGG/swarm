@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import type { AgentAnchor, InsideOverlay } from "@/engine/inside/overlay-api";
 import { compact, MODEL_NAMES, MODEL_VARS } from "@/engine/inside/format";
-import { LABEL_GAP, placeCallouts, placeFarLabels, type Callout, type FarLabel, type Rect } from "./callouts";
+import { inRect, LABEL_GAP, placeCallouts, placeFarLabels, type Callout, type FarLabel, type Rect } from "./callouts";
 
 /** `search "..."` for WebSearch, `fetch "..."` for WebFetch, the bare tool name otherwise. */
 export function probeVerb(tool: string): string {
@@ -57,7 +57,10 @@ export function InsideLabels({ app }: { app: InsideApp }) {
   // On a phone the scene is small: only the lit stations keep a label, and the probes and boundary
   // text give way, so nothing clips at the edge.
   const narrow = o.width > 0 && o.width < NARROW;
-  const stations = narrow ? o.stations.filter((s) => s.active) : o.stations;
+  // Nothing is labelled under the HUD's chrome: a station or probe the camera has carried out of
+  // the director's free frame (Follow, a manual orbit) keeps its ring but loses its text.
+  const stations = o.stations.filter((s) => inRect(s, o.frame) && (!narrow || s.active));
+  const probes = narrow ? [] : o.probes.filter((p) => inRect(p, o.frame));
 
   // The annotated star chart: the clusters near the focus on thin leaders, placed clear of every other
   // label, and a faint small tag under each far one. Nothing is labelled that is off screen or behind
@@ -104,7 +107,7 @@ export function InsideLabels({ app }: { app: InsideApp }) {
           {narrow ? null : <span className="ml-1.5 text-faint">{s.count}</span>}
         </span>
       ))}
-      {(narrow ? [] : o.probes).map((p) => (
+      {probes.map((p) => (
         <span
           key={p.id}
           className="absolute overflow-hidden text-ellipsis whitespace-nowrap"

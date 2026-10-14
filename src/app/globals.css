@@ -3,7 +3,10 @@
 /* "Deep Field": near-black ground, cool ink, one hue per model family, containment layers in blue. */
 :root {
   --ground: #070910;
-  --panel: rgba(12, 16, 28, 0.82);
+  /* The HUD sits over a full-viewport canvas, so its chrome is near opaque: a cluster the camera
+     carries under a panel or a band must not read through it (a blur softens the sliver that does). */
+  --panel: rgba(12, 16, 28, 0.96);
+  --chrome: rgba(7, 9, 16, 0.96);
   --panel-border: rgba(150, 172, 214, 0.16);
 
   --ink: #eef2f8;
@@ -38,6 +41,7 @@
 @theme inline {
   --color-ground: var(--ground);
   --color-panel: var(--panel);
+  --color-chrome: var(--chrome);
   --color-panel-border: var(--panel-border);
   --color-ink: var(--ink);
   --color-ink-strong: var(--ink-strong);

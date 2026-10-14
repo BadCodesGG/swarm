@@ -28,7 +28,7 @@ export function StationPanel({ app, station, onClose, sheet = false }: { app: In
     <aside
       aria-label={`${CATEGORY_LABELS[station]} station`}
       data-station-panel={station}
-      className={`pointer-events-auto flex min-h-0 flex-col gap-2.5 ${sheet ? "" : "box-border w-80 max-w-full rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.84)] p-[18px] backdrop-blur-[10px]"}`}
+      className={`pointer-events-auto flex min-h-0 flex-col gap-2.5 ${sheet ? "" : "box-border w-80 max-w-full rounded-[14px] border border-panel-border bg-panel p-[18px] backdrop-blur-[10px]"}`}
     >
       <div className="flex items-start gap-2.5">
         <div className="flex min-w-0 grow flex-col gap-0.5">

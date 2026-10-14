@@ -56,6 +56,9 @@ export const hits = (a: Rect, b: Rect, pad = PAD) => a.x < b.x + b.w + pad && b.
 
 type Pt = { x: number; y: number };
 
+/** Whether a point sits inside the rectangle (its edges included). */
+export const inRect = (p: Pt, r: Rect) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
 /** The two pieces a callout draws: the leader, then the short tick that runs to its label. */
 export function pathOf(from: Pt, to: Pt, right: boolean): [Pt, Pt][] {
   return [
@@ -94,6 +97,8 @@ export function placeCallouts(anchors: readonly AgentAnchor[], statChars: (a: Ag
   const out: Callout[] = [];
   for (const a of anchors) {
     if (out.length >= max) break;
+    // A cloud under the HUD's chrome gets no label: its leader would run out of the scene.
+    if (!inRect(a, bounds)) continue;
     const { w, h } = labelSize(a, statChars(a));
     // Outward from the scene centre; the orchestrator sits on it, so it goes up and to the left.
     const away = Math.hypot(a.x - centre.x, a.y - centre.y) < 12 ? Math.atan2(-1, -1.4) : Math.atan2(a.y - centre.y, a.x - centre.x);
@@ -150,6 +155,7 @@ export function placeFarLabels(anchors: readonly AgentAnchor[], taken: readonly 
   const used: Rect[] = [...taken];
   for (const a of anchors) {
     if (out.length >= max) break;
+    if (!inRect(a, bounds)) continue;
     const w = Math.min(a.name.length, FAR_CHARS) * FAR_CHAR_W + 2;
     const box: Rect = { x: a.x - w / 2, y: a.y + a.r + 5, w, h: 10 };
     if (box.x < bounds.x || box.y < bounds.y || box.x + box.w > bounds.x + bounds.w || box.y + box.h > bounds.y + bounds.h) continue;

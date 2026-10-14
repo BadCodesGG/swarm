@@ -1,19 +1,15 @@
 /** Per-trace results the HUD reads from several places, built once per trace. */
 
-import { buildAgentLanes, type AgentLane } from "@/engine/inside/lanes";
+import { lanesOf } from "@/engine/inside/lanes";
 import { buildRecap, type Recap } from "@/engine/inside/recap";
 import { stationCalls, type CallRecord } from "@/lib/trace/calls";
 import type { SessionTrace } from "@/lib/trace/types";
 
-const lanes = new WeakMap<SessionTrace, AgentLane[]>();
+/** The lanes live with their builder in the engine, where the roster and the cards read them too. */
+export { lanesOf };
+
 const recaps = new WeakMap<SessionTrace, Recap>();
 const calls = new WeakMap<SessionTrace, Map<string, CallRecord[]>>();
-
-export function lanesOf(trace: SessionTrace): AgentLane[] {
-  let hit = lanes.get(trace);
-  if (!hit) lanes.set(trace, (hit = buildAgentLanes(trace)));
-  return hit;
-}
 
 export function recapOf(trace: SessionTrace): Recap {
   let hit = recaps.get(trace);

@@ -5,7 +5,7 @@ import type { InsideApp } from "@/engine/inside/app";
 import { CATEGORY_LABELS, clock, compact, MODEL_NAMES, MODEL_VARS, shortClock } from "@/engine/inside/format";
 import { buildInstruments, type LogLine } from "@/engine/inside/instruments";
 import { STATIONS, type StationCategory } from "@/engine/inside/layout";
-import { agentName, rosterAt } from "@/engine/inside/roster";
+import { agentName, isLive, rosterAt } from "@/engine/inside/roster";
 import type { ModelFamily, ToolCategory } from "@/lib/trace/types";
 import { arcPath, logText, radarPoints, sparkPath, toolRows } from "./charts";
 import { lanesOf } from "./trace-memo";
@@ -55,7 +55,7 @@ function useBank(app: InsideApp): BankSnap {
     const { spawned, active } = ins.agentsAt(t);
     const toolMix = ins.toolMixAt(t);
     const agents = rosterAt(tl, t)
-      .filter((e) => e.id > 0 && e.status === "working")
+      .filter((e) => e.id > 0 && isLive(e.status))
       .sort((a, b) => b.tokens - a.tokens)
       .slice(0, 4)
       .map((e) => ({ id: e.id, label: e.label, model: e.model, tokens: e.tokens }));

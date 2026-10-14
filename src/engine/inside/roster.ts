@@ -6,9 +6,16 @@
 import type { Timeline } from "@/lib/trace/timeline";
 import type { ModelFamily, SessionTrace } from "@/lib/trace/types";
 import { MODEL_NAMES } from "./format";
+import { waitingOnYouAt } from "./lanes";
 
-/** waiting: not started yet. working: running. done: returned. failed: its launch failed. */
-export type RosterStatus = "waiting" | "working" | "done" | "failed";
+/**
+ * waiting: not started yet. working: running. waiting-on-you: live, but held on a permission prompt
+ * or (the orchestrator) on your next prompt. done: returned. failed: its launch failed.
+ */
+export type RosterStatus = "waiting" | "working" | "waiting-on-you" | "done" | "failed";
+
+/** Whether the status means the agent is out there (working or waiting on you). */
+export const isLive = (s: RosterStatus): boolean => s === "working" || s === "waiting-on-you";
 
 export interface RosterEntry {
   id: number;
@@ -108,7 +115,8 @@ export function rosterStatus(trace: SessionTrace, id: number, t: number): Roster
   if (!a) return "waiting";
   if (t < a.spawnT) return "waiting";
   if (facts(trace).failed[id]) return "failed";
-  return t >= agentEnd(trace, id) && (a.returned || id === 0) ? "done" : "working";
+  if (t >= agentEnd(trace, id) && (a.returned || id === 0)) return "done";
+  return waitingOnYouAt(trace, id, t) ? "waiting-on-you" : "working";
 }
 
 export function rosterEntry(trace: SessionTrace, id: number, t: number): RosterEntry | null {

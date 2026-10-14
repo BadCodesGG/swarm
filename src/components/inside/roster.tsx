@@ -3,12 +3,13 @@
 import { useCallback, type KeyboardEvent } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { compact, MODEL_NAMES, MODEL_VARS, runClock } from "@/engine/inside/format";
-import { rosterAt, type RosterEntry, type RosterStatus } from "@/engine/inside/roster";
+import { isLive, rosterAt, type RosterEntry, type RosterStatus } from "@/engine/inside/roster";
 import { useEngineSnapshot, useSelection, useTimeline } from "./use-engine";
 
 const STATUS: Record<RosterStatus, { text: string; tone: string }> = {
   waiting: { text: "NOT STARTED", tone: "text-faint" },
   working: { text: "WORKING", tone: "text-haiku" },
+  "waiting-on-you": { text: "WAITING ON YOU", tone: "text-opus" },
   done: { text: "DONE", tone: "text-label" },
   failed: { text: "FAILED", tone: "text-error" },
 };
@@ -43,7 +44,7 @@ export function Roster({ app, onClose }: { app: InsideApp; onClose: () => void }
   };
 
   return (
-    <section aria-label="Roster" data-roster className="pointer-events-auto flex min-h-0 flex-1 flex-col rounded-[14px] border border-panel-border bg-[rgba(12,16,28,0.78)] backdrop-blur-[10px]">
+    <section aria-label="Roster" data-roster className="pointer-events-auto flex min-h-0 flex-1 flex-col rounded-[14px] border border-panel-border bg-panel backdrop-blur-[10px]">
       <header className="flex items-center justify-between px-[18px] pt-1.5">
         <span className="font-mono text-[10px] tracking-[0.14em] text-label">
           ROSTER <span className="text-faint">{rows.length} agents</span>
@@ -78,7 +79,7 @@ export function Roster({ app, onClose }: { app: InsideApp; onClose: () => void }
                 style={{ borderLeftColor: on ? m : "transparent" }}
               >
                 <span className="flex items-center gap-2">
-                  <span className="size-2 shrink-0 rounded-full" style={{ background: m, boxShadow: e.status === "working" ? `0 0 8px ${m}` : "none", opacity: e.status === "waiting" ? 0.35 : 1 }} />
+                  <span className="size-2 shrink-0 rounded-full" style={{ background: m, boxShadow: isLive(e.status) ? `0 0 8px ${m}` : "none", opacity: e.status === "waiting" ? 0.35 : 1 }} />
                   <span className="min-w-0 grow truncate text-[13px] font-semibold text-ink">{e.id === 0 ? "Orchestrator" : e.label}</span>
                   <span className={`shrink-0 font-mono text-[9px] tracking-[0.1em] ${st.tone}`}>{following === e.id ? "FOLLOWING" : st.text}</span>
                 </span>

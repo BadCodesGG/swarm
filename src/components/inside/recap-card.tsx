@@ -39,7 +39,7 @@ export function RecapCard({ app, onClose, sheet = false }: { app: InsideApp; onC
       aria-label="Run recap"
       data-recap
       className={`pointer-events-auto flex min-h-0 flex-col gap-3 overflow-y-auto border-panel-border ${
-        sheet ? "rounded-[14px] border bg-[rgba(12,16,28,0.9)] p-3.5" : "box-border w-80 max-w-full rounded-[14px] border bg-[rgba(12,16,28,0.84)] p-[18px] backdrop-blur-[10px]"
+        sheet ? "rounded-[14px] border bg-panel p-3.5" : "box-border w-80 max-w-full rounded-[14px] border bg-panel p-[18px] backdrop-blur-[10px]"
       }`}
     >
       <div className="flex items-start gap-2.5">

@@ -207,7 +207,7 @@ export function boxSteps({ check, openPage, software = false }) {
       const cardOne = page.locator('[data-marker-card="1"]');
       await cardOne.waitFor({ timeout: 5_000 });
       const text = await cardOne.innerText();
-      check("a marker click opens its card", text.includes("WOULD HAVE STOPPED IT"), text.replace(/\s+/g, " ").slice(0, 120));
+      check("a marker click opens its card with a verdict", /WOULD HAVE STOPPED IT|PASSED|OFF|REFUSED|HELD/i.test(text) && (await cardOne.locator("[data-verdict]").count()) > 0, text.replace(/\s+/g, " ").slice(0, 120));
       await page.keyboard.press("2");
       await page.locator('[data-marker-card="2"]').waitFor({ timeout: 5_000 });
       check("the key 2 opens card 2", true);
@@ -216,6 +216,10 @@ export function boxSteps({ check, openPage, software = false }) {
       check("Escape closes the card", true);
 
       await page.locator('[data-timeline-marker="1"]').click();
+      // The pin rewound the run for real: the engine is off the head and "Back to live" returns to it.
+      await page.locator("[data-back-to-live]").waitFor({ timeout: 10_000 });
+      const past = await page.evaluate(() => window.__swarm.box.stats.tick);
+      check("a timeline pin rewinds the engine", past < 600, `tick ${past}`);
       await page.locator("[data-branch]").click();
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
       const rows = await page.locator("[data-branch-result] tbody tr").allInnerTexts();

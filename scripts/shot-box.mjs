@@ -119,6 +119,11 @@ async function attempt(strategy) {
       };
     });
     if (!wantWebGL && !info.isWebGPU) return { ok: false, info, errors, threeWarnings, reason: "fell back to WebGL2" };
+    if (actions.includes("rewind")) {
+      // A pin on the timeline seeks the engine back to just before that step.
+      await page.locator('[data-timeline-marker="3"]').click();
+      await page.locator("[data-back-to-live]").waitFor({ timeout: 10_000 });
+    }
     if (actions.includes("branch")) {
       await page.locator('[data-timeline-marker="1"]').click();
       await page.locator("[data-branch]").click();

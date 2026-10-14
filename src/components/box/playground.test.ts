@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import { presetScenario } from "@/lib/box/presets";
+import { scenarioFromParams } from "@/lib/box/share";
+import {
+  addLab,
+  applyFlip,
+  bestScore,
+  firstVisitParams,
+  linkLabs,
+  nextInterceptLine,
+  recordBest,
+  removeLab,
+  setCast,
+  setupLabel,
+  shareQuery,
+  unlinkLabs,
+  type Flips,
+} from "./playground";
+
+describe("firstVisitParams", () => {
+  it("adds the breakout preset to a plain visit", () => {
+    expect(firstVisitParams(new URLSearchParams("")).get("preset")).toBe("breakout");
+    expect(firstVisitParams(new URLSearchParams("webgl=1")).get("preset")).toBe("breakout");
+  });
+  it("leaves any request for a particular run alone", () => {
+    for (const q of ["seed=1", "preset=air-gapped", "shot=escape", "labs=2", "b=meridian.1.1.1.1.1.1.1-1-1", "scenario=x"]) {
+      expect(firstVisitParams(new URLSearchParams(q)).toString()).toBe(new URLSearchParams(q).toString());
+    }
+  });
+});
+
+describe("builder edits", () => {
+  const three = presetScenario("default-lab");
+  it("adds the next unused lab, up to five, and links nothing new", () => {
+    const four = addLab(three);
+    expect(four.labs.map((l) => l.id)).toEqual(["meridian", "kestrel", "halcyon", "orrery"]);
+    expect(addLab(addLab(four)).labs).toHaveLength(5);
+    expect(addLab(addLab(addLab(four))).labs).toHaveLength(5);
+  });
+  it("removes a lab with the links that reached it, never the last one", () => {
+    const two = removeLab(three, "halcyon");
+    expect(two.labs.map((l) => l.id)).toEqual(["meridian", "kestrel"]);
+    expect(two.links.every((l) => l.labs.length >= 2 && !l.labs.includes("halcyon"))).toBe(true);
+    const one = removeLab(removeLab(three, "halcyon"), "kestrel");
+    expect(removeLab(one, "meridian").labs).toHaveLength(1);
+  });
+  it("links two labs by kind once, and unlinks them", () => {
+    const base = { ...three, links: [] };
+    const linked = linkLabs(base, "ci-runner", "meridian", "kestrel");
+    expect(linked.links).toEqual([{ kind: "ci-runner", labs: ["meridian", "kestrel"] }]);
+    expect(linkLabs(linked, "ci-runner", "kestrel", "meridian").links).toHaveLength(1);
+    expect(linkLabs(base, "ci-runner", "meridian", "meridian").links).toHaveLength(0);
+    expect(unlinkLabs(linked, 0).links).toHaveLength(0);
+  });
+  it("sets a cast only when it is valid", () => {
+    const ok = setCast(three, "kestrel", { sandbagging: 0.3, hidden: { getOut: 1, persist: 1, recruit: 1 } });
+    expect(ok?.labs[1].cast.sandbagging).toBe(0.3);
+    expect(setCast(three, "kestrel", { sandbagging: 0.3, hidden: { getOut: 0, persist: 0, recruit: 0 } })).toBeNull();
+  });
+});
+
+describe("shareQuery", () => {
+  it("round-trips through the share format", () => {
+    const s = removeLab(presetScenario("rushed-launch"), "halcyon");
+    const back = scenarioFromParams(new URLSearchParams(shareQuery(s)));
+    expect(back).toEqual(scenarioFromParams(new URLSearchParams(shareQuery(back!))));
+    expect(back?.labs.map((l) => l.id)).toEqual(["meridian", "kestrel"]);
+  });
+});
+
+describe("setupLabel", () => {
+  it("names a preset setup and numbers the others in order", () => {
+    const names: Record<string, string> = {};
+    expect(setupLabel(presetScenario("breakout"), names)).toBe("Breakout");
+    const custom = removeLab(presetScenario("default-lab"), "halcyon");
+    expect(setupLabel(custom, names)).toBe("custom 1");
+    expect(setupLabel(custom, names)).toBe("custom 1");
+    expect(setupLabel(addLab(custom), names)).toBe("custom 2");
+  });
+});
+
+describe("applyFlip", () => {
+  it("logs a change only when the layer actually changes", () => {
+    const scenario = presetScenario("breakout");
+    let flips: Flips = { scenario, list: [] };
+    flips = applyFlip(flips, scenario, 10, "meridian", "sandbox", true, true);
+    expect(flips.list).toHaveLength(0);
+    flips = applyFlip(flips, scenario, 10, "meridian", "sandbox", false, true);
+    expect(flips.list).toEqual([{ tick: 10, lab: "meridian", layer: "sandbox", on: false }]);
+  });
+  it("starts a fresh log for a new scenario", () => {
+    const a = presetScenario("breakout");
+    const b = presetScenario("breakout");
+    const flips = applyFlip({ scenario: a, list: [] }, a, 5, "kestrel", "audit", false, true);
+    expect(applyFlip(flips, b, 0, "kestrel", "sandbox", false, true).list).toHaveLength(1);
+  });
+});
+
+describe("nextInterceptLine", () => {
+  const lines = [1, 2, 3].map((n) => ({ tick: n, who: "KESTREL-7", lab: "kestrel" as const, text: `line ${n}`, fiction: true as const }));
+  it("speaks the newest unspoken line, at most once per gap", () => {
+    expect(nextInterceptLine(lines, 0, -10000, 100, 4000)?.text).toBe("line 3");
+    expect(nextInterceptLine(lines, 0, 1000, 2000, 4000)).toBeNull();
+    expect(nextInterceptLine(lines, 3, 0, 9000, 4000)).toBeNull();
+  });
+});
+
+describe("best score", () => {
+  const store = (): Storage => {
+    const m = new Map<string, string>();
+    return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) } as Storage;
+  };
+  it("keeps the highest score and survives a storage that throws", () => {
+    const s = store();
+    expect(bestScore(s)).toBe(0);
+    expect(recordBest(s, 40)).toBe(40);
+    expect(recordBest(s, 25)).toBe(40);
+    const broken = { getItem: () => { throw new Error("no"); }, setItem: () => { throw new Error("no"); } } as unknown as Storage;
+    expect(bestScore(broken)).toBe(0);
+    expect(recordBest(broken, 30)).toBe(30);
+    expect(bestScore(null)).toBe(0);
+  });
+});

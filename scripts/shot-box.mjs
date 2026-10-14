@@ -2,7 +2,7 @@
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
  *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,branch,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
@@ -27,6 +27,9 @@ const value = (name, fallback) => {
 const PORT = Number(value("port", 3128));
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = path.join(ROOT, ".shots");
+
+/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `branch` branches from step 1, `lower` also shoots the page scrolled to its foot. */
+const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
 const mobile = flag("mobile");
@@ -112,10 +115,25 @@ async function attempt(strategy) {
       })(),
     }));
     if (!wantWebGL && !info.isWebGPU) return { ok: false, info, errors, threeWarnings, reason: "fell back to WebGL2" };
+    if (actions.includes("branch")) {
+      await page.locator('[data-timeline-marker="1"]').click();
+      await page.locator("[data-branch]").click();
+      await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
+    }
+    if (actions.includes("marker")) await page.locator('[data-step-marker="1"]').click();
+    if (actions.includes("agent")) {
+      await page.locator('[data-mode="agent"]').click();
+      for (let i = 0; i < 3; i++) {
+        const card = page.locator("[data-card]").first();
+        if (!(await card.count())) break;
+        await card.click();
+      }
+    }
+    await page.waitForTimeout(actions.length ? 900 : 0);
     const base = await nextShotBase();
     const outs = [`${base}.png`];
     await page.screenshot({ path: outs[0] });
-    if (mobile) {
+    if (mobile || actions.includes("lower")) {
       await page.evaluate(() => {
         const scroller = document.querySelector("[data-plot-ready]");
         scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "instant" });

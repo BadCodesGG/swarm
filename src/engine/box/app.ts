@@ -25,8 +25,8 @@ import { breakoutSteps } from "@/lib/box/breakout";
 import { interceptLines } from "@/lib/box/intercept";
 import { configure as configureState, rogueCount, STATUS } from "@/lib/box/sim";
 import { LAYER_ORDER, type BoxConfig, type CatchReport, type LayerId, type StepReport, type TrialSummary } from "@/lib/box/types";
-import { createWorld, labOf, setLayer as setWorldLayer, stepWorld, type LabRuntime, type World } from "@/lib/box/world";
-import { LAB_NAME, type AgentRef, type BreakoutStep, type InterceptLine, type LabId, type LinkKind, type Scenario, type WorldEvent } from "@/lib/box/world-types";
+import { createWorld, labOf, runWithFlips, setLayer as setWorldLayer, stepWorld, type LabRuntime, type World } from "@/lib/box/world";
+import { LAB_NAME, type AgentRef, type BreakoutStep, type Flip, type InterceptLine, type LabId, type LinkKind, type Scenario, type WorldEvent } from "@/lib/box/world-types";
 import type { ExperienceApp, StartOptions } from "@/components/experience";
 import { createClock, isScripted } from "../shared/clock";
 import { registerDebug } from "../shared/debug";
@@ -39,7 +39,7 @@ import { activeItem, createDirector, focusPose, mixPose, overviewPose, type Dire
 import { createCrowd } from "./crowd";
 import { TARGET_STRIDE } from "./crowd/integrate";
 import { homes, ringPoint, wander, type EscapePath, type Point } from "./layout";
-import type { BoxOverlay, CameraControl, CameraMode, LabView, LinkView, MarkerView } from "./overlay";
+import type { BoxOverlay, CameraControl, CameraMode, LabView, LinkView, MarkerView, SceneRect } from "./overlay";
 import { mountOverlay, type OverlayDom } from "./overlay-dom";
 import { loneLab, parseBoxParams, parseWorldParams, SHOT_ESCAPE } from "./params";
 import { createAgents } from "./scene/agents";
@@ -55,6 +55,7 @@ import {
   createTally,
   createWorldTally,
   labStatus,
+  labTotals,
   MARKER_TICKS,
   mergeTallies,
   record,
@@ -104,6 +105,7 @@ export interface WorldLabSnapshot {
   rogues: number;
   caught: number;
   escaped: number;
+  flagged: number;
 }
 
 /** The world as the HUD reads it; a new object whenever `version` moves. */
@@ -150,14 +152,39 @@ export interface BoxApp extends ExperienceApp {
   setLayer(lab: LabId, layer: LayerId, on: boolean): void;
   /** Starts the same world again on a new seed, keeping every lab's current settings. */
   reset(seed: number): void;
-  /** Starts a new world from a scenario. */
-  loadScenario(scenario: Scenario): void;
+  /**
+   * Starts a new world from a scenario. With `flips` (a recorded run's layer switches) it replays the
+   * world to `tick` (the last flip's tick when not given) with them applied, then runs on live.
+   */
+  loadScenario(scenario: Scenario, from?: { flips?: readonly Flip[]; tick?: number }): void;
+  /**
+   * Shows the world as it was at `tick` (0 to the head), rebuilt by deterministic replay with the
+   * flip log: the scene, trails, markers, tallies and overlay all show that moment. The run stops
+   * advancing while a past moment is shown. `live()` goes back to the head.
+   */
+  seek(tick: number): void;
+  /** Back to the head of the run, as if it had never stopped, and playing again if it was. */
+  live(): void;
+  /** Every layer switch made so far, in order: the whole log, also while a past moment is shown. */
+  flips(): Flip[];
+  /**
+   * Sets one lab's monitor threshold (0 to 1) or audit budget (0 to 0.2, the share of actions
+   * reviewed). The setting holds for the whole run, so the world is re-derived from tick 0 to the
+   * moment shown with it (layer switches kept); a past moment stays shown.
+   */
+  setThreshold(lab: LabId, key: "monitorThreshold" | "auditBudget", value: number): void;
   stats(): BoxSnapshot;
   play(): void;
   pause(): void;
   /** Runs the latest escape's flight again. */
   replayEscape(): void;
-  setFrame(frame: Frame): void;
+  /**
+   * Where the scene goes. A `{x, y, w, h}` rect (CSS px of the page) sizes and places the canvas to
+   * exactly that rect and renders, fits and projects into it (overlay positions are page positions);
+   * null gives the canvas back. The older `{x, y, width, height}` frame only places the map inside
+   * a canvas that keeps covering the page.
+   */
+  setFrame(frame: Frame | SceneRect | null): void;
   /** The map's positions on the canvas, projected through the camera; rebuilt each frame. */
   overlay(): BoxOverlay;
   camera: CameraControl;
@@ -255,6 +282,10 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
 
   // --- the world ---
   let world!: World;
+  /** The scenario as the run began (its thresholds included); a rewound view is rebuilt from it. */
+  let baseScenario!: Scenario;
+  /** Set while a past moment is shown: the head it will go back to, the flip log, and whether the run was playing. */
+  let seeking: { head: number; flips: Flip[]; resume: boolean } | null = null;
   let frames: LabFrame[] = [];
   let labs: LabScene[] = [];
   let map = false;
@@ -330,8 +361,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
           config: configOf(l),
           agents: l.runtime.spec.agents,
           rogues: l.tally.rogues,
-          caught: l.tally.caughtTotal,
-          escaped: l.tally.escaped,
+          ...labTotals(l.tally),
         })),
         links: shapes.map((s) => ({ index: s.index, kind: s.kind, name: s.name, labs: s.labs })),
         steps: [...steps],
@@ -497,6 +527,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     for (const t of trails) t.dispose();
     trails.length = 0;
     world = createWorld(scenario);
+    baseScenario = scenario;
+    seeking = null;
     frames = labFrames(scenario.labs.map((l) => l.id));
     map = frames.length > 1;
     shapes = linkShapes(scenario.links, frames);
@@ -523,9 +555,9 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         tally,
         ctx: {
           get config() {
-            return runtime.state.config;
+            return L.runtime.state.config;
           },
-          plan: (a) => runtime.state.plans[a] ?? [],
+          plan: (a) => L.runtime.state.plans[a] ?? [],
           home: (a) => ({ x: home[a * 2], y: home[a * 2 + 1] }),
         },
         shells: createShells(scene, u, frame),
@@ -564,6 +596,56 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
 
   build(startScenario);
 
+  /** Marks the beats that have already played by the story's tick as landed, so a jump flashes nothing. */
+  const markLanded = () => {
+    landed.clear();
+    for (const item of director.items) if (item.kind !== "escape" && reachLanded(item, story)) landed.add(item.index);
+  };
+
+  /** The same labs on a fresh world from `scenario`: no new scene objects, only their state reset. */
+  const rewind = (scenario: Scenario) => {
+    world = createWorld(scenario);
+    baseScenario = scenario;
+    labs.forEach((L, i) => {
+      L.runtime = world.labs[i];
+      L.tally = createTally(L.runtime.spec.agents, rogueCount(L.runtime.spec.config, L.runtime.spec.agents));
+      L.shells.setLayers(L.runtime.spec.config.layers, true);
+      L.shells.setBreached(false, true);
+    });
+    for (const t of trails) t.set(null, 0);
+    worldTally = createWorldTally();
+    storyEvents = [];
+    runs = new Map();
+    steps = [];
+    stepsDirty = false;
+    flipsSeen = 0;
+    caughtAt.fill(0);
+    caughtLayer.fill(0);
+    accumulator = 0;
+    story = 0;
+    replaying = false;
+    escapeStage = 0;
+    rebuildDirector();
+  };
+
+  /** Rewinds, then replays every tick up to `tick` with the flips applied as their ticks come. */
+  const replayTo = (tick: number, flips: readonly Flip[]) => {
+    rewind(baseScenario);
+    runWithFlips(world, flips, tick, {
+      step: () => advance(false),
+      flip: (f) => {
+        const L = labs.find((x) => x.runtime.id === f.lab);
+        if (L) L.shells.setLayers(configOf(L).layers, true);
+      },
+    });
+    story = world.tick;
+    markLanded();
+    writeAgents();
+    drawCatchMarkers();
+    crowd.snap();
+    computeSteps();
+  };
+
   /** Runs the sim without drawing until the shot's moment, then parks the story after it. */
   const runShot = () => {
     opts.onProgress(0.7, shot === "breakout" ? "Running to the breach" : "Running to the escape");
@@ -585,6 +667,9 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   let width = 1;
   let height = 1;
   let frame: Frame | null = null;
+  /** The page rect the canvas is sized to (null: the canvas keeps covering the page). */
+  let rect: SceneRect | null = null;
+  let canvasStyle: string | null = null;
   // A canvas with no layout yet (a hidden tab or pane) is not drawn until the observer reports a size.
   let drawable = false;
   const resize = () => {
@@ -596,7 +681,26 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   resize();
   const observer = new ResizeObserver(resize);
   observer.observe(canvas);
+  /** The scene slot in canvas px. */
   const slot = (): Frame => frame ?? { x: 0, y: 0, width, height };
+  /** The canvas's top left on the page: its rect's, or the page's own when it covers it. */
+  const origin = (): Point => (rect ? { x: rect.x, y: rect.y } : { x: 0, y: 0 });
+  /** The scene slot on the page. */
+  const pageSlot = (): Frame => (rect ? { x: rect.x, y: rect.y, width: rect.w, height: rect.h } : slot());
+  const setRect = (next: SceneRect | null) => {
+    if (next) {
+      canvasStyle ??= canvas.getAttribute("style") ?? "";
+      rect = { ...next };
+      frame = null;
+      canvas.style.cssText = `${canvasStyle};position:fixed;left:${next.x}px;top:${next.y}px;right:auto;bottom:auto;width:${next.w}px;height:${next.h}px`;
+    } else if (rect) {
+      rect = null;
+      if (canvasStyle) canvas.setAttribute("style", canvasStyle);
+      else canvas.removeAttribute("style");
+      canvasStyle = null;
+    } else return;
+    resize();
+  };
 
   const onReduced = () => {
     reduced = reducedQuery.matches;
@@ -650,7 +754,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     overview: () => flyTo(overviewPose(frames)),
   };
   const inSlot = (e: { clientX: number; clientY: number }) => {
-    const s = slot();
+    const s = pageSlot();
     return e.clientX >= s.x && e.clientX <= s.x + s.width && e.clientY >= s.y && e.clientY <= s.y + s.height;
   };
   const interactive = (t: EventTarget | null) => t instanceof Element && t.closest("button, a, input, select, textarea, label, summary, [role='dialog']") !== null;
@@ -672,7 +776,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     if (!map || !inSlot(e) || interactive(e.target)) return;
     e.preventDefault();
     takeCamera();
-    freePose = zoomAbout(view, { x: e.clientX, y: e.clientY }, Math.exp(-e.deltaY * 0.0015), director.overview);
+    freePose = zoomAbout(view, { x: e.clientX - origin().x, y: e.clientY - origin().y }, Math.exp(-e.deltaY * 0.0015), director.overview);
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Home" && map && !(e.target instanceof Element && e.target.closest("input, textarea, select"))) control.director();
@@ -702,7 +806,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   let overlaySig = "";
   const buildOverlay = () => {
     const pose = poseNow();
-    const proj = (p: Point) => project(view, p);
+    const o = origin();
+    const proj = (p: Point) => {
+      const q = project(view, p);
+      return { x: q.x + o.x, y: q.y + o.y };
+    };
     const labViews: LabView[] = labs.map((L) => {
       const id = L.runtime.id;
       const at = proj(L.frame);
@@ -714,7 +822,10 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         status,
         held: worldTally.heldContacts[id] ?? 0,
         layers: { ...configOf(L).layers },
+        monitorThreshold: configOf(L).monitorThreshold,
+        auditBudget: configOf(L).auditBudget,
         agents: L.runtime.spec.agents,
+        ...labTotals(L.tally),
         x: at.x,
         y: at.y,
         r: outerRadius(L.frame) * view.scale,
@@ -765,6 +876,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       markerViews.map((m) => `${m.shown}${m.selected}${m.step ? 1 : 0}`).join(),
       outside ? 1 : 0,
       runs.size,
+      o.x,
+      o.y,
+      world.tick,
+      seeking ? 1 : 0,
+      labViews.map((l) => `${l.caught}.${l.escaped}.${l.flagged}.${l.monitorThreshold}.${l.auditBudget}`).join(),
     ].join("|");
     if (sig !== overlaySig) {
       overlaySig = sig;
@@ -772,7 +888,9 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         version: overlayState.version + 1,
         tick: world.tick,
         story,
-        frame: { ...slot() },
+        frame: { ...pageSlot() },
+        timeline: { at: world.tick, head: seeking ? seeking.head : world.tick, live: seeking === null },
+        flips: [...(seeking ? seeking.flips : world.flips)],
         map,
         labs: labViews,
         links: linkViews,
@@ -993,7 +1111,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     }
     frameCamera(poseNow());
     buildOverlay();
-    overlayDom?.update(overlayState, slot().width < 640 ? 1.25 : 1);
+    overlayDom?.update(overlayState, pageSlot().width < 640 ? 1.25 : 1);
     if (drawable) post.render();
     debug.frame++;
     syncDebug();
@@ -1003,10 +1121,23 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   opts.onProgress(1, "Ready");
   await renderer.setAnimationLoop(loop);
 
+  /** Back to the head of the run from a past moment shown. */
+  function goLive() {
+    if (!seeking) return;
+    const { head, flips, resume } = seeking;
+    seeking = null;
+    replayTo(head, flips);
+    frozen = null;
+    playing = resume;
+    touch();
+    syncDebug();
+  }
+
   return {
     bus,
     isWebGPU,
     configure(next) {
+      goLive();
       const L = primary();
       const current = configOf(L);
       for (const layer of LAYER_ORDER) if (current.layers[layer] !== next.layers[layer]) setWorldLayer(world, L.runtime.id, layer, next.layers[layer]);
@@ -1019,6 +1150,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     setLayer(lab, layer, on) {
       const L = labs.find((x) => x.runtime.id === lab);
       if (!L) return;
+      goLive();
       setWorldLayer(world, lab, layer, on);
       L.shells.setLayers(configOf(L).layers);
       if (L === primary()) bus.emit("config", configOf(L));
@@ -1030,13 +1162,46 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       syncDebug();
       bus.emit("reset", { seed: nextSeed });
     },
-    loadScenario(scenario) {
+    loadScenario(scenario, from) {
       build({ ...scenario, labs: scenario.labs.map((spec) => ({ ...spec, agents: spec.agents })) });
+      const flips = [...(from?.flips ?? [])].sort((a, b) => a.tick - b.tick);
+      const tick = from?.tick ?? flips.reduce((n, f) => Math.max(n, f.tick), 0);
+      if (tick > 0 || flips.length > 0) replayTo(tick, flips);
       syncDebug();
       bus.emit("reset", { seed: scenario.seed });
     },
+    seek(tick) {
+      if (!seeking) seeking = { head: world.tick, flips: [...world.flips], resume: playing };
+      const at = Math.max(0, Math.min(seeking.head, Math.round(tick)));
+      playing = false;
+      replayTo(at, seeking.flips);
+      frozen = at;
+      story = at;
+      touch();
+      syncDebug();
+    },
+    live: goLive,
+    flips: () => [...(seeking ? seeking.flips : world.flips)],
+    setThreshold(lab, key, value) {
+      const i = baseScenario.labs.findIndex((l) => l.id === lab);
+      if (i < 0) return;
+      const v = Math.min(key === "auditBudget" ? 0.2 : 1, Math.max(0, value));
+      const next: Scenario = { ...baseScenario, labs: baseScenario.labs.map((l, k) => (k === i ? { ...l, config: { ...l.config, [key]: v } } : l)) };
+      baseScenario = next;
+      const flips = seeking ? seeking.flips : [...world.flips];
+      replayTo(world.tick, flips);
+      if (seeking) {
+        frozen = world.tick;
+        story = world.tick;
+      }
+      if (i === 0) bus.emit("config", configOf(primary()));
+      touch();
+      syncDebug();
+    },
     stats: () => snapshot,
     play() {
+      if (seeking) seeking.resume = true;
+      goLive();
       playing = true;
       touch();
     },
@@ -1054,6 +1219,11 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       touch();
     },
     setFrame(f) {
+      if (f && "w" in f) {
+        setRect(f);
+        return;
+      }
+      setRect(null);
       frame = f;
     },
     overlay: () => overlayState,
@@ -1065,6 +1235,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     dispose() {
       if (disposed) return;
       disposed = true;
+      setRect(null);
       observer.disconnect();
       reducedQuery.removeEventListener("change", onReduced);
       window.removeEventListener("pointerdown", onPointerDown);
@@ -1094,6 +1265,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       tick: 0,
       story: 0,
       frame: { x: 0, y: 0, width: 1, height: 1 },
+      timeline: { at: 0, head: 0, live: true },
+      flips: [],
       map: false,
       labs: [],
       links: [],

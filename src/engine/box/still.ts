@@ -9,7 +9,7 @@ import { breakoutSteps } from "@/lib/box/breakout";
 import { interceptLines } from "@/lib/box/intercept";
 import { rogueCount } from "@/lib/box/sim";
 import type { BoxConfig } from "@/lib/box/types";
-import { createWorld, labOf, stepWorld, type World } from "@/lib/box/world";
+import { createWorld, labOf, replayWorld, stepWorld, type World } from "@/lib/box/world";
 import { LAB_NAME, type Scenario } from "@/lib/box/world-types";
 import { startBoxAudio } from "../audio/box";
 import { registerDebug } from "../shared/debug";
@@ -56,6 +56,8 @@ const emptyOverlay = (): BoxOverlay => ({
   tick: 0,
   story: 0,
   frame: { x: 0, y: 0, width: 1, height: 1 },
+  timeline: { at: 0, head: 0, live: true },
+  flips: [],
   map: false,
   labs: [],
   links: [],
@@ -80,6 +82,7 @@ export function createStillBox({ params, enter, paint }: StillBoxOptions): BoxAp
   const agentsOf = () => (scenario ? scenario.labs[0].agents : count);
   let tally: Tally = createTally(agentsOf(), rogueCount(config, agentsOf()));
   let ran: World | null = scenario ? ranWorld(scenario) : null;
+  let head: number | null = null;
   let selected: number | null = null;
   let version = 0;
   let trials = 0;
@@ -107,6 +110,7 @@ export function createStillBox({ params, enter, paint }: StillBoxOptions): BoxAp
         rogues: rogueCount(spec.config, spec.agents),
         caught: 0,
         escaped: 0,
+        flagged: 0,
       })),
       links: linkShapes(sc.links, labFrames(sc.labs.map((l) => l.id))).map((s) => ({ index: s.index, kind: s.kind, name: s.name, labs: s.labs })),
       steps: w ? breakoutSteps(sc, [], w.tick) : [],
@@ -182,14 +186,38 @@ export function createStillBox({ params, enter, paint }: StillBoxOptions): BoxAp
       config = next.labs[0].config;
       seed = next.seed;
       ran = ranWorld(next);
+      head = null;
       refresh();
       bus.emit("reset", { seed: next.seed });
+    },
+    // The still has no live run: its world is the run to the first crossing, and a past moment is a replay of it.
+    seek(tick) {
+      if (!scenario || !ran) return;
+      head ??= ran.tick;
+      ran = replayWorld(scenario, [], Math.max(0, Math.min(head, Math.round(tick))));
+      refresh();
+    },
+    live() {
+      if (!scenario || head === null) return;
+      head = null;
+      ran = ranWorld(scenario);
+      refresh();
+    },
+    flips: () => [],
+    setThreshold(lab, key, value) {
+      if (!scenario) return;
+      const v = Math.min(key === "auditBudget" ? 0.2 : 1, Math.max(0, value));
+      scenario = { ...scenario, labs: scenario.labs.map((spec) => (spec.id === lab ? { ...spec, config: { ...spec.config, [key]: v } } : spec)) };
+      if (scenario.labs[0].id === lab) config = scenario.labs[0].config;
+      ran = ranWorld(scenario);
+      head = null;
+      refresh();
     },
     stats: () => snapshot,
     play: enter,
     pause() {},
     replayEscape() {},
-    setFrame: (frame) => paint(frame),
+    setFrame: (frame) => paint(frame && "w" in frame ? { x: frame.x, y: frame.y, width: frame.w, height: frame.h } : frame),
     overlay: emptyOverlay,
     camera: { mode: () => "director", director() {}, focus() {}, overview() {} },
     selectStep(n) {

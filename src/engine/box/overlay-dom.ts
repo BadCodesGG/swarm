@@ -53,7 +53,6 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
   const style = document.createElement("style");
   style.textContent = "html[data-box-map] [data-scene-slot] svg[viewBox=\"0 0 760 560\"]{visibility:hidden}";
   root.appendChild(style);
-  canvas.after(root);
   const els = new Map<string, HTMLElement>();
   let visible = true;
   let kind = "";
@@ -77,17 +76,32 @@ export function mountOverlay(canvas: HTMLCanvasElement, onPick: (n: number) => v
   const textCss = (t: TextSpec, color: string, extra = "") =>
     `position:absolute;left:${t.x.toFixed(1)}px;top:${(t.y - t.fontSize * 0.95).toFixed(1)}px;transform:translateX(${anchorShift(t.anchor)});text-align:${alignOf(t.anchor)};white-space:pre;font:${t.fontSize.toFixed(2)}px/1.2 ${FONT};letter-spacing:${t.letterSpacing.toFixed(2)}px;color:${color};text-shadow:${HALO};${extra}`;
 
+  /** Takes every element it made out of the document. */
+  const detach = () => {
+    root.remove();
+    root.replaceChildren(style);
+    els.clear();
+    kind = "";
+  };
+
   return {
     setVisible(next) {
       visible = next;
-      root.style.display = next ? "" : "none";
+      if (!next) {
+        delete document.documentElement.dataset.boxMap;
+        detach();
+      }
     },
     update(o, k) {
       const show = visible && o.map;
-      root.style.display = show ? "" : "none";
       if (show) document.documentElement.dataset.boxMap = "";
       else delete document.documentElement.dataset.boxMap;
-      if (!show) return;
+      if (!show) {
+        // Not hidden: gone, so the page's own selectors never meet a second copy.
+        detach();
+        return;
+      }
+      if (!root.isConnected) canvas.after(root);
       const slot = { x0: o.frame.x, y0: o.frame.y, x1: o.frame.x + o.frame.width, y1: o.frame.y + o.frame.height };
       const inSlot = (p: { x: number; y: number }) => p.x >= slot.x0 && p.x <= slot.x1 && p.y >= slot.y0 && p.y <= slot.y1;
       const markers = o.markers.filter((m) => m.shown && inSlot(m));

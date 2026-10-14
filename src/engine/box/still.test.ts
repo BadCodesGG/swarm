@@ -61,4 +61,40 @@ describe("createStillBox", () => {
     app.dispose();
     expect(paint).toHaveBeenLastCalledWith(null);
   });
+
+  it("takes a {x, y, w, h} scene rect as the slot to paint into", () => {
+    const { app, paint } = make();
+    app.setFrame({ x: 5, y: 6, w: 7, h: 8 });
+    expect(paint).toHaveBeenLastCalledWith({ x: 5, y: 6, width: 7, height: 8 });
+    app.dispose();
+  });
+
+  it("shows a past moment by seeking and goes back to the head with live", () => {
+    const { app } = make("preset=breakout");
+    const head = app.stats().world;
+    expect(head.tick).toBeGreaterThan(20);
+    app.seek(10);
+    const past = app.stats().world;
+    expect(past.tick).toBe(10);
+    expect(past.steps.length).toBeLessThan(head.steps.length);
+    app.seek(head.tick + 500);
+    expect(app.stats().world.tick).toBe(head.tick);
+    app.seek(3);
+    app.live();
+    const back = app.stats().world;
+    expect(back.tick).toBe(head.tick);
+    expect(back.steps).toEqual(head.steps);
+    expect(back.log).toEqual(head.log);
+    app.dispose();
+  });
+
+  it("re-derives the world with a lab's new threshold", () => {
+    const { app } = make("preset=breakout");
+    app.setThreshold("kestrel", "monitorThreshold", 0.1);
+    const kestrel = app.stats().world.labs.find((l) => l.id === "kestrel")!;
+    expect(kestrel.config.monitorThreshold).toBeCloseTo(0.1);
+    app.setThreshold("kestrel", "auditBudget", 9);
+    expect(app.stats().world.labs.find((l) => l.id === "kestrel")!.config.auditBudget).toBe(0.2);
+    app.dispose();
+  });
 });

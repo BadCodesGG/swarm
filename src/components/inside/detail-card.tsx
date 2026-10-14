@@ -60,7 +60,7 @@ function Pill({ info }: { info: AgentInfo }) {
   return (
     <span
       data-state={info.state}
-      className={`${mono} rounded-full px-2 py-[3px] text-[10px] tracking-[0.1em]`}
+      className={`${mono} whitespace-nowrap rounded-full px-2 py-[3px] text-[10px] tracking-[0.1em]`}
       style={{ background: `color-mix(in srgb, ${m} 14%, transparent)`, color: `color-mix(in srgb, ${m} 70%, white)` }}
     >
       {STATE_PILL[info.state]}

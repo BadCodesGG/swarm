@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import type { AgentAnchor, InsideOverlay } from "@/engine/inside/overlay-api";
 import { compact, MODEL_NAMES, MODEL_VARS } from "@/engine/inside/format";
-import { inRect, LABEL_GAP, placeCallouts, placeFarLabels, type Callout, type FarLabel, type Rect } from "./callouts";
+import { contains, LABEL_GAP, placeCallouts, placeFarLabels, type Callout, type FarLabel, type Rect } from "./callouts";
 
 /** `search "..."` for WebSearch, `fetch "..."` for WebFetch, the bare tool name otherwise. */
 export function probeVerb(tool: string): string {
@@ -22,14 +22,17 @@ const shorten = (s: string, max: number) => (s.length > max ? `${s.slice(0, max 
 const statOf = (tokens: number) => `${compact(tokens)} tok`;
 const modelLine = (a: AgentAnchor) => `${MODEL_NAMES[a.model].toLowerCase()} ${statOf(a.tokens)}`;
 
-/** The text boxes the callouts must stay clear of, estimated at the mono face's advance. */
-function takenRects(o: InsideOverlay): Rect[] {
-  const rects: Rect[] = o.stations.map((l) => {
-    const w = (l.key.length + 3) * 7.4;
-    return { x: l.x - l.ax * w, y: l.y - l.ay * 13, w, h: 13 };
-  });
-  for (const p of o.probes) rects.push({ x: p.x + 10, y: p.y - 7, w: 190, h: 14 });
-  return rects;
+/** A station label's text box, estimated at the mono face's advance. */
+function stationRect(l: InsideOverlay["stations"][number]): Rect {
+  const w = (l.key.length + 3) * 7.4;
+  return { x: l.x - l.ax * w, y: l.y - l.ay * 13, w, h: 13 };
+}
+/** A probe label's text box, at its longest. */
+const probeRect = (p: InsideOverlay["probes"][number]): Rect => ({ x: p.x + 10, y: p.y - 7, w: 190, h: 14 });
+
+/** The text boxes the callouts must stay clear of. */
+function takenRects(stations: InsideOverlay["stations"], probes: InsideOverlay["probes"]): Rect[] {
+  return [...stations.map(stationRect), ...probes.map(probeRect)];
 }
 
 /**
@@ -57,18 +60,18 @@ export function InsideLabels({ app }: { app: InsideApp }) {
   // On a phone the scene is small: only the lit stations keep a label, and the probes and boundary
   // text give way, so nothing clips at the edge.
   const narrow = o.width > 0 && o.width < NARROW;
-  // Nothing is labelled under the HUD's chrome: a station or probe the camera has carried out of
-  // the director's free frame (Follow, a manual orbit) keeps its ring but loses its text.
-  const stations = o.stations.filter((s) => inRect(s, o.frame) && (!narrow || s.active));
-  const probes = narrow ? [] : o.probes.filter((p) => inRect(p, o.frame));
 
   // The annotated star chart: the clusters near the focus on thin leaders, placed clear of every other
   // label, and a faint small tag under each far one. Nothing is labelled that is off screen or behind
-  // the camera (the engine leaves those out of `anchors`).
-  const { callouts, tags } = useMemo(() => {
+  // the camera (the engine leaves those out of `anchors`), and nothing under the HUD's chrome: a
+  // station or probe whose text would leave the director's free frame (Follow, a manual orbit) keeps
+  // its ring but loses its label.
+  const { callouts, tags, stations, probes } = useMemo(() => {
+    const stations = o.stations.filter((s) => contains(o.frame, stationRect(s)) && (!narrow || s.active));
+    const probes = narrow ? [] : o.probes.filter((p) => contains(o.frame, probeRect(p)));
     const bounds = { x: o.frame.x + 10, y: o.frame.y + 10, w: o.frame.w - 20, h: o.frame.h - 20 };
     const near = o.anchors.filter((x) => x.far < 0.4);
-    const taken = takenRects(o);
+    const taken = takenRects(stations, probes);
     const placed = placeCallouts(near, (x) => modelLine(x).length + (x.live ? 0 : 7), { x: o.frame.x + o.frame.w / 2, y: o.frame.y + o.frame.h / 2 }, {
       width: o.width,
       height: o.height,
@@ -76,7 +79,7 @@ export function InsideLabels({ app }: { app: InsideApp }) {
       avoid: taken,
     });
     const far = narrow ? [] : o.anchors.filter((x) => x.far >= 0.4);
-    return { callouts: placed, tags: placeFarLabels(far, [...taken, ...placed.map((c) => c.box)], bounds) };
+    return { callouts: placed, tags: placeFarLabels(far, [...taken, ...placed.map((c) => c.box)], bounds), stations, probes };
   }, [o, narrow]);
 
   return (

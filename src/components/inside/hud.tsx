@@ -279,7 +279,7 @@ export function Hud({ app }: { app: InsideApp }) {
           type="button"
           aria-keyshortcuts="A"
           onClick={() => cycle(1)}
-          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-panel px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:absolute focus-visible:inset-x-4 focus-visible:top-20 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-layer-1"
+          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-panel px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:fixed focus-visible:inset-x-4 focus-visible:top-20 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-layer-1"
         >
           Select the next agent (A)
         </button>
@@ -385,7 +385,7 @@ export function Hud({ app }: { app: InsideApp }) {
           )}
         </div>
         {rightColumn ? (
-          <div className="flex h-full max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3 max-[1099px]:w-64">
+          <div className="flex h-full max-h-full min-h-0 w-80 max-w-full flex-col justify-end gap-3 max-[1100px]:w-64">
             {recapShown ? <RecapCard app={app} onClose={dismissRecap} /> : null}
             {station ? <StationPanel app={app} station={station} onClose={closeStation} /> : selected >= 0 ? <DetailCard key={selected} app={app} id={selected} onClose={close} /> : null}
           </div>

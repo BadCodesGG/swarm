@@ -186,6 +186,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   /** The visitor closed the card: stop picking one for them until the trace changes. */
   let dismissed = false;
   let held = false;
+  /** The open card was picked for the visitor, not by them or a link: the tour may close it. */
+  let autoPicked = false;
   let followId = -1;
   let mode: CameraMode = "director";
   let frame: SceneFrame | null = null;
@@ -230,6 +232,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     if (id === selected) return;
     if (id >= 0 && stationSel) selectStation(null);
     selected = id;
+    autoPicked = !byVisitor && id >= 0;
     if (byVisitor) dismissed = id < 0;
     if (id < 0 || id !== followId) stopFollow();
     bus.emit("select", { agent: id });
@@ -718,8 +721,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     select: (id) => select(id),
     holdAutoSelect: (hold) => {
       held = hold;
-      // A card the link asked for stays; one picked for the visitor goes.
-      if (hold && params.select == null) select(-1, false);
+      // Only a card picked for the visitor goes; one they or a link chose stays.
+      if (hold && autoPicked) select(-1, false);
     },
     follow: (id) => {
       if (id >= 0 && id < trace.agents.length) {

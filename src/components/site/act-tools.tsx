@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { activeHandoff } from "@/lib/box/handoff";
 import { HelpSheet } from "./help-sheet";
 import { Tour } from "./tour";
@@ -65,7 +65,8 @@ export function ActTools({ act, render, badge = true, note = true, onTouring }: 
   const fallback = onFallback(render);
 
   // The act hears when the tour opens and closes (Inside holds its automatic agent card back meanwhile).
-  useEffect(() => {
+  // Before paint, so a card the engine picked on its first frame never shows under the tour.
+  useLayoutEffect(() => {
     onTouring?.(touring);
     return () => onTouring?.(false);
   }, [touring, onTouring]);

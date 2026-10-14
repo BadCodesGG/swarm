@@ -73,10 +73,10 @@ export async function stepHud(browser, h) {
     await page.waitForTimeout(300);
     const cells = await stages.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
     const stripW = Math.round((await strip.boundingBox()).width);
-    check("hud: at 960 px every stage is at least 24 px wide and the strip keeps its 520 px", cells.every((w) => w >= 24) && stripW >= 520, `stages ${cells.join(", ")} px, strip ${stripW} px`);
+    check("hud: at 960 px every stage is at least 24 px wide and the strip keeps its 520 px", cells.length >= 2 && cells.every((w) => w >= 24) && stripW >= 520, `stages ${cells.join(", ")} px, strip ${stripW} px`);
     // The idle-cut labels are spaced by pixels: none sits on the one before it.
     const cuts = await page.locator("[data-cut]").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).sort((a, b) => a.left - b.left));
-    check("hud: at 960 px no idle-cut label overlaps another", cuts.every((r, i) => i === 0 || r.left >= cuts[i - 1].right), `${cuts.length} labels`);
+    check("hud: at 960 px no idle-cut label overlaps another", cuts.length >= 2 && cuts.every((r, i) => i === 0 || r.left >= cuts[i - 1].right), `${cuts.length} labels`);
     await page.setViewportSize(view);
     await page.waitForTimeout(300);
 
@@ -103,6 +103,16 @@ export async function stepHud(browser, h) {
     check("hud: the card says what it was told and that a subagent starts blank", (await card.textContent()).includes("EVERYTHING IT WAS TOLD") && (await card.locator("[data-eye=blank]").textContent()).includes("starts blank"));
     check("hud: the card says what came back", (await card.locator("[data-eye=report]").textContent()).includes("ONLY THIS CAME BACK"));
     check("hud: the card shows the waiting-on-you share", /Waiting on you: \S+ of its time/.test(await card.locator("[data-eye=waiting]").textContent()));
+
+    // --- a tour replayed from the "?" sheet leaves the card the visitor chose, and the follow ---
+    await page.keyboard.press("?");
+    await page.locator("[data-help-tour]").click();
+    await page.locator("[data-tour-skip]").waitFor({ state: "visible" });
+    await page.waitForTimeout(300);
+    const toured = await inside(page);
+    check("hud: a replayed tour keeps the visitor's card and follow", toured.selected === 2 && toured.following === 2, `selected ${toured.selected}, following ${toured.following}`);
+    await page.locator("[data-tour-skip]").click();
+    await page.locator("[data-tour-skip]").waitFor({ state: "detached" });
 
     // --- the moment in the address bar ---
     await page.waitForFunction(() => new URL(location.href).searchParams.get("select") === "2", null, { timeout: 5000 });
@@ -138,8 +148,15 @@ export async function stepHud(browser, h) {
     const row = page.locator("[data-tool-row]").first();
     await row.waitFor({ state: "visible" });
     const key = await row.getAttribute("data-tool-row");
-    const rowHeights = await page.locator("[data-tool-row]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
-    check("hud: the tool-mix rows are at least 24 px tall", rowHeights.length > 0 && rowHeights.every((h) => h >= 24), `${rowHeights.join(", ")} px`);
+    // WCAG 2.5.8: each row is 24 px tall, or a 24 px circle on its centre reaches no other row.
+    const rowBoxes = await page.locator("[data-tool-row]").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ top: r.top, bottom: r.bottom })));
+    const clear = rowBoxes.map((r, i) => {
+      const mid = (r.top + r.bottom) / 2;
+      const up = i > 0 ? mid - rowBoxes[i - 1].bottom : Infinity;
+      const down = i < rowBoxes.length - 1 ? rowBoxes[i + 1].top - mid : Infinity;
+      return down >= (r.bottom - r.top) / 2 && (r.bottom - r.top >= 24 || Math.min(up, down) >= 12);
+    });
+    check("hud: the tool-mix rows are 24 px targets or spaced as one", rowBoxes.length >= 2 && clear.every(Boolean), rowBoxes.map((r) => `${Math.round(r.top)}-${Math.round(r.bottom)}`).join(", "));
     await row.click();
     await waitInside(page, (k) => window.__swarm.inside.station === k, key);
     const panel = page.locator("[data-station-panel]");

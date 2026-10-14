@@ -132,7 +132,8 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
       </Panel>
 
       <Panel title="TOOL MIX" label="Tool mix" value={`${s.calls} calls`}>
-        <ul className="m-0 flex list-none flex-col gap-[3px] p-0 text-[10px] text-muted">
+        {/* The rows are short targets, so they sit 5 px apart: a 24 px circle on each clears its neighbours (WCAG 2.5.8 spacing). */}
+        <ul className="m-0 flex list-none flex-col gap-[5px] p-0 text-[10px] text-muted">
           {rows.length === 0 ? <li className="text-faint">no calls yet</li> : null}
           {rows.map((r) => {
             const body = (
@@ -153,7 +154,7 @@ export function BankPanels({ app, onStation, narrow = false, id }: { app: Inside
                     data-tool-row={r.key}
                     aria-label={`Open the ${r.key} station: ${r.count} calls`}
                     onClick={() => onStation(r.key as StationCategory)}
-                    className="-mx-1 -my-[4.5px] flex min-h-6 w-[calc(100%+8px)] items-center gap-2 rounded-sm border-0 bg-transparent px-1 text-[10px] text-muted outline-none hover:bg-white/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
+                    className="-mx-1 flex w-[calc(100%+8px)] items-center gap-2 rounded-sm border-0 bg-transparent px-1 text-[10px] text-muted outline-none hover:bg-white/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
                   >
                     {body}
                   </button>

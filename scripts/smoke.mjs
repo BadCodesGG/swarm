@@ -386,13 +386,16 @@ async function stepInsidePhone(browser) {
     const bar = page.locator('button[aria-expanded][aria-label^="Selected agent"]');
     await bar.waitFor({ state: "visible" });
     // With the agent bar added the column still fits an 844 px phone; on a shorter one it scrolls to the scrubber.
+    // The WebGL 2 badge adds a row of its own, and only that row may run over.
     const column = () => page.evaluate(() => {
       const s = document.querySelector("[data-under-sheet]");
       const bar = document.querySelector("[data-scrubber]").getBoundingClientRect();
-      return { content: s.scrollHeight, height: s.clientHeight, top: s.scrollTop, scrubber: bar.bottom, view: innerHeight };
+      const badge = document.querySelector("[data-under-sheet] [data-webgl-badge]");
+      const row = badge ? badge.getBoundingClientRect().height + parseFloat(getComputedStyle(s.firstElementChild).rowGap) : 0;
+      return { content: s.scrollHeight, height: s.clientHeight, top: s.scrollTop, scrubber: bar.bottom, view: innerHeight, row };
     });
     const tall = await column();
-    check("phone: with an agent selected the column fits 844 px", tall.content <= tall.height, `content ${tall.content} of ${tall.height}`);
+    check("phone: with an agent selected the column fits 844 px", tall.content <= tall.height + tall.row, `content ${tall.content} of ${tall.height}, badge row ${Math.round(tall.row)}`);
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForTimeout(300);
     await page.evaluate(() => document.querySelector("[data-under-sheet]").scrollTo(0, 1e6));

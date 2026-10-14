@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentAnchor } from "@/engine/inside/overlay-api";
-import { placeCallouts, type Rect } from "./callouts";
+import { pathOf, placeCallouts, type Rect } from "./callouts";
 
 const anchor = (id: number, x: number, y: number, r = 30): AgentAnchor => ({ id, x, y, r, model: "sonnet", name: `agent ${id}`, tokens: 1000 * id, live: true });
 const centre = { x: 700, y: 400 };
@@ -41,5 +41,21 @@ describe("placeCallouts", () => {
   it("labels only two clouds on a narrow canvas, and drops one it cannot fit", () => {
     expect(placeCallouts(ring(8), stat, centre, { width: 600, height: 800 }).length).toBeLessThanOrEqual(2);
     expect(placeCallouts([anchor(1, 5, 5)], () => 30, { x: 5, y: 5 }, { width: 60, height: 60 })).toEqual([]);
+  });
+});
+
+describe("callout leaders", () => {
+  it("never run through another callout's label or across another leader", () => {
+    const out = placeCallouts(ring(12), stat, centre, { width: 1400, height: 900 });
+    const segs = (c: (typeof out)[number]) => pathOf(c.from, c.to, c.side === "start");
+    const inside = (p: { x: number; y: number }, b: Rect) => p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h;
+    out.forEach((c, i) =>
+      out.forEach((d, j) => {
+        if (i === j) return;
+        for (const [p, q] of segs(c)) {
+          for (let k = 0; k <= 20; k++) expect(inside({ x: p.x + ((q.x - p.x) * k) / 20, y: p.y + ((q.y - p.y) * k) / 20 }, d.box)).toBe(false);
+        }
+      }),
+    );
   });
 });

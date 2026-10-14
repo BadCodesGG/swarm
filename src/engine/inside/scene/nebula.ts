@@ -14,7 +14,7 @@ import { Color, InstancedBufferAttribute, Mesh, Vector4, type Object3D } from "t
 import { attribute, clamp, cos, exp, float, length, mix, sin, smoothstep, uniform, uniformArray, varying, vec2, vec3, vec4 } from "three/tsl";
 import type { SessionTrace } from "@/lib/trace/types";
 import { agentPose, FOLD_TIME, newPose, SPAWN_TIME, stationPos } from "../layout";
-import { planNebula, SLOTS, STATION_SLOT0, type NebulaPlan } from "../nebula-plan";
+import { DUST_SLOT, planNebula, SLOTS, STATION_SLOT0, type NebulaPlan } from "../nebula-plan";
 import { modelColor, spriteGeometry, spriteMaterial, type FloatNode, type Vec3Node, type Vec4Node } from "./common";
 
 const STATION_COLOUR = 0xa7b1c2;
@@ -40,15 +40,16 @@ export interface Nebula {
 }
 
 export function createNebula(parent: Object3D, budget: number): Nebula {
-  // Two vec4 per slot: (x, y, z, sigma) and (r, g, b, lit fraction).
-  const data = uniformArray(Array.from({ length: SLOTS * 2 }, () => new Vector4()), "vec4");
+  // Three vec4 per slot: (x, y, z, sigma), (r, g, b, lit fraction) and the offset to the parent.
+  const data = uniformArray(Array.from({ length: SLOTS * 3 }, () => new Vector4()), "vec4");
   const time = uniform(0);
 
   const aLocal = attribute("aLocal", "vec4");
   const aMeta = attribute("aMeta", "vec4");
-  const slot = aMeta.x.toInt().mul(2);
+  const slot = aMeta.x.toInt().mul(3);
   const where = data.element(slot) as unknown as Vec4Node;
   const look = data.element(slot.add(1)) as unknown as Vec4Node;
+  const toParent = data.element(slot.add(2)) as unknown as Vec4Node;
   const rank = aLocal.w;
   const phase = aMeta.w;
 
@@ -63,23 +64,31 @@ export function createNebula(parent: Object3D, budget: number): Nebula {
     sin(swirl).mul(flat.x).add(cos(swirl).mul(flat.y)),
   );
   const breath = sin(time.mul(0.7).add(phase.mul(6.2832))).mul(0.035).add(1);
-  const offset = vec3(sw, aLocal.z).mul(where.w).mul(breath);
-  const centre = where.xyz.add(offset);
+  const kind = aMeta.z;
+  const isGlow = kind.equal(1).select(float(1), float(0));
+  const isFilament = kind.equal(2);
+  const dim = kind.greaterThan(1.5).select(float(0.42), float(1));
+  const cloud = vec3(sw, aLocal.z).mul(where.w).mul(breath);
+  // A filament point lies along the tether to the parent, with a little scatter either side.
+  const filament = toParent.xyz.mul(aLocal.x).add(vec3(aLocal.y, aLocal.z, aLocal.z.mul(0.5)).mul(0.03));
+  const centre = where.xyz.add(isFilament.select(filament, cloud));
 
   const radius = aMeta.y;
-  const glowing = aMeta.z;
-  const quad = mix(radius.mul(2.6), radius.mul(3.2).add(5), glowing).mul(litV.greaterThan(0.001).select(float(1), float(0)));
+  const glowing = isGlow;
+  const quad = mix(radius.mul(2.2).add(0.8), radius.mul(3.2).add(5), glowing).mul(litV.greaterThan(0.001).select(float(1), float(0)));
   const material = spriteMaterial(centre, quad, (rPx) => {
     const x = rPx.div(radius);
-    const point = exp(x.mul(x).mul(-1.7));
+    const point = exp(x.mul(x).mul(-2.8));
     const h = rPx.div(radius.mul(3.4).add(3));
     const halo = exp(h.mul(h).mul(-3)).mul(0.5).mul(glowing);
     // Nearer points burn brighter, so the cloud has depth.
     const depth = mix(float(0.5), float(1.15), smoothstep(-0.9, 0.9, varying(centre.z)));
     const tint = varying(look.rgb.mul(phase.mul(0.3).add(0.85))) as unknown as Vec3Node;
-    const white = glowing.mul(point).mul(0.55);
-    const strength = phase.mul(0.55).add(0.4).mul(lit).mul(depth);
-    const rgb = tint.mul(point.mul(strength).add(halo.mul(lit))).add(vec3(1, 0.97, 0.92).mul(white).mul(lit));
+    // The dense centre of a cloud is thinned, so it stays a field of points rather than a disc.
+    const thin = mix(float(0.4), float(1), smoothstep(0, 0.4, rank));
+    const white = glowing.mul(point).mul(0.45).mul(thin);
+    const strength = phase.mul(0.6).add(0.45).mul(lit).mul(depth).mul(thin).mul(dim);
+    const rgb = tint.mul(point.mul(strength).add(halo.mul(lit).mul(thin))).add(vec3(1, 0.97, 0.92).mul(white).mul(lit));
     return vec4(rgb, 0);
   });
   const mesh = new Mesh(spriteGeometry(), material);
@@ -93,6 +102,8 @@ export function createNebula(parent: Object3D, budget: number): Nebula {
   /** The radius of each slot's cloud this frame, world units. */
   const radii = new Float32Array(SLOTS);
   const pose = newPose();
+  const parentPose = newPose();
+  const dustColour = new Color(0xb8c6e6).multiplyScalar(0.5);
   const colour = new Color();
   const stationColour = new Color(STATION_COLOUR);
 
@@ -116,7 +127,13 @@ export function createNebula(parent: Object3D, budget: number): Nebula {
       for (let s = 0; s < SLOTS; s++) {
         const n = plan.perSlot[s];
         if (!n) {
-          arr[s * 2 + 1].set(0, 0, 0, 0);
+          arr[s * 3 + 1].set(0, 0, 0, 0);
+          radii[s] = 0;
+          continue;
+        }
+        if (s === DUST_SLOT) {
+          arr[s * 3].set(0, 0, 0, 1);
+          arr[s * 3 + 1].set(dustColour.r, dustColour.g, dustColour.b, 1);
           radii[s] = 0;
           continue;
         }
@@ -134,6 +151,10 @@ export function createNebula(parent: Object3D, budget: number): Nebula {
           const id = plan.slotAgent[s];
           const agent = trace.agents[id];
           agentPose(trace, id, t, pose);
+          if (s > 0) {
+            agentPose(trace, agent.parent, t, parentPose);
+            arr[s * 3 + 2].set(parentPose.x - pose.x, parentPose.y - pose.y, parentPose.z - pose.z, 0);
+          }
           let life = 1;
           if (s > 0) {
             const fold = agent.returned ? clamp01((t - agent.returnT) / FOLD_TIME) : 0;
@@ -145,8 +166,8 @@ export function createNebula(parent: Object3D, budget: number): Nebula {
           modelColor(agent.model, colour);
         }
         const sigma = plan.sigma[s] * (0.5 + 0.5 * Math.sqrt(fill));
-        arr[s * 2].set(pose.x, pose.y, pose.z, sigma);
-        arr[s * 2 + 1].set(colour.r * gain, colour.g * gain, colour.b * gain, fill);
+        arr[s * 3].set(pose.x, pose.y, pose.z, sigma);
+        arr[s * 3 + 1].set(colour.r * gain, colour.g * gain, colour.b * gain, fill);
         radii[s] = fill > 0 ? sigma * 2.2 : 0;
       }
     },

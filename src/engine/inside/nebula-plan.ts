@@ -14,12 +14,18 @@ import { STATIONS, stationCounts } from "./layout";
 /** Subagents that get their own cloud; the rest keep their single point. */
 export const CLOUD_AGENTS = 47;
 export const STATION_SLOT0 = 1 + CLOUD_AGENTS;
-export const SLOTS = STATION_SLOT0 + STATIONS.length;
+/** A faint field of dust over the whole boundary disc, in world units. */
+export const DUST_SLOT = STATION_SLOT0 + STATIONS.length;
+export const SLOTS = DUST_SLOT + 1;
+const DUST_RADIUS = 3.9;
+/** Share of an agent cloud's points spent on a faint filament back along its tether. */
+const FILAMENT_SHARE = 0.1;
 /** A `fork` stream no other part of the project draws from. */
 export const NEBULA_STREAM = 0x6e65_0000;
 
-const ORCHESTRATOR_SHARE = 0.27;
-const STATION_SHARE = 0.1;
+const ORCHESTRATOR_SHARE = 0.25;
+const STATION_SHARE = 0.09;
+const DUST_SHARE = 0.05;
 const MIN_POINTS = 48;
 
 export interface NebulaPlan {
@@ -89,7 +95,8 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
 
   // Points per slot.
   const perSlot = new Int32Array(SLOTS);
-  const share = (1 - ORCHESTRATOR_SHARE - STATION_SHARE) * budget;
+  const share = (1 - ORCHESTRATOR_SHARE - STATION_SHARE - DUST_SHARE) * budget;
+  perSlot[DUST_SLOT] = Math.round(DUST_SHARE * budget);
   if (slotAgent[0] >= 0) perSlot[0] = Math.round(ORCHESTRATOR_SHARE * budget);
   const w = chosen.map((c) => Math.sqrt(Math.max(c.tok, 1)));
   const wSum = w.reduce((a, b) => a + b, 0) || 1;
@@ -121,11 +128,30 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
     const ct = Math.cos(theta);
     const st = Math.sin(theta);
     const aspect = 1.2 + r() * 0.5;
-    const isStation = s >= STATION_SLOT0;
+    const isStation = s >= STATION_SLOT0 && s < DUST_SLOT;
+    const filaments = s > 0 && s < STATION_SLOT0 ? Math.floor(perSlot[s] * FILAMENT_SHARE) : 0;
     for (let i = 0; i < perSlot[s]; i++, k++) {
+      meta[k * 4] = s;
+      meta[k * 4 + 3] = r();
+      if (s === DUST_SLOT) {
+        // Uniform over the disc, thin in depth, appearing in random order.
+        const a = r() * Math.PI * 2;
+        const d = Math.sqrt(r()) * DUST_RADIUS;
+        local.set([Math.cos(a) * d, Math.sin(a) * d, (r() - 0.5) * 1.6, r()], k * 4);
+        meta[k * 4 + 1] = 0.8 + r() * 0.3;
+        meta[k * 4 + 2] = 3;
+        continue;
+      }
+      if (i < filaments) {
+        // Along the tether to the parent: x runs 0 (this agent) to 1 (its parent), y and z jitter.
+        local.set([r(), gauss(r), gauss(r), r() * 0.95], k * 4);
+        meta[k * 4 + 1] = 0.8 + r() * 0.3;
+        meta[k * 4 + 2] = 2;
+        continue;
+      }
       // A dense core, a wide shoulder and a thin scatter of stragglers.
       const pick = r();
-      const spread = pick < 0.66 ? 1 : pick < 0.95 ? 1.9 : 2.8;
+      const spread = (pick < 0.62 ? 1 : pick < 0.94 ? 1.9 : 2.8) * (s === 0 ? 1.3 : 1);
       const gx = gauss(r) * spread * aspect;
       const gy = gauss(r) * spread;
       const gz = gauss(r) * spread * 0.8;
@@ -134,16 +160,16 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
       local[k * 4 + 2] = gz;
       const dist = Math.hypot(gx / aspect, gy, gz) / 3.4;
       local[k * 4 + 3] = Math.min(1, 0.72 * dist + 0.28 * r());
-      const bright = !isStation && r() < 0.075;
-      const small = r() < 0.3;
-      meta[k * 4] = s;
-      meta[k * 4 + 1] = bright ? 1.9 + r() * 0.8 : small ? 1.25 + r() * 0.35 : 0.8 + r() * 0.4;
+      // Mostly small sharp points, some medium, and a few large soft ones that carry the glow.
+      const size = r();
+      const bright = !isStation && size > 0.955;
+      meta[k * 4 + 1] = bright ? 1.9 + r() * 0.7 : size > 0.78 ? 1.2 + r() * 0.3 : 0.75 + r() * 0.3;
       meta[k * 4 + 2] = bright ? 1 : 0;
-      meta[k * 4 + 3] = r();
     }
   }
 
   const tokensAt = (slot: number, t: number): number => {
+    if (slot === DUST_SLOT) return 0;
     if (slot >= STATION_SLOT0) return counts.at(slot - STATION_SLOT0, t);
     const a = times[slot];
     if (!a || !a.length) return 0;

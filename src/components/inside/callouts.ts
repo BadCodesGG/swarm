@@ -54,10 +54,25 @@ export function labelSize(a: AgentAnchor, statChars: number): { w: number; h: nu
 
 const hits = (a: Rect, b: Rect, pad = PAD) => a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
 
+type Pt = { x: number; y: number };
+
+/** The two pieces a callout draws: the leader, then the short tick that runs to its label. */
+export function pathOf(from: Pt, to: Pt, right: boolean): [Pt, Pt][] {
+  return [
+    [from, to],
+    [to, { x: to.x + (right ? LABEL_GAP - 4 : 4 - LABEL_GAP), y: to.y }],
+  ];
+}
+
+const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+  return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
+}
+
 /** Whether the segment p to q crosses the rectangle (a coarse sample is plenty at label scale). */
 function segmentHits(p: { x: number; y: number }, q: { x: number; y: number }, r: Rect): boolean {
-  for (let i = 1; i < 12; i++) {
-    const s = i / 12;
+  for (let i = 0; i <= 24; i++) {
+    const s = i / 24;
     const x = p.x + (q.x - p.x) * s;
     const y = p.y + (q.y - p.y) * s;
     if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return true;
@@ -95,8 +110,17 @@ export function placeCallouts(anchors: readonly AgentAnchor[], statChars: (a: Ag
         const box: Rect = { x: right ? tip.x + LABEL_GAP : tip.x - LABEL_GAP - w, y: tip.y - h / 2, w, h };
         if (box.x < bounds.x || box.y < bounds.y || box.x + box.w > bounds.x + bounds.w || box.y + box.h > bounds.y + bounds.h) continue;
         if (taken.some((r) => hits(box, r))) continue;
-        if (out.some((c) => segmentHits(from, tip, c.box) || segmentHits(c.from, c.to, box))) continue;
-        if (o.avoid?.some((r) => segmentHits(from, tip, r))) continue;
+        const mine = pathOf(from, tip, right);
+        const clear = out.every((c) => {
+          const theirs = pathOf(c.from, c.to, c.side === "start");
+          return (
+            !mine.some(([p, q]) => segmentHits(p, q, c.box)) &&
+            !theirs.some(([p, q]) => segmentHits(p, q, box)) &&
+            !mine.some(([p, q]) => theirs.some(([u, v]) => segmentsCross(p, q, u, v)))
+          );
+        });
+        if (!clear) continue;
+        if (o.avoid?.some((r) => mine.some(([p, q]) => segmentHits(p, q, r)))) continue;
         placed = { anchor: a, from, to: tip, box, side: right ? "start" : "end" };
         break search;
       }

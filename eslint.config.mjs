@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Local tool state, including other checkouts of this repo; not part of the project.
     ".claude/**",
+    // Launch clip output (git-ignored too): rendered video work and vendored libraries.
+    "brag-output*/**",
   ]),
 ]);
 

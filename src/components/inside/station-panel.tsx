@@ -14,7 +14,8 @@ const MAX_ROWS = 120;
 
 /**
  * One tool station's calls so far: who made each, which tool, when, how long it took, how big the
- * result was and whether it failed. The trace keeps no arguments, so none are shown.
+ * result was and whether it failed. No arguments are shown: the trace keeps none, except a launch's
+ * brief, which its agent's card shows.
  */
 export function StationPanel({ app, station, onClose, sheet = false }: { app: InsideApp; station: StationCategory; onClose: () => void; sheet?: boolean }) {
   const tl = useTimeline(app);
@@ -48,7 +49,11 @@ export function StationPanel({ app, station, onClose, sheet = false }: { app: In
           </svg>
         </button>
       </div>
-      <p className="m-0 text-[11px] leading-snug text-faint">The trace keeps no arguments or results, only that a call happened, how long it took and how big its result was.</p>
+      <p className="m-0 text-[11px] leading-snug text-faint">
+        {station === "agents"
+          ? "A launch's brief and hand-back are kept only as their first 280 characters, on the agent's card. Every other call here keeps no arguments or results, only when it ran, how long it took and how big its result was."
+          : "The trace keeps no arguments or results, only that a call happened, how long it took and how big its result was."}
+      </p>
       <div className="grid grid-cols-[46px_minmax(0,1fr)_44px_38px] gap-x-2 font-mono text-[9px] tracking-[0.12em] text-faint" aria-hidden="true">
         <span>TIME</span>
         <span>AGENT, TOOL</span>

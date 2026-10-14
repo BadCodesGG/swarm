@@ -15,7 +15,7 @@ export const CROWDED_SCALE = 0.45;
 /** A lab's outer ring, world units, at `LAB_SCALE`. */
 export const LAB_OUTER = RING_RADIUS.audit * LAB_SCALE;
 /** World units an escape trail runs out past a lab's outer ring (room for its four numbered markers), at each scale. */
-const TRAIL_BEYOND = { wide: 140, crowded: 90 } as const;
+const TRAIL_BEYOND = { wide: 170, crowded: 110 } as const;
 /** World units the escapee parks short of its trail's far end. */
 const ESCAPEE_SHORT = 20;
 
@@ -99,16 +99,16 @@ export function overviewBounds(frames: readonly LabFrame[]): Box {
     const reach = trailReach(f);
     const x = f.x + Math.cos(heading) * reach;
     const y = f.y + Math.sin(heading) * reach;
-    box.x0 = Math.min(box.x0, x - TRAIL_ROOM);
-    box.x1 = Math.max(box.x1, x + TRAIL_ROOM);
-    box.y0 = Math.min(box.y0, y - TRAIL_ROOM);
-    box.y1 = Math.max(box.y1, y + TRAIL_ROOM);
+    box.x0 = Math.min(box.x0, x - TRAIL_ROOM.x);
+    box.x1 = Math.max(box.x1, x + TRAIL_ROOM.x);
+    box.y0 = Math.min(box.y0, y - TRAIL_ROOM.y);
+    box.y1 = Math.max(box.y1, y + TRAIL_ROOM.y);
   }
   return box;
 }
 /** World units kept under a lab for its name, and round a trail's end for its marker and the OUTSIDE tag. */
 const NAME_ROOM = 40;
-const TRAIL_ROOM = 30;
+const TRAIL_ROOM = { x: 64, y: 30 } as const;
 
 export const centroid = (points: readonly Point[]): Point => ({
   x: points.reduce((n, p) => n + p.x, 0) / Math.max(1, points.length),

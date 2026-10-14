@@ -25,6 +25,7 @@ import { breakoutSteps } from "@/lib/box/breakout";
 import { interceptLines } from "@/lib/box/intercept";
 import { configure as configureState, rogueCount, STATUS } from "@/lib/box/sim";
 import { LAYER_ORDER, type BoxConfig, type CatchReport, type LayerId, type StepReport, type TrialSummary } from "@/lib/box/types";
+import { LINK_WINDOW } from "@/lib/box/links";
 import { createWorld, labOf, runWithFlips, setLayer as setWorldLayer, stepWorld, type LabRuntime, type World } from "@/lib/box/world";
 import { LAB_NAME, type AgentRef, type BreakoutStep, type Flip, type InterceptLine, type LabId, type LinkKind, type Scenario, type WorldEvent } from "@/lib/box/world-types";
 import type { ExperienceApp, StartOptions } from "@/components/experience";
@@ -73,9 +74,9 @@ import { exitHeading, labFrames, linkShapes, outerRadius, pointAlong, routePoint
 export type { Frame } from "./view";
 
 /** Where each escape sub-step sits between the broken outer ring and the trail's far end, as a fraction. */
-const BEAT_AT = [0.1, 0.38, 0.66, 0.94] as const;
+const BEAT_AT = [0.08, 0.36, 0.64, 0.92] as const;
 /** World units each sub-step's button sits off the trail, alternating sides so the four never touch. */
-const BEAT_OFF = 22;
+const BEAT_OFF = 24;
 
 export interface BoxEvents {
   tick: StepReport;
@@ -649,7 +650,9 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   /** Runs the sim without drawing until the shot's moment, then parks the story after it. */
   const runShot = () => {
     opts.onProgress(0.7, shot === "breakout" ? "Running to the breach" : "Running to the escape");
-    const reached = () => (shot === "breakout" ? storyEvents.some((e) => e.type === "contact" && e.outcome === "crossed") : storyEvents.some((e) => e.type === "escape"));
+    // The breakout runs on past its first crossing until the link window has closed, so a refused reach shows too.
+    const crossedAt = () => storyEvents.find((e) => e.type === "contact" && e.outcome === "crossed")?.tick;
+    const reached = () => (shot === "breakout" ? (crossedAt() ?? Infinity) + LINK_WINDOW < world.tick : storyEvents.some((e) => e.type === "escape"));
     while (world.tick < SHOT_MAX_TICKS && !reached()) advance(false);
     playing = false;
     computeSteps();

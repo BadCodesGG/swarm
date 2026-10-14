@@ -33,7 +33,9 @@ The one contract both sources emit, so the renderer knows one format.
 // types.ts
 export type ModelFamily = "opus" | "fable" | "sonnet" | "haiku" | "other";
 export type ToolCategory = "web" | "shell" | "files" | "edit" | "agents" | "advisor" | "plan" | "mcp" | "other";
-export type EventKind = "prompt" | "turn" | "call" | "result" | "spawn" | "return";
+export type EventKind = "prompt" | "turn" | "call" | "result" | "spawn" | "return" | "compact";
+export type PermissionSource = "user" | "rule" | "auto" | "other"; // who allowed a call; "user" is a human wait
+export interface CompactInfo { trigger: "manual" | "auto"; preTokens: number; postTokens: number; durationMs: number }
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 export interface TraceAgent {
@@ -62,8 +64,12 @@ export interface TraceEvent {
   call?: number;         // result/return: index of the matching call/spawn event
   child?: number;        // spawn/return: the subagent's id
   usage?: Usage;         // turn: that assistant message's usage
-  isError?: boolean;     // result
-  excerpt?: string;      // turn text and handback at most 280 chars; human prompts at most 2,000
+  isError?: boolean;     // result, and a spawn whose launch failed
+  excerpt?: string;      // turn text, handback and a spawn's brief at most 280 chars; human prompts at most 2,000
+  permission?: PermissionSource; // result
+  size?: number;         // result: characters in the content (a number, never the text)
+  thinkMs?: number;      // turn
+  compact?: CompactInfo; // compact
 }
 
 export interface SessionTrace {
@@ -223,11 +229,15 @@ blobs; nothing is read on the main thread) and `loadSession` posts it to `trace/
    `isSidechain`, `agentId`, `message.id`, `message.model`, `message.usage`, block types, tool
    names and ids, Agent inputs `description`/`subagent_type`/`model`/`run_in_background`,
    `toolUseResult` `agentId`/`status`/`resolvedModel`/`totalDurationMs`/`totalTokens`/
-   `totalToolUseCount`, and capped excerpts (human prompt text where `origin.kind === "human"`,
-   a turn's first text block, `handbackReport.text`). `cwd`, `gitBranch`,
+   `totalToolUseCount`, numbers (`permissionDecision.source` mapped to `user`/`rule`/`auto`/`other`,
+   `thinkingDurationMs`, a result's content length, a `compact_boundary`'s `trigger`/`preTokens`/
+   `postTokens`/`durationMs`), and capped excerpts (human prompt text where `origin.kind === "human"`,
+   a turn's first text block, `handbackReport.text`, and the Agent call's `input.prompt`, the brief
+   handed to each subagent, first 280 characters). An `isCompactSummary` record is never a prompt.
+   Tool arguments and results are not read: no other `input` field, no result text. `cwd`, `gitBranch`,
    `serverClassifierContext`, attachments, hook output, `bridge-session` ids, thinking,
    signatures, encrypted advisor content, `toolUseResult` bodies and `file-history-*` are never
-   copied. Unknown `type`s are counted and ignored.
+   copied. Unknown `type`s are counted and ignored. Nothing leaves the browser.
 4. Assistant records group by `message.id` into one `turn`; usage is taken once, from the record
    with the largest `output_tokens`.
 5. `finish()` links: parent `Agent` `tool_use.id` -> meta `toolUseId` -> `agentId` ->
@@ -334,7 +344,9 @@ The fixture, `src/lib/trace/__fixtures__/session.jsonl` plus its `subagents/` fi
 keeps record shapes and housekeeping types; replaces every free text with placeholders; fakes
 every id; re-bases every `timestamp` to a fixed epoch (2000-01-01) keeping the offsets; maps MCP
 server names in `mcp__<server>__*`, plugin `subagent_type` values and meta `description`/
-`agentType` to fakes; keeps the dropped fields with sentinels (`cwd: "FIXTURE-SECRET-CWD"`); and
+`agentType` to fakes; keeps the dropped fields with sentinels (`cwd: "FIXTURE-SECRET-CWD"`; a result's content is a sentinel
+padded to its length, the parser reads that length); makes the Agent/Task `input.prompt` placeholder
+text, the one tool input it copies; and
 injects one malformed line, one unknown type and a human prompt `<img src=x onerror=alert(1)>`.
 `build.test.ts` asserts the agent tree, a nested and a background spawn (its `return` at
 `returnT`), usage once per message, advisor and web categories, report counts, each cap, and that

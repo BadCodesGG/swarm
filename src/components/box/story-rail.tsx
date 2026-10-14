@@ -122,6 +122,8 @@ export function StoryRail({
   }, [selected]);
 
   const steps = [...pins].sort((a, b) => a.n - b.n);
+  // The open step's place in the list, as the step card counts it (pin numbers can skip).
+  const place = selected === null ? 0 : steps.findIndex((p) => p.n === selected) + 1;
   const tabs: [Tab, string][] = [
     ["story", primary?.label ?? "Story"],
     ["feed", "Feed"],
@@ -152,7 +154,15 @@ export function StoryRail({
         <p className="mt-1.5 mb-0 text-[15px] leading-[1.45] text-ink">{labs.length > 1 ? <Summary labs={labs} /> : "One lab. Each escape is explained here as it happens."}</p>
       </div>
       {lead}
-      {steps.length === 0 && labs.length > 1 ? <p className="m-0 text-[13px] text-faint">The steps appear here as the run reaches them.</p> : null}
+      {steps.length === 0 && labs.length > 1 ? (
+        <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-[rgba(150,172,214,0.22)] p-3" data-story-empty>
+          <span className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">No steps yet</span>
+          <p className="m-0 text-[13px] leading-normal text-muted">
+            A step appears here when an agent gets out of a lab or reaches another one. With every layer holding that may never happen: switch a layer off in Defences, or open Scenario
+            and pick a preset to see a story.
+          </p>
+        </div>
+      ) : null}
       <ol className="m-0 flex list-none flex-col gap-0.5 p-0" aria-label="Steps">
         {steps.map((p) => {
           const open = selected === p.n;
@@ -230,7 +240,7 @@ export function StoryRail({
           <button type="button" aria-label="Previous step" aria-keyshortcuts="[" title="Previous step ([)" onClick={() => onStep(-1)} className={iconButton} data-step-prev>
             <span aria-hidden="true">{"←"}</span>
           </button>
-          <span className="grow text-center font-mono text-[11px] text-label">{selected === null ? `${steps.length} steps` : `Step ${selected} of ${steps.length}`}</span>
+          <span className="grow text-center font-mono text-[11px] text-label">{place === 0 ? `${steps.length} ${steps.length === 1 ? "step" : "steps"}` : `Step ${place} of ${steps.length}`}</span>
           <button type="button" aria-label="Next step" aria-keyshortcuts="]" title="Next step (])" onClick={() => onStep(1)} className={iconButton} data-step-next>
             <span aria-hidden="true">{"→"}</span>
           </button>

@@ -38,6 +38,7 @@ export function Modal({
   const ref = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
   const back = useRef(returnFocus);
+  const downOnBackdrop = useRef(false);
   useEffect(() => {
     close.current = onClose;
     back.current = returnFocus;
@@ -86,11 +87,13 @@ export function Modal({
         e.preventDefault();
         close.current();
       }}
-      onClick={placement === "bottom" ? (e) => e.target === e.currentTarget && close.current() : undefined}
-      className={`pointer-events-auto border border-panel-border bg-panel p-0 text-body backdrop:bg-black/55 ${
+      // A click on the dimmed page closes a sheet, but only when the press began there too: a drag that starts inside and ends outside is not one.
+      onPointerDown={placement === "bottom" ? (e) => void (downOnBackdrop.current = e.target === e.currentTarget) : undefined}
+      onClick={placement === "bottom" ? (e) => e.target === e.currentTarget && downOnBackdrop.current && close.current() : undefined}
+      className={`pointer-events-auto border border-panel-border p-0 text-body backdrop:bg-black/55 ${
         placement === "bottom"
-          ? "fixed inset-x-0 top-auto bottom-0 m-0 max-h-[calc(100dvh-72px)] w-full max-w-none overflow-hidden rounded-t-[18px] border-b-0 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]"
-          : "m-auto max-h-[calc(100dvh-24px)] w-[min(30rem,calc(100vw-24px))] overflow-y-auto rounded-[16px] shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
+          ? "fixed inset-x-0 bg-panel-solid top-auto bottom-0 m-0 max-h-[calc(100dvh-72px)] w-full max-w-none overflow-hidden rounded-t-[18px] border-b-0 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]"
+          : "m-auto bg-panel max-h-[calc(100dvh-24px)] w-[min(30rem,calc(100vw-24px))] overflow-y-auto rounded-[16px] shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
       } ${className}`}
       {...data}
     >

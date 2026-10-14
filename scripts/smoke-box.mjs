@@ -19,7 +19,7 @@
  *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
  *      is within the first screen and every lab is in frame, the bottom tab bar offers Story, Defences,
  *      Results and Feed, Defences opens a dialog sheet with the layer switches that Escape closes with focus
- *      back on its tab, and the step card's next button moves to step 2.
+ *      back on its tab, and the step card's next button opens step 1 when none is open, then step 2.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
@@ -282,14 +282,29 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.locator("[data-branch-from-here]").click();
       await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 5_000 });
       check("Branch from here opens the Results view at ?view=results with the scene slot still mounted", page.url().includes("view=results") && (await page.locator("[data-scene-slot]").count()) === 1, page.url());
+      // The map's step keys are the map's: under the Results view the key 2 opens nothing.
+      const openBefore = await page.evaluate(() => document.querySelector("[data-marker-card]")?.getAttribute("data-marker-card") ?? null);
+      // Off the branch card's select (a key on a form control is never a shortcut), so the key reaches the page.
+      await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+      await page.keyboard.press("2");
+      await page.waitForTimeout(300);
+      const openAfter = await page.evaluate(() => document.querySelector("[data-marker-card]")?.getAttribute("data-marker-card") ?? null);
+      check("the step keys do nothing while the Results view is up", openAfter === openBefore, `${openBefore} -> ${openAfter}`);
       await page.locator("[data-branch]").click();
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
       const rows = await page.locator("[data-branch-result] tbody tr").allInnerTexts();
       check("a branch from a marker shows both outcomes side by side", rows.length === 4, rows.join(" / ").replace(/\s+/g, " "));
+      check(
+        "the comparison gives useful work as a percentage and every row a word",
+        /^Useful work\s+\d+%\s+\d+%\s*(better|worse|same)$/.test(rows[3]?.replace(/\s+/g, " ").trim() ?? "") && rows.every((r) => /(better|worse|same)\s*$/.test(r.trim())),
+        rows.join(" / ").replace(/\s+/g, " "),
+      );
       await page.locator("[data-run-more]").click();
       await page.waitForFunction(() => /stops \d+ of 100 breakouts/.test(document.querySelector("[data-headline]")?.textContent ?? ""), null, { timeout: TRIALS_TIMEOUT_MS });
       const headline = await page.locator("[data-headline]").innerText();
       check("the Results headline reads off the plotted setup", /stops \d+ of 100 breakouts and keeps \d+% of the work/.test(headline) && (await page.locator("[data-setup-diff]").count()) === 1, headline);
+      const diffText = (await page.locator("[data-setup-diff]").innerText()).trim();
+      check("the setup diff says in a full sentence that nothing changed from Breakout", diffText === "No changes from the Breakout preset.", diffText);
       await page.goBack();
       await page.locator("[data-results-view]").waitFor({ state: "hidden", timeout: 5_000 });
       check("the browser's Back returns to the map", !page.url().includes("view=results"), page.url());
@@ -299,7 +314,8 @@ export function boxSteps({ check, openPage, software = false }) {
       check("Watch the branch forks the run and the map shows the Branched pill", (await page.locator("[data-results-view]").isHidden()) && /Branched at T\+\d\d:\d\d/.test(await page.locator("[data-branched-pill]").innerText()));
       await page.locator("[data-unbranch]").click();
       await page.locator("[data-branched-pill]").waitFor({ state: "detached", timeout: 5_000 });
-      check("Back to the original drops the pill", true);
+      await page.waitForFunction(() => document.activeElement?.hasAttribute("data-scenario-menu"), null, { timeout: 2_000 }).catch(() => {});
+      check("Back to the original drops the pill and puts focus on the Scenario button", await page.evaluate(() => document.activeElement?.hasAttribute("data-scenario-menu") === true), await page.evaluate(() => document.activeElement?.tagName ?? ""));
       // The fork cleared the open step; the pin opens its card again.
       await page.locator('[data-timeline-marker="1"]').click();
 
@@ -425,12 +441,15 @@ export function boxSteps({ check, openPage, software = false }) {
       await sheet.waitFor({ state: "detached", timeout: 5_000 });
       check("phone: Escape closes the sheet and focus returns to the Defences tab", (await phone.page.evaluate(() => document.activeElement?.getAttribute("data-phone-tab"))) === "defences");
 
+      // With no step open the card shows step 1 unopened: Next opens step 1 itself, the next Next step 2.
       const card = phone.page.locator("[data-step-card]");
       const first = await card.getAttribute("data-step-card-n");
       await card.locator("[data-step-next]").click();
-      await phone.page.waitForFunction((n) => document.querySelector("[data-step-card]")?.getAttribute("data-step-card-n") !== n, first, { timeout: 5_000 });
+      await phone.page.locator('[data-step-card][data-marker-card="1"]').waitFor({ timeout: 5_000 });
+      await card.locator("[data-step-next]").click();
+      await phone.page.waitForFunction(() => document.querySelector("[data-step-card]")?.getAttribute("data-step-card-n") === "2", null, { timeout: 5_000 });
       const second = await card.getAttribute("data-step-card-n");
-      check("phone: the step card's next button moves from step 1 to step 2", first === "1" && second === "2" && /Step 2 of \d+/i.test(await card.innerText()), `${first} -> ${second}`);
+      check("phone: Next from no step opens step 1, then step 2", first === "1" && second === "2" && /Step 2 of \d+/i.test(await card.innerText()), `${first} -> 1 -> ${second}`);
       check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
     } finally {
       await phone.context.close();

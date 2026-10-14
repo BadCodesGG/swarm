@@ -317,6 +317,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
 
   // --- the story clock and the camera ---
   let story = 0;
+  /** The tick the last replay ran the sim to: events up to it already happened, so their labs read breached at once. */
+  let replayed = -Infinity;
   /** Replaying: the story clock runs on its own until it catches up with the sim. */
   let replaying = false;
   /** A shot holds the story at one tick. */
@@ -584,6 +586,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     links.set(shapes);
     accumulator = 0;
     story = 0;
+    replayed = -Infinity;
     replaying = false;
     escapeStage = 0;
     rebuildDirector();
@@ -631,6 +634,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     caughtLayer.fill(0);
     accumulator = 0;
     story = 0;
+    replayed = -Infinity;
     replaying = false;
     escapeStage = 0;
     rebuildDirector();
@@ -647,6 +651,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       },
     });
     story = world.tick;
+    replayed = world.tick;
     markLanded();
     writeAgents();
     drawCatchMarkers();
@@ -822,7 +827,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     const labViews: LabView[] = labs.map((L) => {
       const id = L.runtime.id;
       const at = proj(L.frame);
-      const breachedAt = breachTicks(director.items)[id];
+      const breachedAt = breachTicks(director.items, replayed)[id];
       const status: LabStatus = breachedAt !== undefined && story >= breachedAt ? "breached" : "held";
       return {
         id,
@@ -1018,7 +1023,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         crackOf.set(item.lab, { angle: Math.atan2(end.y - f.y, end.x - f.x), amount: 1 });
       }
     }
-    const breachedAt = breachTicks(items);
+    const breachedAt = breachTicks(items, replayed);
     for (const L of labs) {
       const id = L.runtime.id;
       const crack = crackOf.get(id);
@@ -1225,6 +1230,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       const last = lastEscapeRun();
       if (!last) return;
       story = Math.max(0, last.item.start - 1);
+      // The escape plays again from its start, so its lab waits for the agent to get out once more.
+      replayed = -Infinity;
       frozen = null;
       replaying = true;
       landed.clear();

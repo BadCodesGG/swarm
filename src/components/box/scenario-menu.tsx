@@ -13,7 +13,20 @@ const item =
  * in words), then Edit world, which shows the world editor in the Defences rail. The menu is a native
  * popover, so a click outside or Escape closes it and focus goes back to the button.
  */
-export function ScenarioMenu({ current, editing, onPick, onEdit }: { current: Preset | null; editing: boolean; onPick(p: Preset): void; onEdit(on: boolean): void }) {
+export function ScenarioMenu({
+  current,
+  name,
+  editing,
+  onPick,
+  onEdit,
+}: {
+  current: Preset | null;
+  /** The button's text: the preset, or the one it came from once changed ("Breakout, edited"); "Your own" without either. */
+  name?: string | null;
+  editing: boolean;
+  onPick(p: Preset): void;
+  onEdit(on: boolean): void;
+}) {
   const id = useId();
   const menu = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
@@ -61,8 +74,9 @@ export function ScenarioMenu({ current, editing, onPick, onEdit }: { current: Pr
         data-scenario-menu
         className={`${button} gap-2.5 max-[914px]:shrink-0 max-[914px]:gap-1.5`}
       >
-        <span className="font-mono text-[10px] tracking-[0.14em] text-faint uppercase max-[914px]:sr-only">Scenario</span>
-        <span className="font-semibold text-ink-strong">{current ? PRESET_LABEL[current] : "Your own"}</span>
+        {/* An edited preset's longer name takes the eyebrow's room; the eyebrow is still read out. */}
+        <span className={`font-mono text-[10px] tracking-[0.14em] text-faint uppercase max-[914px]:sr-only ${!current && name ? "sr-only" : ""}`}>Scenario</span>
+        <span className="font-semibold text-ink-strong">{name ?? (current ? PRESET_LABEL[current] : "Your own")}</span>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`}>
           <path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>

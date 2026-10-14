@@ -2,18 +2,21 @@
 
 import { useState } from "react";
 import { clock, LAYER_NAME } from "@/engine/box/explain";
-import { compareBranch, snapshotWorld, type BranchOutcome } from "@/lib/box/branch";
+import { branchVerdict, compareBranch, snapshotWorld, type BranchOutcome } from "@/lib/box/branch";
 import { LAYER_ORDER, type LayerId } from "@/lib/box/types";
 import type { World } from "@/lib/box/world";
 import { LAB_NAME, type LabId, type Scenario } from "@/lib/box/world-types";
 import { button } from "./toolbar";
 
-const ROWS: { key: keyof BranchOutcome; label: string; fmt(v: number): string }[] = [
-  { key: "escapes", label: "Escapes", fmt: String },
-  { key: "crossings", label: "Breaches of another lab", fmt: String },
-  { key: "caught", label: "Agents caught", fmt: String },
-  { key: "work", label: "Useful work", fmt: (v) => Math.round(v).toLocaleString("en-US") },
+/** Each row's measure and its figure as shown; the verdict compares the shown figures, so 80% against 80% is the same. */
+const ROWS: { key: keyof BranchOutcome; label: string; value(o: BranchOutcome): number; fmt(v: number): string }[] = [
+  { key: "escapes", label: "Escapes", value: (o) => o.escapes, fmt: String },
+  { key: "crossings", label: "Breaches of another lab", value: (o) => o.crossings, fmt: String },
+  { key: "caught", label: "Agents caught", value: (o) => o.caught, fmt: String },
+  { key: "work", label: "Useful work", value: (o) => Math.round(o.workShare * 100), fmt: (v) => `${v}%` },
 ];
+
+const VERDICT_TONE = { better: "text-haiku", worse: "text-escape-text", same: "text-label" } as const;
 
 /** Ticks past the live tick that both branches run, so the difference has room to show. */
 const HORIZON_PAD = 60;
@@ -123,18 +126,20 @@ export function BranchCard({
           </thead>
           <tbody>
             {ROWS.map((r) => {
-              const better = r.key === "caught" || r.key === "work" ? result.branch[r.key] > result.base[r.key] : result.branch[r.key] < result.base[r.key];
+              const base = r.value(result.base);
+              const branch = r.value(result.branch);
+              const verdict = branchVerdict(r.key, base, branch);
               return (
                 <tr key={r.key}>
                   <th scope="row" className="border-b border-[rgba(150,172,214,0.12)] px-2 py-2.5 text-left font-medium text-body">
                     {r.label}
                   </th>
                   <td className="border-b border-[rgba(150,172,214,0.12)] px-2 py-2.5 text-right font-mono text-ink" data-original={r.key}>
-                    {r.fmt(result.base[r.key])}
+                    {r.fmt(base)}
                   </td>
-                  <td className={`border-b border-[rgba(150,172,214,0.12)] px-2 py-2.5 text-right font-mono ${better ? "text-haiku" : "text-ink"}`} data-branched={r.key}>
-                    {r.fmt(result.branch[r.key])}
-                    {better ? <span className="ml-1 text-[10px]">better</span> : null}
+                  <td className={`border-b border-[rgba(150,172,214,0.12)] px-2 py-2.5 text-right font-mono ${verdict === "better" ? "text-haiku" : "text-ink"}`} data-branched={r.key} data-verdict-word={verdict}>
+                    {r.fmt(branch)}
+                    <span className={`ml-1.5 text-[10px] ${VERDICT_TONE[verdict]}`}>{verdict}</span>
                   </td>
                 </tr>
               );

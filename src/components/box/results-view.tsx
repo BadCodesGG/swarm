@@ -95,7 +95,7 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
                 </ul>
               ) : (
                 <p className="m-0 text-[13px] text-body" data-setup-diff>
-                  Nothing: this is the Breakout setup.
+                  No changes from the Breakout preset.
                 </p>
               )}
               <p className="m-0 mt-1.5 text-[13px] leading-normal text-muted">Dots on the dashed line are the best trade-offs found so far. Anything below it gives up work for nothing.</p>
@@ -116,9 +116,9 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
 }
 
 /** Over the map after "Watch the branch": when the run was forked, and the way back to the original. */
-export function BranchedPill({ at, onBack }: { at: number; onBack(): void }) {
+export function BranchedPill({ at, onBack, inline = false }: { at: number; onBack(): void; /** Above the scene rather than over it (a phone's short scene has no room to spare). */ inline?: boolean }) {
   return (
-    <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-layer-2/50 bg-chrome py-1 pr-1 pl-3" data-branched-pill>
+    <div className={`${inline ? "scroll-mt-3 self-start" : "absolute top-3 left-3 z-10"} flex flex-wrap items-center gap-2 rounded-xl border border-layer-2/50 bg-chrome py-1 pr-1 pl-3`} data-branched-pill>
       <span className="font-mono text-xs tracking-[0.1em] text-ink-strong">
         <span aria-hidden="true">{"⑂ "}</span>Branched at T+{clock(at)}
       </span>

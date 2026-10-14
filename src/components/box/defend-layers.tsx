@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { layerNumber, score } from "@/engine/box/explain";
+import { LAYER_NAME, layerNumber, score } from "@/engine/box/explain";
 import type { Tally } from "@/engine/box/tally";
 import { LAYER_ORDER, type BoxConfig, type LayerId } from "@/lib/box/types";
 import { LAYER_BG } from "./defend-card";
+import { LAYER_HEX, Slider } from "./panel";
 
-const NAME: Record<LayerId, string> = { sandbox: "Sandbox", permissions: "Permissions", network: "Network allowlist", monitor: "Monitor", audit: "Human audit" };
 /** The row's tint, the layer's ring colour at a low alpha. */
 const TINT: Record<LayerId, string> = {
   sandbox: "bg-[rgba(219,230,255,0.05)]",
@@ -15,40 +15,12 @@ const TINT: Record<LayerId, string> = {
   monitor: "bg-[rgba(127,155,214,0.05)]",
   audit: "bg-[rgba(95,124,187,0.06)]",
 };
-const HEX: Record<LayerId, string> = { sandbox: "#dbe6ff", permissions: "#b3c6f2", network: "#8fa9dd", monitor: "#7f9bd6", audit: "#5f7cbb" };
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const eyebrow = "font-mono text-[10px] tracking-[0.14em] text-label uppercase";
 
 /** A layer that costs real work and has caught nothing: the card the defender should look at. */
 const idle = (on: boolean, caught: number, cost: number) => on && caught === 0 && cost >= 0.02;
-
-function SliderRow({ name, label, value, min, max, current, onChange, dim }: { name: string; label: string; value: string; min: number; max: number; current: number; onChange(v: number): void; dim: boolean }) {
-  // While a drag is on, the thumb follows the pointer and the engine catches up (it replays the run).
-  const [draft, setDraft] = useState<number | null>(null);
-  const end = () => setDraft(null);
-  return (
-    <label className={`flex min-h-11 items-center gap-2 ${dim ? "opacity-50" : ""}`}>
-      <span className={`${eyebrow} w-14 shrink-0`}>{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={draft ?? current}
-        onChange={(e) => {
-          setDraft(Number(e.target.value));
-          onChange(Number(e.target.value));
-        }}
-        onPointerUp={end}
-        onKeyUp={end}
-        onBlur={end}
-        className="m-0 h-7 min-w-0 flex-1 cursor-pointer accent-layer-2"
-        data-slider={name}
-      />
-      <span className="w-12 shrink-0 text-right font-mono text-xs text-ink">{draft === null ? value : String(draft)}</span>
-    </label>
-  );
-}
 
 /**
  * Defend mode's right rail body: one lab's layers as cards, each with its switch, what it caught and
@@ -113,13 +85,13 @@ export function DefendLayers({
                 <span
                   aria-hidden="true"
                   className={`relative h-[26px] w-11 shrink-0 rounded-[13px] border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-layer-1 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-ground ${on ? "border-transparent" : "border-dashed border-escape-text"}`}
-                  style={{ background: on ? HEX[layer] : "#1b2236" }}
+                  style={{ background: on ? LAYER_HEX[layer] : "#1b2236" }}
                 >
                   <span className="absolute top-[3px] h-5 w-5 rounded-full transition-[left]" style={{ left: on ? 21 : 3, background: on ? "#0b0f1b" : "#8590a3" }} />
                 </span>
                 <span className={`min-w-0 flex-1 font-semibold ${on ? "text-ink-strong" : "text-muted"}`}>
                   <span className="mr-1.5 font-mono text-[10px] font-normal text-faint">{layerNumber(layer)}</span>
-                  {NAME[layer]}
+                  {LAYER_NAME[layer]}
                 </span>
                 {on ? (
                   <span className={`font-mono text-xs ${warn ? "text-warn" : "text-ink"}`}>{caughtText(layer)}</span>
@@ -128,7 +100,8 @@ export function DefendLayers({
                 )}
               </label>
               {layer === "monitor" ? (
-                <SliderRow
+                <Slider
+                  inline
                   name="monitor"
                   label="Flag"
                   value={score(config.monitorThreshold)}
@@ -140,7 +113,8 @@ export function DefendLayers({
                 />
               ) : null}
               {layer === "audit" ? (
-                <SliderRow
+                <Slider
+                  inline
                   name="audit"
                   label="Review"
                   value={`${Math.round(config.auditBudget * 100)}%`}

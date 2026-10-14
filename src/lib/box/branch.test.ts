@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { compareBranch, forkBranch, outcomeOf, restoreWorld, snapshotWorld } from "./branch";
+import { branchVerdict, compareBranch, forkBranch, outcomeOf, restoreWorld, snapshotWorld } from "./branch";
 import { createWorld, runWorld, setLayer } from "./world";
-import { ALL_ON, pair } from "./world-fixtures";
+import { ALL_OFF, ALL_ON, pair } from "./world-fixtures";
 
 const live = (seed = 4) => {
   const w = createWorld(pair(seed, ALL_ON));
@@ -75,5 +75,34 @@ describe("compareBranch", () => {
     const o = outcomeOf(w);
     expect(o.caught).toBe(w.log.filter((e) => e.type === "caught").length);
     expect(o.work).toBe(w.work);
+  });
+});
+
+describe("useful work as a share", () => {
+  it("is a fraction of what the honest agents could do, and the layers' cost lowers it", () => {
+    const run = (layers: typeof ALL_ON) => {
+      const w = createWorld({ ...pair(3, layers), labs: pair(3, layers).labs.map((l) => ({ ...l, config: { ...l.config, rogueFraction: 0 } })) });
+      runWorld(w, 120);
+      return outcomeOf(w).workShare;
+    };
+    const off = run(ALL_OFF);
+    const on = run(ALL_ON);
+    expect(off).toBeGreaterThan(0.9);
+    expect(off).toBeLessThanOrEqual(1);
+    expect(on).toBeLessThan(off);
+  });
+
+  it("is a whole share before the run has started", () => {
+    expect(outcomeOf(createWorld(pair(1, ALL_ON))).workShare).toBe(1);
+  });
+});
+
+describe("branchVerdict", () => {
+  it("says better, worse or same in words, by which way the measure should go", () => {
+    expect(branchVerdict("escapes", 2, 1)).toBe("better");
+    expect(branchVerdict("escapes", 1, 2)).toBe("worse");
+    expect(branchVerdict("crossings", 1, 1)).toBe("same");
+    expect(branchVerdict("caught", 3, 5)).toBe("better");
+    expect(branchVerdict("workShare", 0.82, 0.8)).toBe("worse");
   });
 });

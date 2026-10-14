@@ -1,8 +1,11 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * The right rail: the lab tabs, that lab's layers (`children`), the world editor while Edit world is
- * on, the lab's cast under a disclosure, and the way to the results.
+ * on, the lab's cast under a disclosure, and the way to the results. When it scrolls, a fade at its foot
+ * says more is below, and goes once the end is in view.
  */
 export function DefencesRail({
   tabs,
@@ -24,10 +27,34 @@ export function DefencesRail({
   sheet?: boolean;
   lead?: ReactNode;
 }) {
-  return (
+  const ref = useRef<HTMLElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (sheet || !el) return;
+    const update = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 2);
+    // The rail's own size, and each card's (a disclosure opens, a mode swaps the layers), change what is below.
+    const ro = new ResizeObserver(update);
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(el);
+      for (const child of el.children) ro.observe(child);
+    };
+    const mo = new MutationObserver(watch);
+    watch();
+    mo.observe(el, { childList: true });
+    el.addEventListener("scroll", update, { passive: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      el.removeEventListener("scroll", update);
+    };
+  }, [sheet]);
+  const rail = (
     <aside
+      ref={ref}
       aria-label="Defences"
-      className={sheet ? "flex flex-col gap-3" : "flex min-h-0 flex-col gap-3 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-4"}
+      className={sheet ? "flex flex-col gap-3" : "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-[14px] border border-panel-border bg-panel p-4"}
       data-defences-rail
     >
       {sheet ? null : <span className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">Defences</span>}
@@ -60,5 +87,16 @@ export function DefencesRail({
         </a>
       </div>
     </aside>
+  );
+  if (sheet) return rail;
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {rail}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-px bottom-px h-14 rounded-b-[13px] bg-linear-to-t from-panel-solid to-transparent transition-opacity ${more ? "opacity-100" : "opacity-0"}`}
+        data-rail-more={more ? "true" : "false"}
+      />
+    </div>
   );
 }

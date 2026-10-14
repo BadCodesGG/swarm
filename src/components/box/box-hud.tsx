@@ -72,8 +72,10 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const phone = usePhone();
   // The phone's bottom sheet, if one is up.
   const [sheet, setSheet] = useState<"defences" | "feed" | null>(null);
-  // The Defend budget: from the link that opened the page, then the card's slider.
-  const [budget, setBudget] = useState(() => budgetFromParams(new URLSearchParams(window.location.search)));
+  // The Defend budget: from the link that opened the page (again on Back and Forward), then the card's slider.
+  const [budget, setBudget] = useState(() => budgetFromParams(new URLSearchParams(typeof window !== "undefined" ? window.location.search : "")));
+  // The budget the address bar last said.
+  const linkBudget = useRef(budget);
   const [textScale, setTextScale] = useState(1);
   const slot = useRef<HTMLDivElement>(null);
   // The Results view is a page over the Watch layout (`?view=results`); `pushed` says Back-to-the-map can pop the entry it pushed.
@@ -119,7 +121,15 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   }, [app]);
 
   useEffect(() => {
-    const onPop = () => setView(isResultsQuery(window.location.search) ? "results" : "watch");
+    const onPop = () => {
+      setView(isResultsQuery(window.location.search) ? "results" : "watch");
+      // Only a link that says a different budget moves it: the slider's own value survives Back from the Results view.
+      const linked = budgetFromParams(new URLSearchParams(window.location.search));
+      if (linked !== linkBudget.current) {
+        linkBudget.current = linked;
+        setBudget(linked);
+      }
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -234,10 +244,13 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     [app],
   );
 
-  // The keys 1 to 9 open a step, [ and ] the previous or next, and Escape closes it.
+  // The keys 1 to 9 open a step, [ and ] the previous or next, and Escape closes it: on the map only, not
+  // under the Results view, a sheet or any other dialog.
   useEffect(() => {
+    if (view === "results" || sheet) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (document.querySelector("dialog[open]")) return;
       if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable='true']")) return;
       if (e.key === "Escape") {
         if (app.stats().world.selected !== null) app.selectStep(null);
@@ -253,7 +266,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [app, walk]);
+  }, [app, walk, view, sheet]);
 
   // --- the world as shown, rebuilt for the score, the per-lab figures, the lanes and the branch ---
   const viewWorld = useWorldAt(world.scenario, flips, world.tick, tl.live ? LIVE_BUCKET : 1);
@@ -270,7 +283,15 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     return out;
   }, [multi, viewWorld, shown.id]);
   const labIds = world.labs.map((l) => l.id).join();
-  const lanes = useMemo(() => buildLanes(labIds.split(",") as LabId[], viewWorld?.log ?? [], Math.max(tl.head, 1)), [labIds, viewWorld, tl.head]);
+  // Live, the lanes span the rebuilt world's own tick (it trails the head by a bucket), so a mark sits where its tick is and the log is read once per rebuild; rewound, the head the timeline spans.
+  const laneSpan = Math.max(tl.live ? (viewWorld?.tick ?? 0) : tl.head, 1);
+  const lanes = useMemo(() => buildLanes(labIds.split(",") as LabId[], viewWorld?.log ?? [], laneSpan), [labIds, viewWorld, laneSpan]);
+  // The branch card's tick: the scrubbed one, or just before the first breach when that is later, so a first comparison has something to change.
+  const firstBreach = lanes.reduce<number | null>((n, l) => (l.breachedAt === null ? n : Math.min(n ?? Infinity, l.breachedAt)), null);
+  const scrubbed = viewWorld?.tick ?? tl.at;
+  const branchAt = firstBreach !== null && scrubbed >= firstBreach ? Math.max(0, firstBreach - 1) : scrubbed;
+  const branchRebuilt = useWorldAt(world.scenario, flips, branchAt, 1, view === "results" && branchAt !== scrubbed);
+  const branchWorld = branchAt === scrubbed ? viewWorld : branchRebuilt && branchRebuilt.tick === branchAt && branchRebuilt.scenario === world.scenario ? branchRebuilt : null;
 
   // --- the lone Box's escape explainer: which off layer would have kept the latest escapee in ---
   const escape = tally.lastEscape;
@@ -289,6 +310,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const stops = stopsKey === null ? null : (stopsByEscape[stopsKey] ?? null);
 
   const preset: Preset | null = presetOf(scenario);
+  // The preset this world came from, kept through replays, branches and edits ("Breakout, edited").
+  const [origin, setOrigin] = useState<Preset | null>(() => presetOf(world.scenario));
+  const setupName = preset ? PRESET_LABEL[preset] : origin ? `${PRESET_LABEL[origin]}, edited` : null;
   const castOf = world.scenario.labs.find((l) => l.id === shown.id)!.cast;
   const liveMarker = world.selected === null ? undefined : overlay.markers.find((m) => m.n === world.selected);
   const cardStep = liveMarker?.step ?? pin?.step ?? null;
@@ -301,6 +325,19 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     window.setTimeout(() => document.querySelector<HTMLElement>("[data-branch-card] select")?.focus({ preventScroll: true }), 60);
   };
 
+  // Back on the map from "Watch the branch": the map's top (the Branched pill) in view and focus on its button, the
+  // Results view's focused control having gone with it.
+  const arriving = useRef(false);
+  useEffect(() => {
+    if (view !== "watch" || !branched || !arriving.current) return;
+    const id = requestAnimationFrame(() => {
+      arriving.current = false;
+      if (phone) document.querySelector("[data-branched-pill]")?.scrollIntoView({ block: "start", behavior: "instant" });
+      document.querySelector<HTMLElement>("[data-unbranch]")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [view, branched, phone]);
+
   /** "Watch the branch": fork the live run at `at` with the layer on; the map shows where it branched and the way back. */
   const watchBranch = (lab: LabId, layer: LayerId, at: number) => {
     const base = app.stats().world.scenario;
@@ -310,6 +347,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     // The map was zoomed on a lab when the page left it: frame every lab again.
     if (base.labs.length > 1) app.camera.overview();
     setBranched({ at, original });
+    arriving.current = true;
     closeResults();
   };
   const backToOriginal = () => {
@@ -319,6 +357,8 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     app.play();
     if (sc.labs.length > 1) app.camera.overview();
     setBranched(null);
+    // The pill (and the focused button in it) goes: focus lands on the Scenario button, not the page.
+    requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-scenario-menu]")?.focus());
   };
   /** "Keep this change": the layer goes on now, in the live run. */
   const keepChange = (lab: LabId, layer: LayerId) => {
@@ -348,7 +388,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   const story = (
     <StoryRail
-      presetName={preset ? PRESET_LABEL[preset] : null}
+      presetName={setupName}
       labs={world.labs}
       pins={pins}
       selected={world.selected}
@@ -425,18 +465,23 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     </DefencesRail>
   );
 
-  // The phone's step card: the open step, else the first, and previous and next from there.
+  // The phone's step card: the open step, else the first; with none open, Next opens the first and Previous the last.
   const steps = [...pins].sort((a, b) => a.n - b.n);
   const currentN = world.selected ?? steps[0]?.n ?? null;
   const currentPin = steps.find((p) => p.n === currentN) ?? null;
-  const walkCard = (dir: 1 | -1) => {
-    const ns = app
-      .overlay()
-      .markers.filter((m) => m.shown)
-      .map((m) => m.n);
-    const n = stepAfter(ns, currentN, dir);
-    if (n !== null) app.selectStep(n);
-  };
+  // A step chosen on the phone (a marker, a pin, the card's arrows) brings its card on screen if it is not.
+  useEffect(() => {
+    if (!phone || world.selected === null) return;
+    const id = requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>("[data-step-card]");
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      const tabs = document.querySelector('nav[aria-label="Panels"]')?.getBoundingClientRect().top ?? window.innerHeight;
+      // On screen means its heading and first lines are above the tab bar.
+      if (r.top < 0 || r.top + Math.min(r.height, 200) > tabs) card.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [phone, world.selected]);
   const activeTab: PanelTab = sheet ?? (view === "results" ? "results" : "story");
   const onTab = (tab: PanelTab) => {
     if (tab === "defences" || tab === "feed") setSheet(tab);
@@ -448,14 +493,20 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const centre = (
     // The scene fills the column less the timeline, and never drops under 400 px (scripts/smoke-box.mjs checks it).
     <div className="flex min-h-0 min-w-0 flex-col gap-3 min-[915px]:max-[1099px]:min-h-[max(600px,calc(100vh-120px))]">
-      <div ref={slot} className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[914px]:aspect-[760/560] min-[915px]:min-h-[400px] min-[915px]:flex-1" data-scene-slot>
+      {branched && phone ? <BranchedPill inline at={branched.at} onBack={backToOriginal} /> : null}
+      {/* On a phone or a tablet the scene is capped so the timeline and the step card's heading and first lines fit above the tab bar (about 610 px of the window holds the rest at 390 wide). */}
+      <div
+        ref={slot}
+        className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[914px]:aspect-[760/560] max-[914px]:max-h-[min(max(200px,calc(100svh_-_610px)),45vh)] max-[914px]:min-h-[200px] min-[915px]:min-h-[400px] min-[915px]:flex-1"
+        data-scene-slot
+      >
         {multi ? (
           <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} />
         ) : (
           <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />
         )}
         <RingLegend />
-        {branched ? <BranchedPill at={branched.at} onBack={backToOriginal} /> : null}
+        {branched && !phone ? <BranchedPill at={branched.at} onBack={backToOriginal} /> : null}
       </div>
       <Timeline
         at={tl.at}
@@ -483,7 +534,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   return (
     <div
-      className={`absolute inset-0 overflow-x-hidden overflow-y-auto max-[914px]:pb-[calc(4.5rem+env(safe-area-inset-bottom))] ${sheet ? "max-[914px]:overflow-y-hidden" : ""} bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink`}
+      className={`absolute inset-0 overflow-x-hidden overflow-y-auto max-[914px]:scroll-pb-[calc(4.5rem+env(safe-area-inset-bottom))] max-[914px]:pb-[calc(4.5rem+env(safe-area-inset-bottom))] ${sheet ? "max-[914px]:overflow-y-hidden" : ""} bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink`}
       data-plot-ready={trials.plotReady ? "true" : "false"}
       ref={root}
     >
@@ -500,7 +551,16 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
             }
             controls={
               <>
-                <ScenarioMenu current={preset} editing={editing} onPick={(p) => load(presetScenario(p))} onEdit={setEditing} />
+                <ScenarioMenu
+                  current={preset}
+                  name={setupName}
+                  editing={editing}
+                  onPick={(p) => {
+                    setOrigin(p);
+                    load(presetScenario(p));
+                  }}
+                  onEdit={setEditing}
+                />
                 <ModeSwitch mode={mode} onMode={setMode} />
               </>
             }
@@ -518,7 +578,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
               mode === "agent" && primary ? (
                 primary.node
               ) : (
-                <StepCard steps={steps} current={currentPin} open={world.selected !== null} lead={lead} onStep={walkCard} onReplayWith={rerunWith} />
+                <StepCard steps={steps} current={currentPin} open={world.selected !== null} lead={lead} onStep={walk} onReplayWith={rerunWith} />
               )
             ) : (
               <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
@@ -533,9 +593,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         running={trials.running}
         labels={trials.labels}
         scenario={scenario}
-        at={viewWorld?.tick ?? tl.at}
+        at={branchAt}
         head={tl.head}
-        world={viewWorld}
+        world={branchWorld}
         hint={cardStep?.stoppedBy[0] ? { lab: cardStep.lab, layer: cardStep.stoppedBy[0] } : null}
         rewound={rewound ? { at: tl.at, outcome: rewound } : null}
         onBack={closeResults}

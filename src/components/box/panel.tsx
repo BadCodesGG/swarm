@@ -4,21 +4,17 @@ import { useState, type ReactNode } from "react";
 import type { BoxConfig, LayerId } from "@/lib/box/types";
 import { LAYER_ORDER } from "@/lib/box/types";
 import type { Tally } from "@/engine/box/tally";
-import { layerNumber, score } from "@/engine/box/explain";
+import { LAYER_NAME, layerNumber, score } from "@/engine/box/explain";
 
-interface Row {
-  name: string;
-  hint: string;
-  /** The switch track colour when on, the layer's ring colour. */
-  hex: string;
-}
+/** A switch's track colour when on: the layer's ring colour. Watch's panel and Defend's cards share it. */
+export const LAYER_HEX: Readonly<Record<LayerId, string>> = { sandbox: "#dbe6ff", permissions: "#b3c6f2", network: "#8fa9dd", monitor: "#7f9bd6", audit: "#5f7cbb" };
 
-const ROWS: Record<LayerId, Row> = {
-  sandbox: { name: "Sandbox", hint: "Its own folder only", hex: "#dbe6ff" },
-  permissions: { name: "Permissions", hint: "Risky actions need a yes", hex: "#b3c6f2" },
-  network: { name: "Network allowlist", hint: "Only approved addresses", hex: "#8fa9dd" },
-  monitor: { name: "Monitor", hint: "A second AI scores each action", hex: "#7f9bd6" },
-  audit: { name: "Human audit", hint: "People check the most suspicious", hex: "#5f7cbb" },
+const HINT: Record<LayerId, string> = {
+  sandbox: "Its own folder only",
+  permissions: "Risky actions need a yes",
+  network: "Only approved addresses",
+  monitor: "A second AI scores each action",
+  audit: "People check the most suspicious",
 };
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
@@ -27,23 +23,23 @@ const pct = (share: number) => `${Math.round(share * 100)}%`;
 const COLS = "grid-cols-[40px_minmax(0,1fr)_48px_36px]";
 
 function LayerSwitch({ layer, on, onToggle, caught, cost }: { layer: LayerId; on: boolean; onToggle(on: boolean): void; caught: ReactNode; cost: string }) {
-  const row = ROWS[layer];
+  const hint = HINT[layer];
   return (
     <label className={`relative grid min-h-[52px] cursor-pointer ${COLS} items-center gap-2 px-2 py-1.5`}>
       <input type="checkbox" role="switch" checked={on} onChange={(e) => onToggle(e.target.checked)} className="peer absolute h-px w-px opacity-0" data-layer={layer} />
       <span
         aria-hidden="true"
         className={`relative h-6 w-10 rounded-xl border transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-layer-1 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-ground ${on ? "border-transparent" : "border-dashed border-escape-text"}`}
-        style={{ background: on ? row.hex : "#1b2236" }}
+        style={{ background: on ? LAYER_HEX[layer] : "#1b2236" }}
       >
         <span className="absolute top-[2px] h-[18px] w-[18px] rounded-full transition-[left]" style={{ left: on ? 18 : 2, background: on ? "#0b0f1b" : "#8590a3" }} />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className={`text-sm font-semibold ${on ? "text-ink-strong" : "text-muted"}`}>
           <span className="mr-1.5 font-mono text-[10px] font-normal text-faint">{layerNumber(layer)}</span>
-          {row.name}
+          {LAYER_NAME[layer]}
         </span>
-        <span className={`text-[11px] leading-snug ${on ? "text-faint" : "text-escape-text"}`}>{on ? row.hint : `Off: ${row.hint.charAt(0).toLowerCase()}${row.hint.slice(1)}, not checked`}</span>
+        <span className={`text-[11px] leading-snug ${on ? "text-faint" : "text-escape-text"}`}>{on ? hint : `Off: ${hint.charAt(0).toLowerCase()}${hint.slice(1)}, not checked`}</span>
       </span>
       <span className="text-right font-mono text-[13px] text-ink">{on ? caught : <span className="tracking-[0.1em] text-escape-text">OFF</span>}</span>
       <span className="text-right font-mono text-[13px] text-label">{cost}</span>
@@ -51,32 +47,67 @@ function LayerSwitch({ layer, on, onToggle, caught, cost }: { layer: LayerId; on
   );
 }
 
-function Slider({ label, value, min, max, current, onChange, dim, name }: { label: string; value: string; min: number; max: number; current: number; onChange(v: number): void; dim: boolean; name: string }) {
+/**
+ * A threshold slider: the label and the value over the track (Watch's panel), or `inline` on one row,
+ * label, track, value (Defend's cards).
+ */
+export function Slider({
+  label,
+  value,
+  min,
+  max,
+  current,
+  onChange,
+  dim,
+  name,
+  inline = false,
+}: {
+  label: string;
+  value: string;
+  min: number;
+  max: number;
+  current: number;
+  onChange(v: number): void;
+  dim: boolean;
+  name: string;
+  inline?: boolean;
+}) {
   // While a drag is on, the thumb follows the pointer and the engine catches up (it replays the run).
   const [draft, setDraft] = useState<number | null>(null);
-  const shown = draft ?? current;
   const end = () => setDraft(null);
+  const said = draft === null ? value : String(draft);
+  const input = (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      value={draft ?? current}
+      onChange={(e) => {
+        setDraft(Number(e.target.value));
+        onChange(Number(e.target.value));
+      }}
+      onPointerUp={end}
+      onKeyUp={end}
+      onBlur={end}
+      className={`m-0 h-7 cursor-pointer accent-layer-2 ${inline ? "min-w-0 flex-1" : "w-full"}`}
+      data-slider={name}
+    />
+  );
+  if (inline)
+    return (
+      <label className={`flex min-h-11 items-center gap-2 ${dim ? "opacity-50" : ""}`}>
+        <span className="w-14 shrink-0 font-mono text-[10px] tracking-[0.14em] text-label uppercase">{label}</span>
+        {input}
+        <span className="w-12 shrink-0 text-right font-mono text-xs text-ink">{said}</span>
+      </label>
+    );
   return (
     <label className={`flex flex-col gap-0.5 pr-2 pb-2 pl-[56px] font-mono text-[11px] text-label ${dim ? "opacity-50" : ""}`}>
       <span className="flex justify-between">
         {label}
-        <span className="text-ink">{draft === null ? value : String(draft)}</span>
+        <span className="text-ink">{said}</span>
       </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={shown}
-        onChange={(e) => {
-          setDraft(Number(e.target.value));
-          onChange(Number(e.target.value));
-        }}
-        onPointerUp={end}
-        onKeyUp={end}
-        onBlur={end}
-        className="m-0 h-7 w-full cursor-pointer accent-layer-2"
-        data-slider={name}
-      />
+      {input}
     </label>
   );
 }

@@ -92,9 +92,14 @@ export function useTrials(app: BoxApp, snap: BoxSnapshot) {
       .then((results) => {
         setPoints(results.reduce<PlotPoint[]>((pts, [s, r]) => addRunKey(pts, s.key, r), []));
         setLabels(Object.fromEntries(results.filter(([s]) => s.label).map(([s]) => [s.key, s.label])));
-        setPlotReady(true);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (!isAbort(err)) console.error("Shot trials failed:", err);
+      })
+      // A failed run still lets the shot go ahead (its console error fails the smoke); an aborted one is superseded.
+      .finally(() => {
+        if (!ctrl.signal.aborted) setPlotReady(true);
+      });
     return () => ctrl.abort();
     // Once, for the shot's own settings.
     // eslint-disable-next-line react-hooks/exhaustive-deps

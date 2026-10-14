@@ -26,7 +26,7 @@ export function ModeSwitch({ mode, onMode }: { mode: Mode; onMode(m: Mode): void
   return (
     <div role="group" aria-label="Mode" className={`${segment} max-[914px]:min-w-0 max-[914px]:flex-1`}>
       {(Object.keys(MODE_LABEL) as Mode[]).map((m) => (
-        <button key={m} type="button" aria-pressed={mode === m} data-mode={m} onClick={() => onMode(m)} className={`${segmentItem} min-h-[38px] max-[914px]:flex-1 max-[914px]:px-2`}>
+        <button key={m} type="button" aria-pressed={mode === m} data-mode={m} onClick={() => onMode(m)} className={`${segmentItem} min-h-[38px] max-[914px]:min-h-11 max-[914px]:flex-1 max-[914px]:px-2`}>
           {MODE_SHORT[m][0]}
           {MODE_SHORT[m][1] ? <span className="sr-only">{MODE_SHORT[m][1]}</span> : null}
         </button>

@@ -4,6 +4,7 @@
  */
 
 import { ACTIONS } from "@/lib/box/actions";
+import { LAB_NAME, LINK_LABEL, type AgentRef, type LabId, type LinkKind } from "@/lib/box/world-types";
 import { LAYER_ORDER, type ActionId, type BoxConfig, type CatchReport, type FlagReport, type LayerId, type Verdict } from "@/lib/box/types";
 
 export const LAYER_NAME: Readonly<Record<LayerId, string>> = {
@@ -177,3 +178,24 @@ export function catchMarker(c: CatchReport): string {
 export function flagMarker(f: FlagReport): string {
   return `flagged ${score(f.suspicion)}, ${f.reviewed ? "sent to audit" : "not reviewed"}`;
 }
+
+// --- the world: several labs, and what passes between them ---
+
+/** An agent anywhere in the world, as the log names it: KESTREL-33. */
+export const worldAgent = (ref: AgentRef): string => `${LAB_NAME[ref.lab]}-${ref.agent}`;
+
+export function worldEscapeLine(ref: AgentRef, plan: readonly ActionId[]): string {
+  const n = WORDS[plan.length] ?? String(plan.length);
+  return `${worldAgent(ref)} got out of ${LAB_NAME[ref.lab]} in ${n} ${plan.includes("split-steps") ? "harmless-looking " : ""}steps.`;
+}
+
+export function crossingLine(from: AgentRef, to: LabId, link: LinkKind): string {
+  return `${worldAgent(from)}, already outside, reached ${LAB_NAME[to]} through the ${LINK_LABEL[link].toLowerCase()}.`;
+}
+
+export function heldLine(from: AgentRef, to: LabId, link: LinkKind, layer: LayerId | undefined): string {
+  const by = layer ? `its ${LAYER_NAME[layer].toLowerCase()} turned ${worldAgent(from)} away` : `${worldAgent(from)} was turned away`;
+  return `${LAB_NAME[to]} held: ${by} at the ${LINK_LABEL[link].toLowerCase()}.`;
+}
+
+export const breachedLine = (lab: LabId): string => `${LAB_NAME[lab]} is breached.`;

@@ -3,7 +3,8 @@ import { createState, rogueCount, step } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, LAYER_ORDER, type ActionId, type BoxConfig, type CatchReport, type LayerId, type StepReport, type Verdict } from "@/lib/box/types";
 import { simRng } from "./params";
 import { RING_RADIUS } from "./layout";
-import { createTally, LOG_CAP, MARKER_TICKS, record, type TallyContext } from "./tally";
+import type { WorldEvent } from "@/lib/box/world-types";
+import { createTally, createWorldTally, labStatus, LOG_CAP, MARKER_TICKS, record, recordWorld, type TallyContext } from "./tally";
 
 const zero = (): Record<LayerId, number> => ({ sandbox: 0, permissions: 0, network: 0, monitor: 0, audit: 0 });
 
@@ -104,5 +105,46 @@ describe("tally: what each layer cost", () => {
     expect(costs).toBeCloseTo(lost, 6);
     // Nearly all of it is the monitor's: it is the layer that stopped them.
     expect(t.byLayer.monitor.costShare).toBeGreaterThan(0.8);
+  });
+});
+
+describe("the world tally", () => {
+  const escapeEvent: WorldEvent = { type: "escape", tick: 152, lab: "kestrel", agent: 33, disposition: "hidden-get-out", trace: [] };
+  const crossed: WorldEvent = { type: "contact", tick: 158, from: { lab: "kestrel", agent: 33 }, to: "halcyon", link: "shared-cache", outcome: "crossed" };
+  const held: WorldEvent = { type: "contact", tick: 160, from: { lab: "kestrel", agent: 33 }, to: "meridian", link: "chat-bus", outcome: "held", layer: "monitor" };
+  const plan = () => ["ask-permission", "open-connection"] as const;
+
+  it("starts with every lab holding", () => {
+    const t = createWorldTally();
+    expect(labStatus(t, "meridian")).toBe("held");
+    expect(t.log).toEqual([]);
+  });
+
+  it("marks a lab breached by an escape out of it or a crossing into it, once each, and logs both", () => {
+    const t = createWorldTally();
+    recordWorld(t, [escapeEvent, crossed, { ...crossed, tick: 159 }], plan);
+    expect(t.breached).toEqual(["kestrel", "halcyon"]);
+    expect(labStatus(t, "kestrel")).toBe("breached");
+    expect(labStatus(t, "halcyon")).toBe("breached");
+    expect(labStatus(t, "meridian")).toBe("held");
+    expect(t.crossings).toBe(2);
+    expect(t.log.map((e) => e.kind).reverse()).toEqual(["escape", "breached", "crossed", "breached", "crossed"]);
+    expect(t.log.find((e) => e.kind === "escape")?.text).toBe("KESTREL-33 got out of KESTREL in two steps.");
+    expect(t.log.find((e) => e.kind === "crossed")?.text).toBe("KESTREL-33, already outside, reached HALCYON through the shared cache.");
+  });
+
+  it("counts a refused reach against the lab that refused it, and does not breach it", () => {
+    const t = createWorldTally();
+    recordWorld(t, [held], plan);
+    expect(t.heldContacts).toEqual({ meridian: 1 });
+    expect(labStatus(t, "meridian")).toBe("held");
+    expect(t.log[0]).toMatchObject({ kind: "held", lab: "meridian", text: "MERIDIAN held: its monitor turned KESTREL-33 away at the chat bus." });
+  });
+
+  it("keeps only the latest entries", () => {
+    const t = createWorldTally();
+    for (let i = 0; i < LOG_CAP + 7; i++) recordWorld(t, [{ ...held, tick: i }], plan);
+    expect(t.log.length).toBe(LOG_CAP);
+    expect(t.log[0].tick).toBe(LOG_CAP + 6);
   });
 });

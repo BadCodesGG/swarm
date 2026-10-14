@@ -3,8 +3,10 @@ import { createState, rogueCount, step } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, LAYER_ORDER, type ActionId, type BoxConfig, type CatchReport, type LayerId, type StepReport, type Verdict } from "@/lib/box/types";
 import { simRng } from "./params";
 import { RING_RADIUS } from "./layout";
-import type { WorldEvent } from "@/lib/box/world-types";
-import { createTally, createWorldTally, labStatus, LOG_CAP, MARKER_TICKS, mergeTallies, record, recordWorld, type TallyContext } from "./tally";
+import type { Scenario, WorldEvent } from "@/lib/box/world-types";
+import { createWorld, stepWorld } from "@/lib/box/world";
+import { presetScenario } from "@/lib/box/presets";
+import { createTally, createWorldTally, labStatus, labTotals, LOG_CAP, MARKER_TICKS, mergeTallies, record, recordWorld, type TallyContext } from "./tally";
 
 const zero = (): Record<LayerId, number> => ({ sandbox: 0, permissions: 0, network: 0, monitor: 0, audit: 0 });
 
@@ -182,5 +184,41 @@ describe("mergeTallies", () => {
     record(b, report({ tick: 5, escapes: [{ agent: 7, trace: [] }], escapedTotal: 1 }), ctx);
     expect(mergeTallies([a, b]).lastEscape?.agent).toBe(7);
     expect(mergeTallies([b, a]).lastEscape?.agent).toBe(7);
+  });
+});
+
+describe("labTotals", () => {
+  const run = (scenario: Scenario, ticks: number) => {
+    const world = createWorld(scenario, false);
+    const tallies = world.labs.map((l) => createTally(l.spec.agents, rogueCount(l.spec.config, l.spec.agents)));
+    const flagged = world.labs.map(() => 0);
+    for (let i = 0; i < ticks; i++) {
+      const wr = stepWorld(world);
+      wr.labs.forEach((r, k) => {
+        record(tallies[k], r, { config: world.labs[k].state.config, plan: (a) => world.labs[k].state.plans[a] ?? [], home: () => ({ x: 0, y: 10 }) });
+        flagged[k] += r.flags.length;
+      });
+    }
+    return { world, tallies, flagged, totals: tallies.map(labTotals) };
+  };
+
+  it("counts each lab's own catches and escapes, and the labs add up to the world", () => {
+    const { world, tallies, totals } = run(presetScenario("breakout"), 300);
+    world.labs.forEach((l, k) => {
+      expect(totals[k].escaped).toBe(world.log.filter((e) => e.type === "escape" && e.lab === l.id).length);
+      expect(totals[k].caught).toBe(world.log.filter((e) => e.type === "caught" && e.lab === l.id).length);
+    });
+    expect(totals.find((_, k) => world.labs[k].id === "kestrel")!.escaped).toBeGreaterThan(0);
+    expect(totals.reduce((n, t) => n + t.caught, 0)).toBeGreaterThan(0);
+    expect(labTotals(mergeTallies(tallies)).escaped).toBe(totals.reduce((n, t) => n + t.escaped, 0));
+  });
+
+  it("counts each lab's own flags", () => {
+    const { flagged, totals } = run(presetScenario("everything-off", 1812, 3), 400);
+    const base = presetScenario("default-lab", 1812, 3);
+    const on = run({ ...base, labs: base.labs.map((l) => ({ ...l, config: { ...l.config, monitorThreshold: 0.15 } })) }, 400);
+    expect(totals.map((t) => t.flagged)).toEqual(flagged);
+    expect(on.totals.map((t) => t.flagged)).toEqual(on.flagged);
+    expect(on.totals.reduce((n, t) => n + t.flagged, 0)).toBeGreaterThan(0);
   });
 });

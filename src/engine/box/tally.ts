@@ -228,3 +228,13 @@ export function mergeTallies(list: readonly Tally[]): Tally {
   out.seq = Math.max(0, ...list.map((t) => t.seq));
   return out;
 }
+
+/** One lab's counts, as the map's lab cards show them. */
+export interface LabTotals {
+  caught: number;
+  escaped: number;
+  /** Actions its monitor sent on to a human reviewer. */
+  flagged: number;
+}
+
+export const labTotals = (t: Tally): LabTotals => ({ caught: t.caughtTotal, escaped: t.escaped, flagged: t.flagged });

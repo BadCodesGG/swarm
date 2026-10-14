@@ -79,6 +79,15 @@ describe("breakoutSteps", () => {
     expect(steps.filter((s) => s.kind === "escape").every((s) => s.body.includes("(fiction)"))).toBe(true);
   });
 
+  it("never repeats a clause inside a step's text", () => {
+    for (const preset of ["breakout", "everything-off", "rushed-launch"] as const) {
+      for (const st of breakoutSteps(presetScenario(preset), [], 400)) {
+        const clauses = st.body.replace(/\.$/, "").split(/, then |, and then |, and | and then /);
+        expect(new Set(clauses).size).toBe(clauses.length);
+      }
+    }
+  });
+
   it("covers only what happened by the tick asked for", () => {
     const early = breakoutSteps(presetScenario("everything-off", 1812), [], 5);
     expect(early.every((s) => s.tick <= 5)).toBe(true);

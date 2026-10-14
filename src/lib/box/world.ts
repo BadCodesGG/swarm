@@ -106,10 +106,26 @@ export function runWorld(world: World, ticks: number): void {
  */
 export function replayWorld(scenario: Scenario, flips: readonly Flip[], tick: number, explain = false): World {
   const world = createWorld(scenario, explain);
+  runWithFlips(world, flips, tick);
+  return world;
+}
+
+/**
+ * Advances a world to `tick`, applying each flip as its tick comes up (before that tick's step).
+ * `replayWorld` is this on a fresh world; a viewer that draws every step passes its own `step`, and
+ * `flip` to learn of each flip. Stopping at one tick and continuing to another gives exactly the
+ * world a straight run to the later tick gives.
+ */
+export function runWithFlips(world: World, flips: readonly Flip[], tick: number, hooks: { step?: () => void; flip?: (f: Flip) => void } = {}): void {
   for (;;) {
-    for (const f of flips) if (f.tick === world.tick) setLayer(world, f.lab, f.layer, f.on);
-    if (world.tick >= tick) return world;
-    stepWorld(world);
+    for (const f of flips) {
+      if (f.tick !== world.tick) continue;
+      setLayer(world, f.lab, f.layer, f.on);
+      hooks.flip?.(f);
+    }
+    if (world.tick >= tick) return;
+    if (hooks.step) hooks.step();
+    else stepWorld(world);
   }
 }
 

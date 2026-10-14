@@ -591,7 +591,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
               </>
             }
           />
-          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[914px]:gap-3 max-[914px]:px-4 max-[914px]:pt-3 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
+          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[914px]:gap-3 max-[914px]:px-4 max-[914px]:pt-3 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(460px,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
             {phone ? null : story}
             {centre}
             {phone ? (

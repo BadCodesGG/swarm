@@ -66,6 +66,20 @@ export function TrialsPlot({
       )
     : null;
   const dots = others.map((p) => toPlot(p.usefulness, p.safety));
+  // The large plot's text grows as the plot narrows (fk), so its margins come from the text, not constants: JetBrains
+  // Mono advances 0.6 em a glyph, and a line of text sits about 1.05 em above its baseline and 0.3 em below. The rotated
+  // y title keeps its ascent inside the view, the y tick labels end clear of it, the first and last x tick labels stay
+  // clear of them and of the right edge, and the x title sits under the tick labels.
+  const mono = (chars: number, size: number) => chars * 0.6 * size;
+  const titleX = large ? Math.max(7, 1.05 * z.title) : 10;
+  const yTickX = large ? Math.max(28, titleX + 0.3 * z.title + mono(3, z.tick) + 1) : 28;
+  const xTickX = (x: number, text: string) => {
+    if (!large) return x;
+    const half = mono(text.length, z.tick) / 2;
+    return Math.min(231 - half, Math.max(yTickX + 1.5 + half, x));
+  };
+  const xTickY = large ? 178 : 184;
+  const xTitleY = large ? Math.max(192, xTickY + 0.3 * z.tick + 1.05 * z.title) : 197;
   // Small: each setup is a number on the plot and a name in the key under it. Large: the name sits beside its dot.
   const number = (p: PlotPoint) => points.indexOf(p) + 1;
   const tagText = (p: PlotPoint) => (large ? (labels[p.key] ?? "setup") : String(number(p)));
@@ -73,8 +87,16 @@ export function TrialsPlot({
     others.map((p) => ({ key: p.key, text: tagText(p), at: toPlot(p.usefulness, p.safety) })),
     segments,
     dots,
-    // The large plot keeps its names off the tick labels under the axis.
-    [...(label ? [label.box] : []), ...(large ? [{ x: 0, y: 171, width: 232, height: 14 }] : [])],
+    // The large plot keeps its names off the tick labels: the band under the x axis and the column left of the y axis.
+    [
+      ...(label ? [label.box] : []),
+      ...(large
+        ? [
+            { x: 0, y: xTickY - 1.05 * z.tick, width: VIEW.width, height: VIEW.height },
+            { x: 0, y: 0, width: yTickX + 1, height: VIEW.height },
+          ]
+        : []),
+    ],
     large ? 2.7 * fk : undefined,
   );
   const xTicks = large ? [0, 1, 2, 3, 4, 5].map((i) => ({ x: 34 + i * 38.4, text: `${50 + i * 10}%` })) : [{ x: 34, text: "50" }];
@@ -116,12 +138,12 @@ export function TrialsPlot({
         </g>
         <g className="font-mono" fontSize={z.tick} fill="#8590a3">
           {yTicks.map((t) => (
-            <text key={t.text} x="28" y={t.y + 3} textAnchor="end">
+            <text key={t.text} x={yTickX} y={t.y + 3} textAnchor="end">
               {t.text}
             </text>
           ))}
           {xTicks.map((t) => (
-            <text key={t.text} x={t.x} y={large ? 178 : 184} textAnchor="middle">
+            <text key={t.text} x={xTickX(t.x, t.text)} y={xTickY} textAnchor="middle">
               {t.text}
             </text>
           ))}
@@ -132,10 +154,10 @@ export function TrialsPlot({
           )}
         </g>
         <g fontSize={z.title} fill="#a7b1c2" className={large ? "font-sans" : "font-mono"}>
-          <text x="130" y={large ? 192 : 197} textAnchor="middle">
+          <text x="130" y={xTitleY} textAnchor="middle">
             {large ? "Useful work kept" : "useful work kept"}
           </text>
-          <text x={large ? 7 : 10} y="95" textAnchor="middle" transform={`rotate(-90 ${large ? 7 : 10} 95)`}>
+          <text x={titleX} y="95" textAnchor="middle" transform={`rotate(-90 ${titleX} 95)`}>
             {large ? "Breakouts stopped, of 100" : "escapes stopped"}
           </text>
         </g>

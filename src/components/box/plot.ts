@@ -170,7 +170,8 @@ const boxesTouch = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.widt
 /**
  * Names for the plotted setups, each beside its dot where neither the frontier, another dot nor a
  * tag already placed (or a box in `taken`, such as the current setup's label) runs through it. `charWidth` is the text's width per character in viewBox units. A tag
- * with no clear spot keeps its first candidate that fits the view.
+ * with no clear spot keeps the first candidate off the text already placed (a line through a name reads; a name
+ * over a name does not), else its first candidate that fits the view.
  */
 export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = [], charWidth = TAG_CHAR): TagPlace[] {
   const placed: TagPlace[] = [];
@@ -198,7 +199,8 @@ export function placeTags(tags: readonly { key: string; text: string; at: Pt }[]
       if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
       spots.push({ x, y, anchor, box });
     }
-    const pick = spots.find((s) => !boxHits(s.box, segments, dots) && !used.some((u) => boxesTouch(u, s.box))) ?? spots[0];
+    const offText = spots.filter((s) => !used.some((u) => boxesTouch(u, s.box)));
+    const pick = offText.find((s) => !boxHits(s.box, segments, dots)) ?? offText[0] ?? spots[0];
     if (!pick) continue;
     used.push(pick.box);
     placed.push({ key: t.key, text: t.text, ...pick });

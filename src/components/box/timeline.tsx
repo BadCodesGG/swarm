@@ -33,6 +33,25 @@ const TICK_CLASS: Record<LaneKind, string> = {
   escape: "h-3 bg-escape",
 };
 
+/**
+ * Where the desktop toolbar sheds as its section narrows. The section is the container, and a container query reads
+ * its content box, which is the bar's own width (the centre column less 34 px of padding and border; 426 px at the
+ * column's floor of 460). Live and rewound differ (REWOUND and "Back to live" take 117 px more), so each state has its
+ * own thresholds: the controls' measured natural width plus 12 px. The time goes first, then "from here", then
+ * (rewound only) the buttons and gaps tighten and the state tag shrinks, so one row holds at the floor. The phone's
+ * compact timeline has no container and keeps the full labels.
+ */
+const SHED = {
+  live: { time: "@max-[495px]:hidden", branch: "@max-[439px]:sr-only", bar: "", tag: "", glyph: "" },
+  rewound: {
+    time: "@max-[612px]:hidden",
+    branch: "@max-[556px]:sr-only",
+    bar: "@max-[496px]:gap-1 @max-[496px]:[&_button]:px-2 @max-[496px]:[&_button]:text-xs",
+    tag: "@max-[496px]:text-[10px] @max-[496px]:tracking-[0.06em]",
+    glyph: "@max-[496px]:hidden",
+  },
+} as const;
+
 /** A point 0 to 1 along the run, as CSS, on the same span the pins use. */
 const along = (at: number) => `calc(${PIN / 2}px + ${at} * (100% - ${PIN}px))`;
 
@@ -113,9 +132,12 @@ export function Timeline({
       )}
     </button>
   );
+  const shed = SHED[live ? "live" : "rewound"];
   const liveTag = (
-    <span className={`font-mono text-xs tracking-[0.1em] ${live ? "text-haiku" : "text-warn"}`}>
-      <span aria-hidden="true">{live ? "● " : "○ "}</span>
+    <span className={`font-mono text-xs tracking-[0.1em] ${live ? "text-haiku" : "text-warn"} ${shed.tag}`}>
+      <span aria-hidden="true" className={shed.glyph}>
+        {live ? "● " : "○ "}
+      </span>
       {live ? "LIVE" : "REWOUND"}
     </span>
   );
@@ -124,10 +146,13 @@ export function Timeline({
       Back to live
     </button>
   );
-  // In a narrow desktop column (under 700 px of timeline) the label shortens to "Branch"; the full name stays for a screen reader.
+  // In a narrow desktop column the label shortens to "Branch"; the full name stays for a screen reader. One span holds the
+  // whole label: a flex button would make the inner span its own item and drop the space before "from".
   const branchButton = (
     <button type="button" onClick={onBranch} className={button} data-branch-from-here>
-      Branch<span className="@max-[699px]:sr-only"> from here</span>
+      <span>
+        Branch<span className={shed.branch}> from here</span>
+      </span>
     </button>
   );
   const trialsButton = (
@@ -205,17 +230,18 @@ export function Timeline({
     );
   }
 
-  // One row at every desktop width (scripts/smoke-box.mjs checks 1440 and 915): the section is a container, and as it
-  // narrows the buttons tighten, the branch label shortens, then the time goes (the top bar's TIME counter shows it too).
+  // One row at every desktop width (scripts/sweep-box.mjs checks them all, scripts/smoke-box.mjs 1440 and 915): the
+  // section is a container, and as it narrows the buttons tighten, then the controls shed in SHED's order (the top
+  // bar's TIME counter shows the time too).
   return (
     <section aria-label="Timeline" className="@container flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-4 py-3" data-timeline>
-      <div className="flex flex-wrap items-center gap-1.5 @max-[699px]:[&_button]:px-2.5" data-timeline-bar>
+      <div className={`flex flex-wrap items-center gap-1.5 @max-[699px]:[&_button]:px-2.5 ${shed.bar}`} data-timeline-bar>
         {playButton}
         <button type="button" onClick={onReset} className={button}>
           Reset
         </button>
         {liveTag}
-        <span className="font-mono text-xs text-label @max-[599px]:hidden">T+{clock(at)}</span>
+        <span className={`font-mono text-xs text-label ${shed.time}`}>T+{clock(at)}</span>
         {backToLive}
         <span className="grow" />
         {branchButton}

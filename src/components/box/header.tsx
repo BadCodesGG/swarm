@@ -45,10 +45,12 @@ function Counter({ label, value, hook, title, tone }: { label: ReactNode; value:
 }
 
 /**
- * The top bar, one row on a desktop: the wordmark home, the SIMULATION tag and its caveat, any status
- * pills, then `controls` (the scenario menu and the mode switch), the live counters and `tools` (the
- * help and copy-link buttons), with the sound switch last. On a phone it wraps, the counters on a row
- * of their own at the left edge.
+ * The top bar, one row on a wide desktop (1400 and up): the wordmark home, the SIMULATION tag and its
+ * caveat, any status pills, then `controls` (the scenario menu and the mode switch), the live counters
+ * and `tools` (the help and copy-link buttons), with the sound switch last. On a narrower desktop it is
+ * two rows by order, never a row of icons alone: the tools ride at the right of the wordmark and caveat,
+ * and the controls and counters take the second row. On a phone it is four: the wordmark with the
+ * icons, the caveat, the controls, and the counters at the left edge.
  */
 export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<Tally>; status?: ReactNode; controls?: ReactNode; tools?: ReactNode }) {
   return (
@@ -69,8 +71,10 @@ export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<
       </div>
       <span className="max-w-[210px] text-xs leading-[1.35] text-faint max-[914px]:order-3 max-[914px]:-mt-1 max-[914px]:max-w-none max-[914px]:basis-full max-[914px]:text-[11px]">Abstract agents and abstract actions. Nothing here is a real technique.</span>
       {status ? <div className="flex flex-wrap items-center gap-1.5 empty:hidden max-[914px]:order-3">{status}</div> : null}
-      <div className="ml-auto flex flex-wrap items-center gap-2.5 max-[914px]:order-4 max-[914px]:ml-0 max-[914px]:basis-full max-[914px]:flex-nowrap max-[914px]:gap-2">{controls}</div>
-      <dl className="m-0 ml-2 flex gap-5 max-[914px]:order-5 max-[914px]:ml-0 max-[914px]:grid max-[914px]:basis-full max-[914px]:grid-cols-4 max-[914px]:gap-2">
+      {/* The line break between the desktop's two rows. */}
+      <span aria-hidden="true" className="hidden basis-full min-[915px]:max-[1399px]:order-2 min-[915px]:max-[1399px]:block" />
+      <div className="ml-auto flex flex-wrap items-center gap-2.5 max-[914px]:order-4 max-[914px]:ml-0 max-[914px]:basis-full max-[914px]:flex-nowrap max-[914px]:gap-2 min-[915px]:max-[1399px]:order-3">{controls}</div>
+      <dl className="m-0 ml-2 flex gap-5 max-[914px]:order-5 max-[914px]:ml-0 max-[914px]:grid max-[914px]:basis-full max-[914px]:grid-cols-4 max-[914px]:gap-2 min-[915px]:max-[1399px]:order-4">
         <Counter label="Time" value={clock(tally.tick)} hook="tick" title={`Tick ${tally.tick.toLocaleString("en-US")}`} />
         <Counter label="Caught" value={tally.caughtTotal.toLocaleString("en-US")} hook="caught" />
         <Counter label="Escaped" value={tally.escaped.toLocaleString("en-US")} hook="escaped" tone="escape" />
@@ -84,7 +88,7 @@ export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<
           hook="useful work"
         />
       </dl>
-      <div className="flex items-center gap-1.5 max-[914px]:order-2 max-[914px]:ml-auto max-[914px]:[&_[data-help-open]]:hidden">
+      <div className="flex items-center gap-1.5 max-[914px]:order-2 max-[914px]:ml-auto max-[914px]:[&_[data-help-open]]:hidden min-[915px]:max-[1399px]:order-1 min-[915px]:max-[1399px]:ml-auto">
         {tools}
         <AudioToggle className="rounded-[10px]" />
       </div>

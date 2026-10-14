@@ -117,6 +117,14 @@ describe("placeTags", () => {
     const [t] = placeTags([{ key: "a", text: "Everything off", at: at(224, 60) }], [], [at(224, 60)]);
     expect(t.anchor).toBe("end");
   });
+  it("with no clear spot, keeps the name off text already placed before it keeps it off the frontier", () => {
+    // Dots all round the point block every candidate; the band under the axis (the tick labels) is taken.
+    const dots: { x: number; y: number }[] = [];
+    for (let x = 16; x <= 96; x += 8) for (let y = 120; y <= 170; y += 8) dots.push(at(x, y));
+    const band = { x: 0, y: 171, width: 232, height: 29 };
+    const [t] = placeTags([{ key: "a", text: "Everything off", at: at(40, 168) }], [], dots, [band]);
+    expect(t.box.y + t.box.height).toBeLessThanOrEqual(band.y);
+  });
   it("sizes a name by the character width it is given", () => {
     // 14 characters: 71 units wide at the default width, so it cannot sit right of x 200; at 2.7 it is 38 and can.
     const tag = { key: "a", text: "Everything off", at: at(180, 60) };

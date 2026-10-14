@@ -18,7 +18,8 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:smoke": "node scripts/smoke.mjs"
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:sweep": "node scripts/sweep-box.mjs"
   },
   "dependencies": {
     "next": "16.3.8",

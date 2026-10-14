@@ -110,11 +110,14 @@ export function DetailCard({
       <div className={`flex min-h-0 flex-col gap-3.5 overflow-y-auto ${sheet ? "px-4 pt-4 pb-3.5" : "p-[18px] pb-3.5"}`} data-detail-scroll>
         <div className="flex items-start gap-2.5">
           <span className="mt-[7px] size-2.5 shrink-0 rounded-full" style={{ background: m, boxShadow: `0 0 10px ${m}` }} />
-          <div className="flex min-w-0 grow flex-col gap-0.5">
+          <div className="flex min-w-0 grow flex-col gap-1">
             <h2 className="m-0 text-[19px] font-bold tracking-[-0.01em] [overflow-wrap:anywhere]">{info.label}</h2>
-            <span className={`${mono} text-xs text-label`}>{MODEL_NAMES[info.model]}</span>
+            {/* The state sits by the model, not by the title: WAITING ON YOU beside a name would wrap the name mid-word. */}
+            <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className={`${mono} text-xs text-label`}>{MODEL_NAMES[info.model]}</span>
+              <Pill info={info} />
+            </span>
           </div>
-          <Pill info={info} />
           <button
             type="button"
             aria-label="Close details"

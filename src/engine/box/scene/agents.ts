@@ -6,7 +6,7 @@
  */
 
 import { Mesh, MeshBasicNodeMaterial, type InstancedBufferAttribute, type Scene } from "three/webgpu";
-import { attribute, exp, float, instanceIndex, length, max, storage, varying, vec3, vec4 } from "three/tsl";
+import { attribute, exp, instanceIndex, length, max, storage, uniform, varying, vec3, vec4 } from "three/tsl";
 import type { PositionsSource } from "../crowd";
 import { STRIDE } from "../crowd/integrate";
 import { disc, dynamicAttribute, premultiplied, quadGeometry, type BoxUniforms } from "./common";
@@ -15,6 +15,8 @@ export interface Agents {
   /** r, g, b (linear), alpha per agent; write, then `commit()`. */
   readonly style: Float32Array;
   commit(): void;
+  /** Dot radius in scene units; `undefined` restores the size for a crowd of this many. */
+  setRadius(radius?: number): void;
   /** Uploads the CPU crowd's latest positions when they changed. Call once a frame. */
   sync(): void;
   dispose(): void;
@@ -43,7 +45,8 @@ export function createAgents(scene: Scene, u: BoxUniforms, count: number, source
   }
 
   const style = attribute("aStyle", "vec4");
-  const trueRPx = float(radius ?? dotRadius(count)).mul(u.unitPx);
+  const dotR = uniform(radius ?? dotRadius(count));
+  const trueRPx = dotR.mul(u.unitPx);
   const rPx = max(trueRPx, 0.7);
   // Below the 0.7 px floor a dot is drawn larger than it is, so its light is scaled back to keep the
   // crowd's total brightness the same; otherwise a phone-sized crowd blows out to a white disc.
@@ -68,6 +71,9 @@ export function createAgents(scene: Scene, u: BoxUniforms, count: number, source
   let seen = -1;
   return {
     style: aStyle.array as Float32Array,
+    setRadius(r) {
+      dotR.value = r ?? dotRadius(count);
+    },
     commit() {
       aStyle.needsUpdate = true;
     },

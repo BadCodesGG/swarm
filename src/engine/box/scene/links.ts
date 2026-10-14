@@ -9,7 +9,7 @@
  * far along it the nearest point lies.
  */
 
-import { Mesh, MeshBasicNodeMaterial, type Scene } from "three/webgpu";
+import { Mesh, MeshBasicNodeMaterial, type Node, type Scene, type UniformNode } from "three/webgpu";
 import { color, exp, fract, length, min, mix, positionWorld, select, uniform, varying, vec2, vec4 } from "three/tsl";
 import type { LabId } from "@/lib/box/world-types";
 import { polylineLength, type LinkShape } from "../world-layout";
@@ -42,11 +42,11 @@ interface Conduit {
   hub: boolean;
   mesh: Mesh;
   material: MeshBasicNodeMaterial;
-  pulseAt: ReturnType<typeof uniform<number>>;
-  pulseTone: ReturnType<typeof uniform<number>>;
-  pulseDir: ReturnType<typeof uniform<number>>;
-  lit: ReturnType<typeof uniform<number>>;
-  litTone: ReturnType<typeof uniform<number>>;
+  pulseAt: UniformNode<"float", number>;
+  pulseTone: UniformNode<"float", number>;
+  pulseDir: UniformNode<"float", number>;
+  lit: UniformNode<"float", number>;
+  litTone: UniformNode<"float", number>;
 }
 
 export function createLinks(scene: Scene, u: BoxUniforms): Links {
@@ -72,8 +72,8 @@ export function createLinks(scene: Scene, u: BoxUniforms): Links {
     const px = u.unitPx;
 
     // The nearest point on the polyline and how far along it (0 to 1, by length) that point is.
-    let bestD: ReturnType<typeof float> | null = null;
-    let bestS: ReturnType<typeof float> | null = null;
+    let bestD: Node<"float"> | null = null;
+    let bestS: Node<"float"> | null = null;
     let offset = 0;
     for (let i = 0; i < points.length - 1; i++) {
       const a = points[i];

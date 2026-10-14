@@ -194,3 +194,37 @@ export function recordWorld(t: WorldTally, events: readonly WorldEvent[], plan: 
     }
   }
 }
+
+/**
+ * One tally for the whole world, for the counters that sum across labs. A single lab's own tally
+ * comes back as it is. Catch markers stay with their lab (their places are lab-local), and the
+ * latest escape is whichever lab's came last.
+ */
+export function mergeTallies(list: readonly Tally[]): Tally {
+  if (list.length === 1) return list[0];
+  const out = createTally(
+    list.reduce((n, t) => n + t.agents, 0),
+    list.reduce((n, t) => n + t.rogues, 0),
+  );
+  out.tick = Math.max(0, ...list.map((t) => t.tick));
+  const possible = list.map((t) => Math.max(1, (t.agents - t.rogues) * t.tick));
+  const allPossible = possible.reduce((n, p) => n + p, 0);
+  list.forEach((t, i) => {
+    out.caughtTotal += t.caughtTotal;
+    out.escaped += t.escaped;
+    out.flagged += t.flagged;
+    out.work += t.work;
+    for (const l of LAYER_ORDER) {
+      out.byLayer[l].caught += t.byLayer[l].caught;
+      out.byLayer[l].costShare += (t.byLayer[l].costShare * possible[i]) / allPossible;
+    }
+  });
+  out.usefulWork = out.tick > 0 ? out.work / allPossible : 1;
+  out.log = list
+    .flatMap((t) => t.log)
+    .sort((a, b) => b.tick - a.tick || b.id - a.id)
+    .slice(0, LOG_CAP);
+  out.lastEscape = list.reduce<EscapeRecord | null>((best, t) => (t.lastEscape && (!best || t.lastEscape.tick >= best.tick) ? t.lastEscape : best), null);
+  out.seq = Math.max(0, ...list.map((t) => t.seq));
+  return out;
+}

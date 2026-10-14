@@ -7,8 +7,9 @@
 import { fork, type Rng } from "@/lib/rng";
 import { step, type BoxState } from "@/lib/box/sim";
 import { DEFAULT_CONFIG, type BoxConfig, type StepReport } from "@/lib/box/types";
+import { DEFAULT_CAST } from "@/lib/box/cast";
 import { presetScenario } from "@/lib/box/presets";
-import { scenarioFromParams, scenarioToParams } from "@/lib/box/share";
+import { scenarioFromParams } from "@/lib/box/share";
 import { PRESET_IDS, type Scenario } from "@/lib/box/world-types";
 
 /**
@@ -82,4 +83,9 @@ export function parseWorldParams(params: URLSearchParams): WorldParams {
   const preset = PRESET_IDS.find((p) => p === params.get("preset")) ?? (shot ? "breakout" : null);
   if (!preset) return { scenario: null, shot };
   return { scenario: presetScenario(preset, seed, intParam(params.get("labs"), 1, 5) ?? 3), shot };
+}
+
+/** The plain Box as a world: one lab, the settings it was given, no links. */
+export function loneLab(config: BoxConfig, seed: number, agents: number): Scenario {
+  return { seed, labs: [{ id: "meridian", config, agents, cast: { ...DEFAULT_CAST, hidden: { ...DEFAULT_CAST.hidden } } }], links: [] };
 }

@@ -14,7 +14,7 @@
  * scale. Line weights and dashes stay the same on screen whatever the scale.
  */
 
-import { Mesh, MeshBasicNodeMaterial, Vector2, type Scene } from "three/webgpu";
+import { Mesh, MeshBasicNodeMaterial, Vector2, type Node, type Scene } from "three/webgpu";
 import { atan, color, cos, exp, float, fract, length, max, min, mix, positionWorld, sin, step, uniform, varying, vec2, vec4 } from "three/tsl";
 import { LAYER_ORDER, type LayerId } from "@/lib/box/types";
 import { RING_RADIUS } from "../layout";
@@ -90,7 +90,9 @@ export function createShells(scene: Scene, u: BoxUniforms, frame: ShellFrame = {
   const px = u.unitPx;
   const lpx = u.unitPx.mul(s);
   /** The share of the layers that are switched on: how much of the lab is left. */
-  const integrity = on.reduce((n, o) => n.add(o), float(0)).div(LAYER_ORDER.length);
+  let layersOn: Node<"float"> = float(0);
+  for (const o of on) layersOn = layersOn.add(o);
+  const integrity = layersOn.div(LAYER_ORDER.length);
 
   // The glow under the middle: #9fb8ff at 22% falling to nothing at r = 200, warming to pink once breached.
   const g = max(float(1).sub(d.div(200)), 0).mul(mix(float(0.22), float(0.32), breach));

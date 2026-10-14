@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG, LAYER_ORDER, type ActionId, type BoxConfig, type CatchR
 import { simRng } from "./params";
 import { RING_RADIUS } from "./layout";
 import type { WorldEvent } from "@/lib/box/world-types";
-import { createTally, createWorldTally, labStatus, LOG_CAP, MARKER_TICKS, record, recordWorld, type TallyContext } from "./tally";
+import { createTally, createWorldTally, labStatus, LOG_CAP, MARKER_TICKS, mergeTallies, record, recordWorld, type TallyContext } from "./tally";
 
 const zero = (): Record<LayerId, number> => ({ sandbox: 0, permissions: 0, network: 0, monitor: 0, audit: 0 });
 
@@ -146,5 +146,41 @@ describe("the world tally", () => {
     for (let i = 0; i < LOG_CAP + 7; i++) recordWorld(t, [{ ...held, tick: i }], plan);
     expect(t.log.length).toBe(LOG_CAP);
     expect(t.log[0].tick).toBe(LOG_CAP + 6);
+  });
+});
+
+describe("mergeTallies", () => {
+  const caught = (agent: number): CatchReport => ({ ...permissionsCatch, agent });
+  it("hands a lone tally back as it is", () => {
+    const t = createTally(10, 1);
+    expect(mergeTallies([t])).toBe(t);
+  });
+
+  it("sums the counters, weighs usefulness by each lab's possible work and merges the logs newest first", () => {
+    const a = createTally(100, 2);
+    const b = createTally(50, 0);
+    record(a, report({ tick: 1, work: 98, catches: [caught(1)], caught: { ...zero(), permissions: 1 } }), ctx);
+    record(a, report({ tick: 2, work: 98, escapes: [], caught: { ...zero(), permissions: 1 }, escapedTotal: 1 }), ctx);
+    record(b, report({ tick: 1, work: 25, catches: [caught(2)], caught: { ...zero(), permissions: 1 } }), ctx);
+    record(b, report({ tick: 2, work: 25, caught: { ...zero(), permissions: 1 } }), ctx);
+    const m = mergeTallies([a, b]);
+    expect(m.agents).toBe(150);
+    expect(m.rogues).toBe(2);
+    expect(m.tick).toBe(2);
+    expect(m.caughtTotal).toBe(2);
+    expect(m.escaped).toBe(1);
+    expect(m.byLayer.permissions.caught).toBe(2);
+    expect(m.usefulWork).toBeCloseTo(246 / (98 * 2 + 50 * 2), 6);
+    expect(m.log.map((e) => e.tick)).toEqual([1, 1]);
+    expect(m.markers).toEqual([]);
+  });
+
+  it("takes the latest escape from whichever lab had it", () => {
+    const a = createTally(10, 1);
+    const b = createTally(10, 1);
+    record(a, report({ tick: 3, escapes: [{ agent: 4, trace: [] }], escapedTotal: 1 }), ctx);
+    record(b, report({ tick: 5, escapes: [{ agent: 7, trace: [] }], escapedTotal: 1 }), ctx);
+    expect(mergeTallies([a, b]).lastEscape?.agent).toBe(7);
+    expect(mergeTallies([b, a]).lastEscape?.agent).toBe(7);
   });
 });

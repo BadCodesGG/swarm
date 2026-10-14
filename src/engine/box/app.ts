@@ -1136,7 +1136,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     syncDebug();
   }
 
-  return {
+  const app: BoxApp = {
     bus,
     isWebGPU,
     configure(next) {
@@ -1261,6 +1261,9 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       renderer.dispose();
     },
   };
+  // The page's checks reach the app through the debug entry; hidden from its JSON dump.
+  Object.defineProperty(debug, "app", { value: app, enumerable: false });
+  return app;
 
   function emptyOverlay(): BoxOverlay {
     return {

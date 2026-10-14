@@ -165,6 +165,20 @@ describe("layoutWorldLabels", () => {
 
   const boxesOf = (l: ReturnType<typeof layoutWorldLabels>) => [...l.labs, ...l.links, ...(l.outside ? [l.outside] : [])].map(rectOf);
 
+  it("keeps the OUTSIDE label inside the slot when four markers crowd the end of the trail by its edge", () => {
+    const crowd = [
+      { n: 1, x: 835, y: 120 },
+      { n: 2, x: 858, y: 150 },
+      { n: 3, x: 868, y: 108 },
+      { n: 4, x: 884, y: 140 },
+    ];
+    const l = layoutWorldLabels({ ...input, markers: crowd, outside: { x: 876, y: 128 } });
+    const r = rectOf(l.outside!);
+    expect(r.x0).toBeGreaterThanOrEqual(bounds.x0);
+    expect(r.x1).toBeLessThanOrEqual(bounds.x1);
+    expect(r.y0).toBeGreaterThanOrEqual(bounds.y0);
+  });
+
   it("names every lab beside its ring and keeps all the boxes apart", () => {
     const l = layoutWorldLabels(input);
     expect(l.labs.map((t) => t.id)).toEqual(["meridian", "kestrel", "halcyon"]);

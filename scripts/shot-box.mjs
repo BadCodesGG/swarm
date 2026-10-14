@@ -2,7 +2,7 @@
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
  *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,branch,lower]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,defend,branch,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
@@ -30,7 +30,7 @@ const PORT = Number(value("port", 3128));
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = path.join(ROOT, ".shots");
 
-/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `branch` branches from step 1, `lower` also shoots the page scrolled to its foot. */
+/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `defend` switches to Defend mode (its card, and the tip once the worker has proved it), `branch` branches from step 1, `lower` also shoots the page scrolled to its foot. */
 const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
@@ -103,6 +103,12 @@ async function attempt(strategy) {
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
     }
     if (actions.includes("marker") && !(await page.locator("[data-marker-card]").count())) await page.locator('[data-step-marker="1"]:visible').click();
+    if (actions.includes("defend")) {
+      await page.locator('[data-mode="defend"]').click();
+      await page.locator("[data-defender-score]").waitFor({ timeout: 10_000 });
+      // The tip waits for a replay in the worker; a run with no escape has none.
+      await page.locator("[data-defend-tip]").waitFor({ timeout: 15_000 }).catch(() => {});
+    }
     if (actions.includes("agent")) {
       await page.locator('[data-mode="agent"]').click();
       for (let i = 0; i < 3; i++) {

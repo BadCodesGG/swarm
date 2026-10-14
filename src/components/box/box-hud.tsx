@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { budgetFromParams } from "@/lib/box/share";
 import { stoppingLayersOffThread } from "@/lib/box/trials-client";
 import { outcomeOf } from "@/lib/box/branch";
 import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
@@ -10,6 +11,7 @@ import type { BoxApp } from "@/engine/box/app";
 import type { EscapeRecord } from "@/engine/box/tally";
 import { ActTools, FallbackBadge, HandoffNote, type ActRender } from "@/components/site/act-tools";
 import { DefendCard } from "./defend-card";
+import { DefendLayers } from "./defend-layers";
 import { DefencesRail } from "./defences-rail";
 import { InterceptPanel } from "./debrief";
 import { EscapeExplainer } from "./escape-explainer";
@@ -60,6 +62,8 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const shown = world.labs.find((l) => l.id === shownId) ?? world.labs[0];
   const [mode, setMode] = useState<Mode>("watch");
   const [editing, setEditing] = useState(false);
+  // The Defend budget: from the link that opened the page, then the card's slider.
+  const [budget, setBudget] = useState(() => budgetFromParams(new URLSearchParams(window.location.search)));
   const [textScale, setTextScale] = useState(1);
   const slot = useRef<HTMLDivElement>(null);
   const scenario = useMemo(() => currentScenario(world), [world]);
@@ -97,7 +101,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     return () => cancelAnimationFrame(raf);
   }, [app]);
 
-  const thr = useRef<{ timer: number | null; pending: [LabId, ThresholdKey, number] | null }>({ timer: null, pending: null });
+  const thr = useRef<{ timer: number | null; pending: [LabId[], ThresholdKey, number] | null }>({ timer: null, pending: null });
   useEffect(() => {
     const t = thr.current;
     return () => {
@@ -113,13 +117,13 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   };
 
   /** A slider drag asks the engine for a replay each time: at most one every THRESHOLD_GAP ms, the last value always lands. */
-  function setThreshold(lab: LabId, key: ThresholdKey, value: number) {
+  function setThreshold(labs: LabId[], key: ThresholdKey, value: number) {
     const t = thr.current;
     if (t.timer !== null) {
-      t.pending = [lab, key, value];
+      t.pending = [labs, key, value];
       return;
     }
-    app.setThreshold(lab, key, value);
+    for (const lab of labs) app.setThreshold(lab, key, value);
     refresh();
     t.timer = window.setTimeout(() => {
       t.timer = null;
@@ -128,6 +132,13 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
       if (p) setThreshold(...p);
     }, THRESHOLD_GAP);
   }
+
+  /** Defend mode's switches and sliders: the shown lab, or every lab when "Change all labs together" is on. */
+  const labsFor = (all: boolean) => (all ? world.labs.map((l) => l.id) : [shown.id]);
+  const defendLayer = (layer: LayerId, on: boolean, all: boolean) => {
+    for (const lab of labsFor(all)) app.setLayer(lab, layer, on);
+    refresh();
+  };
 
   /** Starts a new world; a lab to `focus` keeps the camera on it afterwards. */
   const load = (next: Scenario, focus?: LabId) => {
@@ -246,7 +257,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   const primary =
     mode === "defend"
-      ? { label: "Defend", node: <DefendCard world={viewWorld} /> }
+      ? { label: "Defend", node: <DefendCard world={viewWorld} flips={flips} budget={budget} onBudget={setBudget} /> }
       : mode === "agent"
         ? { label: "Play", node: <AgentCard lab={shown.id} config={shown.config} seed={snap.seed} /> }
         : null;
@@ -302,16 +313,31 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         />
       }
     >
-      <Panel
-        lab={shown.id}
-        labName={shown.name}
-        labStats={{ caught: shown.caught, escaped: shown.escaped, flagged: shown.flagged }}
-        perLayer={perLayer}
-        config={shown.config}
-        tally={tally}
-        onConfig={changeConfig}
-        onThreshold={(k, v) => setThreshold(shown.id, k, v)}
-      />
+      {mode === "defend" ? (
+        <DefendLayers
+          lab={shown.id}
+          labName={shown.name}
+          labCount={world.labs.length}
+          labStats={{ flagged: shown.flagged }}
+          perLayer={perLayer}
+          config={shown.config}
+          tally={tally}
+          budget={budget}
+          onLayer={defendLayer}
+          onThreshold={(k, v, all) => setThreshold(labsFor(all), k, v)}
+        />
+      ) : (
+        <Panel
+          lab={shown.id}
+          labName={shown.name}
+          labStats={{ caught: shown.caught, escaped: shown.escaped, flagged: shown.flagged }}
+          perLayer={perLayer}
+          config={shown.config}
+          tally={tally}
+          onConfig={changeConfig}
+          onThreshold={(k, v) => setThreshold([shown.id], k, v)}
+        />
+      )}
     </DefencesRail>
   );
 
@@ -366,7 +392,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
           tools={
             <>
               <ActTools act="box" render={render} badge={false} note={false} />
-              <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
+              <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world), budget)}`} />
             </>
           }
         />

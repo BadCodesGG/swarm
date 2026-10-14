@@ -165,3 +165,25 @@ describe("stepAfter", () => {
     expect(stepAfter([], null, 1)).toBeNull();
   });
 });
+
+describe("best score per budget", () => {
+  const store = (): Storage => {
+    const m = new Map<string, string>();
+    return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) } as Storage;
+  };
+  it("keeps one best for each budget", () => {
+    const s = store();
+    recordBest(s, 70, 0.25);
+    recordBest(s, 40, 0.1);
+    expect(bestScore(s, 0.25)).toBe(70);
+    expect(bestScore(s)).toBe(70);
+    expect(bestScore(s, 0.1)).toBe(40);
+    expect(bestScore(s, 0.4)).toBe(0);
+    expect(recordBest(s, 30, 0.1)).toBe(40);
+  });
+  it("puts the budget in the share query only when it is not the default", () => {
+    const sc = presetScenario("breakout", 3);
+    expect(shareQuery(sc)).not.toContain("d=");
+    expect(shareQuery(sc, 0.35)).toContain("d=35");
+  });
+});

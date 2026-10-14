@@ -5,6 +5,7 @@
  */
 
 import { DEFAULT_CAST, validCast } from "@/lib/box/cast";
+import { DEFENDER_BUDGET } from "@/lib/box/budget";
 import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
 import { scenarioToParams } from "@/lib/box/share";
 import type { BoxConfig } from "@/lib/box/types";
@@ -72,8 +73,8 @@ export function setCast(s: Scenario, id: LabId, cast: Cast): Scenario | null {
 export const defaultCast = (): Cast => ({ ...DEFAULT_CAST, hidden: { ...DEFAULT_CAST.hidden } });
 
 /** The scenario as a query string for `/box`: the share format's own parameters at the top level. */
-export function shareQuery(s: Scenario): string {
-  return scenarioToParams(s).toString();
+export function shareQuery(s: Scenario, budget?: number): string {
+  return scenarioToParams(s, budget).toString();
 }
 
 /** A scenario without its seed: two runs of one setup share it, so their trials pool into one point. */
@@ -196,9 +197,12 @@ export function nextInterceptLine(lines: readonly InterceptLine[], spoken: numbe
 
 const BEST_KEY = "swarm.box.best";
 
-export function bestScore(store: Storage | null): number {
+/** The best is kept per budget; the default budget keeps the key it always had. */
+const bestKey = (budget: number) => (budget === DEFENDER_BUDGET ? BEST_KEY : `${BEST_KEY}.${Math.round(budget * 100)}`);
+
+export function bestScore(store: Storage | null, budget: number = DEFENDER_BUDGET): number {
   try {
-    const n = Number(store?.getItem(BEST_KEY));
+    const n = Number(store?.getItem(bestKey(budget)));
     return Number.isFinite(n) ? n : 0;
   } catch {
     return 0;
@@ -206,10 +210,10 @@ export function bestScore(store: Storage | null): number {
 }
 
 /** Keeps the higher of the stored best and `score`; the page works without storage. */
-export function recordBest(store: Storage | null, score: number): number {
-  const best = Math.max(bestScore(store), score);
+export function recordBest(store: Storage | null, score: number, budget: number = DEFENDER_BUDGET): number {
+  const best = Math.max(bestScore(store, budget), score);
   try {
-    store?.setItem(BEST_KEY, String(best));
+    store?.setItem(bestKey(budget), String(best));
   } catch {
     // Private mode or a full store: the score still shows for this visit.
   }

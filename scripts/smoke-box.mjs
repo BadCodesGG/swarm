@@ -209,6 +209,39 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.locator('[data-mode="defend"]').click();
       await page.locator("[data-defender-score]").waitFor({ timeout: 5_000 });
       check("defend mode shows a score", true, await page.locator("[data-defender-score]").innerText());
+
+      // Defend: the budget slider drives the card and the share link; the all-labs box sends a flip to every lab.
+      const card = page.locator("[data-defender]");
+      check("the Defend card starts on the default 25% budget, the meter has one labelled segment per layer", (await card.getAttribute("data-budget-now")) === "25" && (await card.locator("[data-budget-segment][aria-label]").count()) === 5);
+      check("the Defend card shows the best, the labs kept in and the work kept", (await card.locator("[data-defender-best]").count()) === 1 && /\d of \d/.test(await card.locator("[data-labs-kept]").innerText()) && /%/.test(await card.locator("[data-work-kept]").innerText()));
+      await page.locator("input[data-budget]").fill("40");
+      await page.waitForFunction(() => document.querySelector("[data-defender]")?.getAttribute("data-budget-now") === "40", null, { timeout: 5_000 });
+      check("the budget slider sets the Defend card's budget to 40%", /no more than 40%/.test(await card.innerText()));
+      await page.locator("[data-copy-link]").click();
+      await page.locator("[data-share-status]").filter({ hasText: /\w/ }).waitFor({ timeout: 5_000 });
+      const budgetLink = await page.evaluate(() => window.location.pathname + window.location.search);
+      check("Copy link carries the budget", /[?&]d=40(&|$)/.test(budgetLink), budgetLink.slice(-30));
+      const third = await openPage(browser, budgetLink);
+      try {
+        await waitForFrames(third.page, "box");
+        await third.page.locator('[data-mode="defend"]').click();
+        await third.page.locator("[data-defender-score]").waitFor({ timeout: 5_000 });
+        check("a link with a budget opens Defend at that budget", (await third.page.locator("[data-defender]").getAttribute("data-budget-now")) === "40");
+      } finally {
+        await third.context.close();
+      }
+      check("the all-labs box is on to begin with", await page.locator("input[data-all-labs]").isChecked());
+      const audit = (await labsOf(page))[0].layers.audit;
+      await page.locator('input[data-layer="audit"]').setChecked(!audit, { force: true });
+      await page.waitForFunction((n) => window.__swarm.box.labs.every((l) => l.layers.audit === n), !audit, { timeout: 5_000 });
+      check("a Defend switch with all labs together reaches every lab", true);
+      await page.locator("input[data-all-labs]").setChecked(false);
+      // The panel shows one lab (an earlier step may have moved it off the first): that one alone changes.
+      const shownLab = await page.locator("form[data-lab]").getAttribute("data-lab");
+      await page.locator('input[data-layer="audit"]').setChecked(audit, { force: true });
+      await page.waitForFunction(([id, n]) => window.__swarm.box.labs.find((l) => l.id === id)?.layers.audit === n, [shownLab, audit], { timeout: 5_000 });
+      const others = (await labsOf(page)).filter((l) => l.id !== shownLab).map((l) => l.layers.audit);
+      check("with it off a Defend switch reaches the shown lab only", others.length === 2 && others.every((v) => v === !audit), `${shownLab}; ${others.join()}`);
       check("/box logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
     } finally {
       await context.close();

@@ -102,6 +102,10 @@ export async function stepImport(browser, h) {
         // The moment sync runs once a second: give it two to prove it never touches an upload's URL.
         await page.waitForTimeout(2200);
         check("import: an upload offers no link to copy", (await page.locator("[data-copy-moment]").count()) === 0);
+        // The hand-off into The Box is for samples only: an upload gets no link, and nothing of it is in any address.
+        check("import: an upload offers no hand-off into The Box", (await page.locator("[data-handoff]").count()) === 0 && (await page.locator('a[href*="from=inside"]').count()) === 0);
+        const handedOff = log.requests.filter((r) => /from=inside|agents=|models=/.test(r.url) || /from=inside|agents=|models=/.test(r.body ?? ""));
+        check("import: nothing from the upload went to a request as hand-off parameters", handedOff.length === 0, handedOff.map((r) => r.url).join(" | "));
         const stored = await page.evaluate(() => ({
           keys: Object.keys(localStorage).filter((k) => !k.startsWith("swarm-")),
           session: sessionStorage.length,

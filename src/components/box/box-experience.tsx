@@ -2,18 +2,25 @@
 
 import Experience, { type StartOptions, type StillOptions } from "@/components/experience";
 import type { BoxApp } from "@/engine/box/app";
+import { ActTools } from "@/components/site/act-tools";
+import { withHandoff } from "@/lib/box/handoff";
 import { BoxHud } from "./box-hud";
 import { firstVisitParams } from "./playground";
 
 /** A plain visit opens the breakout preset. The engine (and three) loads only here, on the client, after the capability probe. */
 const start = (canvas: HTMLCanvasElement, opts: StartOptions): Promise<BoxApp> =>
-  import("@/engine/box/app").then(({ startBox }) => startBox(canvas, { ...opts, params: firstVisitParams(opts.params) }));
+  import("@/engine/box/app").then(({ startBox }) => startBox(canvas, { ...opts, params: firstVisitParams(withHandoff(opts.params)) }));
 
 /** Under reduced motion the HUD stays live over a still frame, so "Run 100 trials" still works. No three loads. */
 const stillStart = (canvas: HTMLCanvasElement, opts: StillOptions): Promise<BoxApp> =>
-  import("@/engine/box/still").then(({ startBoxStill }) => startBoxStill(canvas, { ...opts, params: firstVisitParams(opts.params) }));
+  import("@/engine/box/still").then(({ startBoxStill }) => startBoxStill(canvas, { ...opts, params: firstVisitParams(withHandoff(opts.params)) }));
 
-const overlay = (app: BoxApp) => <BoxHud app={app} />;
+const overlay = (app: BoxApp, { still }: { still: boolean }) => (
+  <>
+    <BoxHud app={app} />
+    <ActTools act="box" render={{ isWebGPU: app.isWebGPU, still, crowdMode: app.stats().crowdMode }} float />
+  </>
+);
 
 export default function BoxExperience() {
   return (

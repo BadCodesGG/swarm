@@ -5,10 +5,12 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { cycleAgent, type StationCategory } from "@/engine/inside/layout";
 import AudioToggle from "@/components/audio-toggle";
+import { ActTools, FallbackBadge } from "@/components/site/act-tools";
 import { BankBar, BankPanels, BankToggle } from "./bank";
 import { Counters } from "./counters";
 import { AgentBar, DetailCard } from "./detail-card";
 import { KeyPanel } from "./key-panel";
+import { Handoff } from "./handoff";
 import { CopyMoment, useMomentSync } from "./moment";
 import { NowPanel } from "./now-panel";
 import { RATES } from "./rates";
@@ -246,6 +248,7 @@ export function Hud({ app }: { app: InsideApp }) {
             <span className="font-semibold text-ink">INSIDE</span>
           </Link>
           <AudioToggle className="ml-auto" />
+          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} badge={false} />
           <Link
             href="/inside/load"
             className={`pointer-events-auto flex min-h-11 items-center gap-1.5 rounded-xl border border-opus/45 bg-opus/8 px-3.5 text-sm font-semibold text-warn ${linkRing}`}
@@ -254,6 +257,7 @@ export function Hud({ app }: { app: InsideApp }) {
             Your session
           </Link>
         </header>
+        <FallbackBadge render={{ isWebGPU: app.isWebGPU }} className="self-start" />
         <SourceSwitcher app={app} narrow />
         <Counters app={app} compact />
         <StageStrip app={app} compact />
@@ -287,6 +291,7 @@ export function Hud({ app }: { app: InsideApp }) {
         <BankBar app={app} open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId}>
           {rosterToggle}
           <CopyMoment app={app} compact />
+          <Handoff app={app} compact />
         </BankBar>
         {bankOpen ? (
           <div className="max-h-[36vh] overflow-y-auto">
@@ -344,6 +349,7 @@ export function Hud({ app }: { app: InsideApp }) {
           </Link>
           <div className="grow" />
           <Counters app={app} />
+          <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} />
           <AudioToggle />
         </header>
         <div className="flex items-stretch gap-3">
@@ -353,6 +359,7 @@ export function Hud({ app }: { app: InsideApp }) {
           <BankToggle open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId} />
           {rosterToggle}
           <CopyMoment app={app} />
+          <Handoff app={app} />
         </div>
       </div>
 

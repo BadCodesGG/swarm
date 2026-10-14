@@ -70,8 +70,8 @@ export interface Scenario {
   links: Link[];
 }
 
-export type Preset = "default-lab" | "rushed-launch" | "air-gapped" | "everything-off";
-export const PRESET_IDS: readonly Preset[] = ["default-lab", "rushed-launch", "air-gapped", "everything-off"];
+export type Preset = "breakout" | "default-lab" | "rushed-launch" | "air-gapped" | "everything-off";
+export const PRESET_IDS: readonly Preset[] = ["breakout", "default-lab", "rushed-launch", "air-gapped", "everything-off"];
 
 /** One agent anywhere in the world. */
 export interface AgentRef {

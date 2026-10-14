@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PRESET_BLURB, PRESET_LABEL, presetScenario } from "./presets";
 import { LAYER_ORDER } from "./types";
+import { createWorld, replayWorld, runWorld, setLayer } from "./world";
+import { breakoutSteps } from "./breakout";
 import { MAX_TRIAL_AGENTS, PRESET_IDS } from "./world-types";
 
 const layersOn = (s: ReturnType<typeof presetScenario>) => s.labs.map((l) => LAYER_ORDER.filter((x) => l.config.layers[x]));
@@ -14,8 +16,14 @@ describe("presetScenario", () => {
     expect(s.links.some((l) => l.kind === "shared-cache" && l.labs.includes("kestrel") && l.labs.includes("halcyon"))).toBe(true);
   });
 
-  it("rushed launch: only the monitor is off", () => {
-    expect(layersOn(presetScenario("rushed-launch")).every((on) => on.join() === "sandbox,permissions,network,audit")).toBe(true);
+  it("rushed launch: the monitor and the allowlist are off", () => {
+    expect(layersOn(presetScenario("rushed-launch")).every((on) => on.join() === "sandbox,permissions,audit")).toBe(true);
+  });
+
+  it("rushed launch shows an escape on its pinned seed", () => {
+    const w = createWorld(presetScenario("rushed-launch"), false);
+    runWorld(w, 300);
+    expect(w.log.some((e) => e.type === "escape")).toBe(true);
   });
 
   it("air gapped: every layer on and no links", () => {
@@ -48,5 +56,50 @@ describe("presetScenario", () => {
       expect(PRESET_LABEL[p]).toBeTruthy();
       expect(PRESET_BLURB[p]).not.toContain(String.fromCharCode(0x2014));
     }
+  });
+});
+
+describe("the breakout preset (first visit)", () => {
+  const scenario = presetScenario("breakout");
+  const world = createWorld(scenario, false);
+  runWorld(world, 300);
+  const count = (lab: string) => world.log.filter((e) => e.type === "escape" && e.lab === lab).length;
+
+  it("is pinned to seed 20 with three labs and one shared cache between Kestrel and Halcyon", () => {
+    expect(scenario.seed).toBe(20);
+    expect(scenario.labs.map((l) => l.id)).toEqual(["meridian", "kestrel", "halcyon"]);
+    expect(scenario.links).toEqual([{ kind: "shared-cache", labs: ["kestrel", "halcyon"] }]);
+    expect(layersOn(scenario)[0]).toHaveLength(5);
+    expect(scenario.labs[1].config.layers.network).toBe(false);
+    expect(scenario.labs[2].config.layers.monitor).toBe(false);
+  });
+
+  it("Kestrel's agent escapes, reaches Halcyon, and Meridian holds", () => {
+    expect(count("kestrel")).toBeGreaterThanOrEqual(1);
+    expect(count("meridian")).toBe(0);
+    const crossed = world.log.filter((e) => e.type === "contact" && e.outcome === "crossed");
+    expect(crossed.length).toBeGreaterThanOrEqual(1);
+    expect(crossed.every((e) => e.type === "contact" && e.from.lab === "kestrel" && e.to === "halcyon" && e.link === "shared-cache")).toBe(true);
+    expect(world.labs[2].breached).toBe(true);
+    expect(world.labs[0].breached).toBe(false);
+    expect(world.log.some((e) => e.type === "contact" && e.to === "meridian")).toBe(false);
+  });
+
+  it("breakoutSteps numbers the story and the allowlist is among the layers that would have stopped it", () => {
+    const steps = breakoutSteps(scenario, [], 300);
+    steps.forEach((s, i) => expect(s.n).toBe(i + 1));
+    expect(steps.some((s) => s.kind === "escape" && s.lab === "kestrel" && s.stoppedBy.includes("network"))).toBe(true);
+    expect(steps.some((s) => s.kind === "crossing" && s.lab === "halcyon")).toBe(true);
+  });
+
+  it("replaying with Kestrel's allowlist on removes the breach", () => {
+    const fixed = replayWorld(scenario, [{ tick: 0, lab: "kestrel", layer: "network", on: true }], 300);
+    expect(fixed.labs[2].breached).toBe(false);
+    expect(fixed.log.some((e) => e.type === "contact" && e.outcome === "crossed")).toBe(false);
+    expect(fixed.log.some((e) => e.type === "escape" && e.lab === "kestrel")).toBe(false);
+    const live = createWorld(scenario, false);
+    setLayer(live, "kestrel", "network", true);
+    runWorld(live, 300);
+    expect(live.log).toEqual(fixed.log);
   });
 });

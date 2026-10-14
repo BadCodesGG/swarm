@@ -9,6 +9,7 @@ import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
 import { LAYER_ORDER, type BoxConfig, type LayerId } from "@/lib/box/types";
 import type { Cast, Flip, LabId, LinkKind, Preset, Scenario } from "@/lib/box/world-types";
 import type { BoxApp } from "@/engine/box/app";
+import type { Rect } from "@/engine/box/labels";
 import type { EscapeRecord } from "@/engine/box/tally";
 import { ActTools, FallbackBadge, HandoffNote, type ActRender } from "@/components/site/act-tools";
 import { DefendCard } from "./defend-card";
@@ -78,6 +79,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const linkBudget = useRef(budget);
   const [textScale, setTextScale] = useState(1);
   const slot = useRef<HTMLDivElement>(null);
+  // The rings key over the scene, measured so the map's labels keep off it.
+  const legend = useRef<HTMLDivElement>(null);
+  const [avoid, setAvoid] = useState<Rect[]>([]);
   // The Results view is a page over the Watch layout (`?view=results`); `pushed` says Back-to-the-map can pop the entry it pushed.
   const [view, setView] = useState<"watch" | "results">(() => (typeof window !== "undefined" && isResultsQuery(window.location.search) ? "results" : "watch"));
   const pushed = useRef(false);
@@ -105,6 +109,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   useEffect(() => {
     let raf = 0;
     let last = "";
+    let lastKey = "";
     const report = () => {
       const el = slot.current;
       const r = el?.getBoundingClientRect();
@@ -117,6 +122,13 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
           // Labels keep at least ~8 px on screen: the design's 10.5 px at a scale of 0.75 and up.
           const unit = Math.min(r.width / 760, r.height / 560);
           setTextScale(Math.round(Math.min(2, Math.max(1, 0.75 / Math.max(unit, 0.01))) * 20) / 20);
+        }
+        // The rings key (hidden on a phone: no size) is a box the map's labels keep off.
+        const l = legend.current?.getBoundingClientRect();
+        const keyRect = l && l.width > 0 ? `${l.left}|${l.top}|${l.right}|${l.bottom}` : "";
+        if (keyRect !== lastKey) {
+          lastKey = keyRect;
+          setAvoid(l && l.width > 0 ? [{ x0: l.left, y0: l.top, x1: l.right, y1: l.bottom }] : []);
         }
       }
       raf = requestAnimationFrame(report);
@@ -361,8 +373,12 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     app.play();
     if (sc.labs.length > 1) app.camera.overview();
     setBranched(null);
-    // The pill (and the focused button in it) goes: focus lands on the Scenario button, not the page.
-    requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-scenario-menu]")?.focus());
+    // The pill (and the focused button in it) goes: focus lands on the Scenario button, not the page, and the page is back at its top (the fork scrolled to the pill).
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("[data-scenario-menu]")?.focus({ preventScroll: true });
+      root.current?.scrollTo({ top: 0, behavior: "instant" });
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
   };
   /** "Keep this change": the layer goes on now, in the live run. */
   const keepChange = (lab: LabId, layer: LayerId) => {
@@ -505,11 +521,11 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         data-scene-slot
       >
         {multi ? (
-          <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} />
+          <WorldOverlay overlay={overlay} shownLab={shown.id} avoid={avoid} onPick={pickMarker} onLab={showLab} />
         ) : (
           <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />
         )}
-        <RingLegend />
+        <RingLegend ref={legend} />
         {branched && !phone ? <BranchedPill at={branched.at} onBack={backToOriginal} /> : null}
       </div>
       <Timeline

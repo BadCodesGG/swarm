@@ -212,6 +212,15 @@ describe("layoutWorldLabels", () => {
     expect(Math.abs(l.links[0].y - 400)).toBeLessThan(40);
   });
 
+  it("keeps a lab's name off a box it is told to avoid, such as the rings key in the slot's corner", () => {
+    // The key along the slot's foot, right where Halcyon's name would go under its ring.
+    const key: Rect = { x0: 14, y0: 640, x1: 600, y1: 672 };
+    const without = rectOf(layoutWorldLabels(input).labs.find((t) => t.id === "halcyon")!);
+    expect(overlaps(without, key)).toBe(true);
+    const l = layoutWorldLabels({ ...input, avoid: [key] });
+    for (const r of boxesOf(l)) expect(overlaps(r, key)).toBe(false);
+  });
+
   it("brings a name back inside the slot when every spot round its ring would leave it", () => {
     // A phone's slot with a ring that nearly fills it: under, over and beside it all run off an edge.
     const tiny: Rect = { x0: 0, y0: 0, x1: 200, y1: 120 };

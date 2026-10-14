@@ -2,7 +2,7 @@
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
  *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--viewport=768x1024] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,lower]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,unfork,lab,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
@@ -30,7 +30,7 @@ const PORT = Number(value("port", 3128));
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = path.join(ROOT, ".shots");
 
-/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `defend` switches to Defend mode (its card, and the tip once the worker has proved it), `branch` branches from step 1, `results` opens the Results view and runs its comparison, `fork` (after `results`) presses "Watch the branch" and shoots the map with its Branched pill, `step3` (phone) walks the step card to step 3, `sheet` (phone) opens the Defences sheet, `feed` (phone) the Feed sheet, `lower` also shoots the page scrolled to its foot. */
+/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `defend` switches to Defend mode (its card, and the tip once the worker has proved it), `branch` branches from step 1, `results` opens the Results view and runs its comparison, `fork` (after `results`) presses "Watch the branch" and shoots the map with its Branched pill, `unfork` (after `fork`) presses "Back to the original", `lab` taps Kestrel's name on the map, `step3` (phone) walks the step card to step 3, `sheet` (phone) opens the Defences sheet, `feed` (phone) the Feed sheet, `lower` also shoots the page scrolled to its foot. */
 const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
@@ -118,13 +118,18 @@ async function attempt(strategy) {
       await page.locator("[data-watch-branch]").click();
       await page.locator("[data-branched-pill]").waitFor({ timeout: 10_000 });
     }
+    if (actions.includes("unfork")) {
+      await page.locator("[data-unbranch]").click();
+      await page.locator("[data-branched-pill]").waitFor({ state: "detached", timeout: 5_000 });
+    }
+    if (actions.includes("lab")) await page.locator('[data-lab-name="kestrel"]:visible').click();
     // With the Results view up, the scene slot is hidden on purpose: its labs and labels are not on screen to check.
     const resultsShown = await page.locator("[data-results-view]").isVisible();
     if (actions.includes("marker") && !(await page.locator("[data-marker-card]").count())) await page.locator('[data-step-marker="1"]:visible').click();
     if (actions.includes("defend")) {
       await page.locator('[data-mode="defend"]').click();
-      // On a phone the Defend card lives in the Defences sheet: the `sheet` action opens it and waits.
-      if (!mobile) {
+      // In the phone layout the Defend card lives in the Defences sheet: the `sheet` action opens it and waits.
+      if (!phoneLayout) {
         await page.locator("[data-defender-score]").waitFor({ timeout: 10_000 });
         // The tip waits for a replay in the worker; a run with no escape has none.
         await page.locator("[data-defend-tip]").waitFor({ timeout: 15_000 }).catch(() => {});

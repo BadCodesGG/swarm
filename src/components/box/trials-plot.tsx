@@ -1,3 +1,6 @@
+"use client";
+
+import { useLayoutEffect, useState } from "react";
 import { frontierPath, frontierVertices, placeLabel, placeTags, toPlot, type PlotPoint, type Segment } from "./plot";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -14,6 +17,10 @@ const SIZE = {
   small: { tick: 9, title: 9, dot: 4, ring: 10, here: 5.5, tag: 9, name: 9.5, sub: 9, line: 1, dash: "3 4" },
   large: { tick: 4.4, title: 5.2, dot: 2.6, ring: 5.2, here: 3.4, tag: 4.6, name: 5.4, sub: 4.6, line: 0.4, dash: "2.5 2.5" },
 } as const;
+const VIEW = { width: 232, height: 200 } as const;
+/** The large plot: never taller than this on screen, and its text is sized for a plot this wide (narrower, the text grows so it never renders smaller). */
+const LARGE_MAX_HEIGHT = 560;
+const LARGE_TEXT_WIDTH = 580;
 
 /** Safety against usefulness, 100 trials per setup; the current setup is the white point. `large` is the Results view's plot: axis titles, ticks, names on the dots and "Your setup". */
 export function TrialsPlot({
@@ -30,7 +37,21 @@ export function TrialsPlot({
   labels?: Readonly<Record<string, string>>;
   large?: boolean;
 }) {
-  const z = large ? SIZE.large : SIZE.small;
+  // The large plot takes its column's width and sets its box in px (a ratio-sized svg in a column flexbox is measured
+  // short and ran out of its card), with text in viewBox units chosen so it renders no smaller than the design's.
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!host) return;
+    const ro = new ResizeObserver(() => setWidth(host.clientWidth));
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, [host]);
+  const height = Math.min(LARGE_MAX_HEIGHT, (width * VIEW.height) / VIEW.width);
+  const box = large && width > 0 ? { width: (height * VIEW.width) / VIEW.height, height } : null;
+  const fk = box ? Math.max(1, LARGE_TEXT_WIDTH / box.width) : 1;
+  const base = large ? SIZE.large : SIZE.small;
+  const z = { ...base, tick: base.tick * fk, title: base.title * fk, tag: base.tag * fk, name: base.name * fk, sub: base.sub * fk };
   const current = points.find((p) => p.key === currentKey);
   const others = points.filter((p) => p !== current);
   const frontier = frontierPath(points);
@@ -54,7 +75,7 @@ export function TrialsPlot({
     dots,
     // The large plot keeps its names off the tick labels under the axis.
     [...(label ? [label.box] : []), ...(large ? [{ x: 0, y: 171, width: 232, height: 14 }] : [])],
-    large ? 2.7 : undefined,
+    large ? 2.7 * fk : undefined,
   );
   const xTicks = large ? [0, 1, 2, 3, 4, 5].map((i) => ({ x: 34 + i * 38.4, text: `${50 + i * 10}%` })) : [{ x: 34, text: "50" }];
   const yTicks = large
@@ -70,11 +91,19 @@ export function TrialsPlot({
       ];
   return (
     <section
+      ref={setHost}
       aria-label="Safety against usefulness"
       className={large ? "flex min-w-0 flex-col gap-2" : "box-border flex flex-auto flex-col gap-2 rounded-[14px] border border-panel-border bg-panel p-3.5"}
     >
       {large ? null : <span className="font-mono text-[10px] tracking-[0.14em] text-label">100 TRIALS PER SETUP</span>}
-      <svg viewBox="0 0 232 200" className={large ? "mx-auto h-auto max-h-[560px] w-full" : "h-auto w-full"} role="img" aria-label={summary(points, current)} data-plot-points={points.length}>
+      <svg
+        viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+        className={large ? "mx-auto h-auto max-h-[560px] w-full" : "h-auto w-full"}
+        style={box ?? undefined}
+        role="img"
+        aria-label={summary(points, current)}
+        data-plot-points={points.length}
+      >
         <g stroke="#1f2842" strokeWidth={z.line}>
           <line x1="34" y1="20" x2="226" y2="20" />
           <line x1="34" y1="70" x2="226" y2="70" />
@@ -142,7 +171,7 @@ export function TrialsPlot({
             <text x={label.x} y={label.y} textAnchor={label.anchor} className={large ? "font-sans" : "font-mono"} fontSize={z.name} fontWeight={large ? 700 : 400} fill={large ? "#f6f8fc" : "#eef2f8"}>
               {large ? "Your setup" : "this setup"}
             </text>
-            <text x={label.x} y={label.y + (large ? 6 : 12)} textAnchor={label.anchor} className="font-mono" fontSize={z.sub} fill="#a7b1c2">
+            <text x={label.x} y={label.y + (large ? 6 * fk : 12)} textAnchor={label.anchor} className="font-mono" fontSize={z.sub} fill="#a7b1c2">
               {pct(current.usefulness)} / {Math.round(current.safety * 100)}
               {large ? "" : "%"}
             </text>

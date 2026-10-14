@@ -97,7 +97,9 @@ export function Timeline({
   const shown = [...markers].sort((a, b) => a.tick - b.tick);
   const lo = PIN / 2;
   const hi = Math.max(lo, width - PIN / 2);
-  const xs = spreadLine(shown.map((m) => lo + (m.tick / max) * (hi - lo)), PIN + 2, lo, hi);
+  // Each pin's own place on the track (its tick, where the lanes put their marks), then spread so two never overlap.
+  const tickXs = shown.map((m) => lo + (m.tick / max) * (hi - lo));
+  const xs = spreadLine(tickXs, PIN + 2, lo, hi);
   const playButton = (
     <button type="button" aria-label={playing ? "Pause the simulation" : "Resume the simulation"} onClick={() => onPlay(!playing)} className={iconButton}>
       {playing ? (
@@ -122,9 +124,10 @@ export function Timeline({
       Back to live
     </button>
   );
+  // In a narrow desktop column (under 700 px of timeline) the label shortens to "Branch"; the full name stays for a screen reader.
   const branchButton = (
     <button type="button" onClick={onBranch} className={button} data-branch-from-here>
-      Branch from here
+      Branch<span className="@max-[699px]:sr-only"> from here</span>
     </button>
   );
   const trialsButton = (
@@ -145,6 +148,7 @@ export function Timeline({
           key={m.n}
           type="button"
           data-timeline-marker={m.n}
+          data-tick-x={tickXs[i].toFixed(2)}
           aria-pressed={selected === m.n}
           aria-label={`Step ${m.n} at T+${clock(m.tick)}, tick ${m.tick}`}
           onClick={() => {
@@ -201,17 +205,17 @@ export function Timeline({
     );
   }
 
+  // One row at every desktop width (scripts/smoke-box.mjs checks 1440 and 915): the section is a container, and as it
+  // narrows the buttons tighten, the branch label shortens, then the time goes (the top bar's TIME counter shows it too).
   return (
-    <section aria-label="Timeline" className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-4 py-3" data-timeline>
-      <div className="flex flex-wrap items-center gap-2">
+    <section aria-label="Timeline" className="@container flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-panel-border bg-panel px-4 py-3" data-timeline>
+      <div className="flex flex-wrap items-center gap-1.5 @max-[699px]:[&_button]:px-2.5" data-timeline-bar>
         {playButton}
         <button type="button" onClick={onReset} className={button}>
           Reset
         </button>
         {liveTag}
-        <span className="font-mono text-xs text-label">
-          T+{clock(at)}, tick {at}
-        </span>
+        <span className="font-mono text-xs text-label @max-[599px]:hidden">T+{clock(at)}</span>
         {backToLive}
         <span className="grow" />
         {branchButton}

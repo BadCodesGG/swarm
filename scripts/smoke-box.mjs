@@ -16,13 +16,17 @@
  *      layers that would have stopped it, [ opens the previous step, Escape closes it, a branch from a marker opens the Results view (Back returns to the map) and shows both outcomes, Watch the branch forks the run (pill, then back to the original), and
  *      "Replay with this switched on" reruns with that layer on.
  *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
- *      every lab, name and button is wholly inside it with none overlapping, and a lane's mark sits
- *      where its step's pin does; at 768x1024 and 390x844 the scene is within the first screen and
- *      every lab, its name and every step marker is in frame at the head and on a beat, the pins sit
- *      inside the scrubber, the bottom tab bar offers Story, Defences, Results and Feed, Defences opens a
- *      dialog sheet with the layer switches that Escape closes with focus back on its tab, the step
- *      card's next button opens step 1 when none is open, then step 2, and a fork every lab holds
- *      shows the "No steps yet" prompt on the step card with the map whole.
+ *      every lab, name and button is wholly inside it with none overlapping, a lane's mark sits
+ *      where its step's tick falls on the pins' track, the timeline's controls share one row live and
+ *      rewound (at 915 wide too) and on a close-up beat no lab's name sits on the rings key; at
+ *      768x1024 and 390x844 the scene is within the first screen and every lab, its name and every
+ *      step marker is in frame at the head and on a beat, a tap on a lab's name keeps every lab in
+ *      frame, the Results view's plot sits inside its card (its text at 10 px or more on the phone),
+ *      the pins sit inside the scrubber, the bottom tab bar offers Story, Defences, Results and Feed,
+ *      Defences opens a dialog sheet with the layer switches that Escape closes with focus back on
+ *      its tab, the step card's next button opens step 1 when none is open, then step 2, a fork
+ *      every lab holds shows the "No steps yet" prompt on the step card with the map whole, and
+ *      Back to the original returns the page to its top.
  *   5. `?webgl=1` on both acts: `isWebGPU === false` and frames advance; on the Box the crowd runs
  *      on the CPU worker (`crowd.mode === "cpu"`). With a real GPU, `/box?sim=cpu` also runs the CPU
  *      crowd and plain `/box` runs the GPU one.
@@ -389,6 +393,51 @@ export function boxSteps({ check, openPage, software = false }) {
     return scene;
   };
 
+  /** Every control and status in the timeline's top row on one line: the same vertical centre, within 2 px (a wrapped button sits a row lower). Rewound, "Back to live" is among them. */
+  const checkToolbarRow = async (page, where, rewound) => {
+    const row = await page.evaluate(() =>
+      [...document.querySelector("[data-timeline-bar]").children]
+        .filter((e) => e.getBoundingClientRect().height > 0)
+        .map((e) => {
+          const r = e.getBoundingClientRect();
+          return { text: (e.textContent || e.getAttribute("aria-label") || "").trim().slice(0, 16), back: e.hasAttribute("data-back-to-live"), cy: r.top + r.height / 2 };
+        }),
+    );
+    const controls = rewound ? 6 : 5;
+    check(
+      `${where}: every toolbar control shares one row`,
+      row.length >= controls && row.some((e) => e.back) === rewound && row.every((e) => Math.abs(e.cy - row[0].cy) <= 2),
+      row.map((e) => `${e.text} @${Math.round(e.cy)}`).join(", "),
+    );
+  };
+
+  /** The Results view opened from the tab bar: the trials plot (axis labels included) inside its card, over neither the branch card nor the setup diff; returns the smallest rendered font of its text. */
+  const checkResultsFit = async (page, where) => {
+    await page.locator('[data-phone-tab="results"]').click();
+    await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 5_000 });
+    await page.waitForTimeout(400);
+    const fit = await page.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+      const svg = r("svg[data-plot-points]");
+      const card = r('section[aria-label="100 trials per setup"]');
+      const T = 1;
+      const inside = svg.left >= card.left - T && svg.right <= card.right + T && svg.top >= card.top - T && svg.bottom <= card.bottom + T;
+      const hits = ["[data-branch-card]", "[data-setup-diff]"].filter((sel) => {
+        const o = r(sel);
+        return svg.left < o.right && o.left < svg.right && svg.top < o.bottom && o.top < svg.bottom;
+      });
+      // Text in the svg renders at its font size times the svg's scale (read off the matrix, since the y-axis title is rotated).
+      const fonts = [...document.querySelectorAll("svg[data-plot-points] text")].map((t) => {
+        const m = t.getScreenCTM();
+        return parseFloat(getComputedStyle(t).fontSize) * Math.hypot(m.a, m.b);
+      });
+      const box = (b) => [b.left, b.top, b.right, b.bottom].map(Math.round).join(",");
+      return { inside, hits, svg: box(svg), card: box(card), minFont: Math.min(...fonts) };
+    });
+    check(`${where}: the trials plot sits inside its card, over neither the branch card nor the setup diff`, fit.inside && fit.hits.length === 0, `plot ${fit.svg} in card ${fit.card}; over: ${fit.hits.join(", ") || "nothing"}`);
+    return fit;
+  };
+
   /** Step 1's beat, scrubbed to (the story's camera would be close on that lab), the scene checked, then back to live. */
   const checkOnBeat = async (page, where) => {
     const pinOne = await page.evaluate(() => window.__swarm.box.markers[0].tick);
@@ -469,10 +518,50 @@ export function boxSteps({ check, openPage, software = false }) {
       await desktop.page.waitForTimeout(800);
       const head = await headOf();
       const stepOne = await desktop.page.evaluate(() => window.__swarm.box.markers[0]);
-      const pinX = await desktop.page.locator('[data-timeline-marker="1"]').evaluate((e) => e.getBoundingClientRect().left + e.getBoundingClientRect().width / 2);
+      // The pin's own place on its track (`data-tick-x`), before the pins were spread apart: near the track's end the drawn pin sits a few px off it.
+      const pinX = await desktop.page.locator('[data-timeline-marker="1"]').evaluate((e) => e.parentElement.getBoundingClientRect().left + Number(e.dataset.tickX));
       const mark = desktop.page.locator(`[data-lane="${stepOne.lab}"] [data-lane-tick="${stepOne.tick}"]`);
       const markX = (await mark.count()) ? await mark.first().evaluate((e) => e.getBoundingClientRect().left + e.getBoundingClientRect().width / 2) : NaN;
       check("desktop: a lab's escape mark on its lane and the step's pin share an x within 1 px", Math.abs(markX - pinX) <= 1, `head ${head}, step 1 (${stepOne.lab}, tick ${stepOne.tick}): pin at ${pinX.toFixed(1)}, mark at ${markX.toFixed(1)}`);
+
+      // The timeline's controls share one row, live and rewound, at 1440 and at the narrowest desktop width; on a close-up beat no lab's name sits on the rings key.
+      await desktop.page.keyboard.press("Home");
+      await desktop.page.waitForTimeout(300);
+      await checkToolbarRow(desktop.page, "desktop, live", false);
+      const pinOne = await desktop.page.evaluate(() => window.__swarm.box.markers[0].tick);
+      const beats = [];
+      for (const d of [2, 8, 14, 20]) {
+        const t = Math.min(head - 1, pinOne + d);
+        await desktop.page.locator("[data-scrubber-box]").fill(String(t));
+        await desktop.page.waitForFunction((tick) => window.__swarm.box.stats.tick === tick, t, { timeout: 10_000 });
+        await desktop.page.waitForTimeout(700);
+        beats.push(await desktop.page.evaluate((tick) => {
+          const k = document.querySelector("[data-ring-legend]").getBoundingClientRect();
+          const over = [...document.querySelectorAll("[data-lab-name]")]
+            .filter((e) => e.getClientRects().length > 0)
+            .filter((e) => {
+              const r = e.getBoundingClientRect();
+              return r.left < k.right && k.left < r.right && r.top < k.bottom && k.top < r.bottom;
+            })
+            .map((e) => e.dataset.labName);
+          return { tick, focus: window.__swarm.box.camera.focus, over };
+        }, t));
+      }
+      check(
+        "desktop on a close-up beat: no lab's name sits on the rings key",
+        beats.some((b) => b.focus) && beats.every((b) => b.over.length === 0),
+        beats.map((b) => `tick ${b.tick}: ${b.focus ?? "overview"}${b.over.length ? `, on the key: ${b.over.join(", ")}` : ""}`).join("; "),
+      );
+      await checkToolbarRow(desktop.page, "desktop, rewound", true);
+      await desktop.page.locator("[data-back-to-live]").click();
+      await desktop.page.locator("[data-back-to-live]").waitFor({ state: "detached", timeout: 5_000 });
+      await desktop.page.setViewportSize({ width: 915, height: 900 });
+      await desktop.page.waitForTimeout(600);
+      await checkToolbarRow(desktop.page, "narrowest desktop (915), live", false);
+      await desktop.page.locator("[data-scrubber-box]").fill(String(pinOne + 2));
+      await desktop.page.locator("[data-back-to-live]").waitFor({ timeout: 10_000 });
+      await desktop.page.waitForTimeout(400);
+      await checkToolbarRow(desktop.page, "narrowest desktop (915), rewound", true);
       check("desktop: no console errors or THREE warnings", desktop.problems.length === 0, desktop.problems.join(" | "));
     } finally {
       await desktop.context.close();
@@ -483,6 +572,9 @@ export function boxSteps({ check, openPage, software = false }) {
       const scene = await checkSceneWhole(tablet.page, "tablet", true);
       check("tablet: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 1024, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 1024`);
       await checkOnBeat(tablet.page, "tablet");
+      await checkResultsFit(tablet.page, "tablet");
+      await tablet.page.locator("[data-back-to-map]").click();
+      await tablet.page.locator("[data-results-view]").waitFor({ state: "hidden", timeout: 5_000 });
       check("tablet: no console errors or THREE warnings", tablet.problems.length === 0, tablet.problems.join(" | "));
     } finally {
       await tablet.context.close();
@@ -493,6 +585,15 @@ export function boxSteps({ check, openPage, software = false }) {
       const scene = await checkSceneWhole(phone.page, "phone", true);
       check("phone: the scene starts within the first screen", !!scene.slot && scene.slot.top >= 0 && scene.slot.bottom <= 844, `top ${Math.round(scene.slot?.top ?? -1)}, bottom ${Math.round(scene.slot?.bottom ?? -1)} of 844`);
       check("phone: every lab is in frame", scene.labs.length === 3 && scene.labsCut.length === 0, scene.labs.map((l) => `${l.id} r${Math.round(l.r)}`).join(", "));
+      // A tap on a lab's name shows that lab (its name pressed) and leaves the camera on every lab: no close-up in the short slot.
+      await phone.page.locator('[data-lab-name="kestrel"]').click();
+      await phone.page.waitForTimeout(1200);
+      const tapped = await measureScene(phone.page);
+      check(
+        "phone: a tap on a lab's name shows that lab and keeps every lab's ring wholly inside the scene",
+        (await phone.page.locator('[data-lab-name="kestrel"]').getAttribute("aria-pressed")) === "true" && tapped.labsCut.length === 0,
+        `cut: ${tapped.labsCut.join(", ") || "none"}; camera ${await phone.page.evaluate(() => window.__swarm.box.camera.mode)}`,
+      );
       await checkOnBeat(phone.page, "phone");
       const tickLeft = await phone.page.locator("[data-counter=tick]").evaluate((e) => Math.round(e.getBoundingClientRect().left));
       check("phone: the counters start at the left edge", tickLeft < 40, `TICK at x=${tickLeft}`);
@@ -543,8 +644,8 @@ export function boxSteps({ check, openPage, software = false }) {
 
       // A fork from the live default (just before the first breach) with the layer that would have stopped step 1 on: every lab holds, so there is no step, and the step card says so; the map frames every lab with its name clear of the rings.
       const stepOne = await phone.page.evaluate(() => ({ lab: window.__swarm.box.markers[0].lab, layer: window.__swarm.box.steps[0]?.stoppedBy?.[0] ?? null }));
-      await tabs.locator('[data-phone-tab="results"]').click();
-      await phone.page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 5_000 });
+      const fit = await checkResultsFit(phone.page, "phone");
+      check("phone: the plot's axis and tick text renders at 10 px or more", fit.minFont >= 10, `smallest ${fit.minFont.toFixed(1)} px`);
       const branchCard = phone.page.locator("[data-branch-card]");
       await branchCard.locator('select[aria-label="Lab to change"]').selectOption(stepOne.lab);
       if (stepOne.layer) await branchCard.locator('select[aria-label="Layer to switch on"]').selectOption(stepOne.layer);
@@ -555,6 +656,12 @@ export function boxSteps({ check, openPage, software = false }) {
       check("phone: after a fork that every lab holds, the step card shows the No steps yet prompt", await emptyPrompt.isVisible(), `${stepOne.lab} with ${stepOne.layer} on; steps: ${await phone.page.evaluate(() => window.__swarm.box.markers.length)}`);
       await phone.page.waitForTimeout(900);
       await checkSceneWhole(phone.page, "phone after the fork", false);
+      // The fork scrolled the page to its pill; Back to the original returns it to the top, focus on the Scenario button.
+      await phone.page.locator("[data-unbranch]").click();
+      await phone.page.locator("[data-branched-pill]").waitFor({ state: "detached", timeout: 5_000 });
+      await phone.page.waitForTimeout(300);
+      const scrolled = await phone.page.evaluate(() => ({ page: document.querySelector("[data-plot-ready]").scrollTop, window: window.scrollY, focus: document.activeElement?.hasAttribute("data-scenario-menu") === true }));
+      check("phone: Back to the original returns the page to its top with focus on the Scenario button", scrolled.page === 0 && scrolled.window === 0 && scrolled.focus, `scrolled ${scrolled.page} (window ${scrolled.window}), focus on the Scenario button: ${scrolled.focus}`);
       check("phone: no console errors or THREE warnings", phone.problems.length === 0, phone.problems.join(" | "));
     } finally {
       await phone.context.close();

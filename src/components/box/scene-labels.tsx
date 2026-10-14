@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { BoxConfig, LayerId } from "@/lib/box/types";
 import { LAYER_ORDER } from "@/lib/box/types";
 import { layoutLabels, LINE_HEIGHT, type TextSpec } from "@/engine/box/labels";
@@ -94,10 +95,10 @@ const LEGEND: [LayerId, string, string][] = [
   ["audit", "Audit", "text-layer-5"],
 ];
 
-/** A small key in the scene's corner: which ring is which, inside out, and that a dashed ring is off. Text, not colour alone. */
-export function RingLegend() {
+/** A small key in the scene's corner: which ring is which, inside out, and that a dashed ring is off. Text, not colour alone. `ref` lets the page measure it, so the map's labels keep off it. */
+export function RingLegend({ ref }: { ref?: Ref<HTMLDivElement> }) {
   return (
-    <div className="pointer-events-none absolute bottom-3.5 left-3.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-[10px] border border-panel-border bg-[rgba(7,9,16,0.92)] px-2.5 py-2 font-mono text-[10px] max-[914px]:hidden" data-ring-legend>
+    <div ref={ref} className="pointer-events-none absolute bottom-3.5 left-3.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-[10px] border border-panel-border bg-[rgba(7,9,16,0.92)] px-2.5 py-2 font-mono text-[10px] max-[914px]:hidden" data-ring-legend>
       <span className="mr-1 tracking-[0.14em] text-label uppercase">Rings, inside out</span>
       {LEGEND.map(([layer, name, tone], i) => (
         <span key={layer} className={tone}>

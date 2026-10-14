@@ -777,14 +777,17 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       mode = "director";
       fly = null;
     },
+    // With every lab kept in view, the story's camera is the overview: hand it back rather than park a flown-to pose (a close-up, or one a resize would not refit).
     focus(lab) {
+      if (keepAll) return control.director();
       const f = frames.find((x) => x.id === lab);
       if (f) flyTo(focusPose(f));
     },
-    // With every lab kept in view, the story's camera is the overview: hand it back rather than park a flown-to pose that a resize would not refit.
     overview: () => (keepAll ? control.director() : flyTo(overviewPose(frames))),
     keepAll(on) {
       keepAll = on;
+      // A window narrowed after a drag or a zoom: the free pose would crop the labs, so the story takes the camera back.
+      if (on) control.director();
     },
   };
   const inSlot = (e: { clientX: number; clientY: number }) => {

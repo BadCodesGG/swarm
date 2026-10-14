@@ -1,15 +1,15 @@
 /**
- * The orchestrator: a warm white disc (#fff6e8, 26 px) inside a wide amber bloom that fades out by
- * about 150 px. Bright enough to cross the bloom threshold; the halo itself is drawn, not left to
- * the bloom, so the WebGL2 lite path keeps the same shape.
+ * The orchestrator's hub: a small warm point (#fff6e8 at the centre, amber by 12 px) at the heart
+ * of its cloud, where the tethers and tool calls meet. Additive and under the bloom threshold, so
+ * the grains of the cloud stay visible through it: the cloud is the body, this is only its hub.
  */
 
 import { InstancedBufferAttribute, Mesh, type Object3D } from "three/webgpu";
-import { attribute, color, exp, float, max, mix, pow, smoothstep, vec4 } from "three/tsl";
+import { attribute, color, exp, float, mix, vec4 } from "three/tsl";
 import { spriteGeometry, spriteMaterial } from "./common";
 
-export const CORE_RADIUS_PX = 26;
-const HALO_PX = 160;
+export const CORE_RADIUS_PX = 5;
+const HALO_PX = 28;
 
 export interface Core {
   mesh: Mesh;
@@ -22,12 +22,12 @@ export function createCore(parent: Object3D): Core {
   geometry.instanceCount = 1;
   const aCore = attribute("aCore", "vec4");
   const material = spriteMaterial(aCore.xyz, float(HALO_PX), (rPx) => {
-    const disc = smoothstep(CORE_RADIUS_PX + 1.2, CORE_RADIUS_PX - 1.2, rPx);
-    const edge = max(float(1).sub(rPx.div(150)), 0);
-    const halo = mix(color(0xffb54d), color(0xffd59a), exp(rPx.div(-45)))
-      .mul(pow(edge, 2.4).mul(0.55).add(exp(rPx.sub(CORE_RADIUS_PX).max(0).div(-14)).mul(0.6)));
-    const rgb = color(0xfff6e8).mul(disc.mul(1.35)).add(halo.mul(float(1).sub(disc)));
-    return vec4(rgb, disc);
+    const q = rPx.div(CORE_RADIUS_PX);
+    const point = exp(q.mul(q).mul(-1.6)).mul(0.7);
+    const h = rPx.div(HALO_PX * 0.55);
+    const halo = exp(h.mul(h).mul(-2)).mul(0.18);
+    const rgb = mix(color(0xffb54d), color(0xfff6e8), exp(rPx.div(-7))).mul(point.add(halo));
+    return vec4(rgb, 0);
   });
   const mesh = new Mesh(geometry, material);
   mesh.frustumCulled = false;

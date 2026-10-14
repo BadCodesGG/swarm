@@ -7,7 +7,7 @@
 
 import { Color, type Object3D } from "three/webgpu";
 import type { Timeline } from "@/lib/trace/timeline";
-import { agentPose, newPose } from "../layout";
+import { cloudAt, newCloudState } from "../nebula-plan";
 import { modelColor, type InsideUniforms } from "./common";
 import { createLineBatch, type LineSpec } from "./tethers";
 
@@ -27,7 +27,7 @@ export interface Spokes {
 
 export function createSpokes(parent: Object3D, u: InsideUniforms): Spokes {
   const batch = createLineBatch(parent, u, MAX_SPOKES, 42);
-  const hub = newPose();
+  const hub = newCloudState();
   const colour = new Color();
   const spec: LineSpec = { ax: 0, ay: 0, az: 0, bx: 0, by: 0, bz: 0, bow: 0, widthPx: 1, dashPx: 0, reveal: 1, color: colour, alpha: 0.4 };
   return {
@@ -35,7 +35,7 @@ export function createSpokes(parent: Object3D, u: InsideUniforms): Spokes {
       batch.begin();
       if (id >= 0 && radius > 0) {
         const { trace } = timeline;
-        agentPose(trace, id, t, hub);
+        cloudAt(trace, id, t, hub);
         modelColor(trace.agents[id].model, colour);
         let n = 0;
         const hi = timeline.indexAt(t);

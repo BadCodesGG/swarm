@@ -1,8 +1,53 @@
 import { describe, expect, it } from "vitest";
 import { generateTrace } from "@/lib/trace/generate";
-import { CLOUD_AGENTS, planNebula, SLOTS, STATION_SLOT0 } from "./nebula-plan";
+import { agentPose, FOLD_TIME, newPose, returnPose, SPAWN_TIME } from "./layout";
+import { CLOUD_AGENTS, cloudAt, newCloudState, planNebula, RETURNED_DIM, SLOTS, STATION_SLOT0 } from "./nebula-plan";
 
 const medium = generateTrace(50, "medium");
+
+describe("cloudAt", () => {
+  const returned = medium.agents.find((a) => a.parent >= 0 && a.returned && a.returnT + FOLD_TIME < medium.duration)!;
+  const state = newCloudState();
+
+  it("is unlit before the agent spawns and fully lit once it is out", () => {
+    expect(cloudAt(medium, returned.id, returned.spawnT - 1, state).life).toBe(0);
+    const t = returned.spawnT + SPAWN_TIME + 1;
+    cloudAt(medium, returned.id, t, state);
+    expect(state.life).toBe(1);
+    expect(state.returned).toBe(0);
+    const p = agentPose(medium, returned.id, t, newPose());
+    expect([state.x, state.y, state.z]).toEqual([p.x, p.y, p.z]);
+  });
+
+  it("stays where it returned, dimmed to a third, and never disappears", () => {
+    for (const t of [returned.returnT + FOLD_TIME, returned.returnT + FOLD_TIME + 600, medium.duration]) {
+      cloudAt(medium, returned.id, t, state);
+      expect(state.life).toBeCloseTo(RETURNED_DIM, 6);
+      expect(state.returned).toBe(1);
+      const home = returnPose(medium, returned.id, newPose());
+      expect([state.x, state.y, state.z]).toEqual([home.x, home.y, home.z]);
+      // Off its parent, where the point itself has folded back to.
+      const parent = agentPose(medium, returned.parent, t, newPose());
+      expect(Math.hypot(state.x - parent.x, state.y - parent.y, state.z - parent.z)).toBeGreaterThan(1);
+    }
+  });
+
+  it("dims over the fold, so a return never pops", () => {
+    const mid = cloudAt(medium, returned.id, returned.returnT + FOLD_TIME / 2, state).life;
+    expect(mid).toBeGreaterThan(RETURNED_DIM);
+    expect(mid).toBeLessThan(1);
+  });
+
+  it("keeps every returned agent's cloud lit at the end of the run", () => {
+    let seen = 0;
+    for (const a of medium.agents) {
+      if (a.parent < 0 || !a.returned) continue;
+      seen++;
+      expect(cloudAt(medium, a.id, medium.duration, state).life).toBeGreaterThanOrEqual(RETURNED_DIM - 1e-6);
+    }
+    expect(seen).toBeGreaterThan(5);
+  });
+});
 
 describe("planNebula", () => {
   it("is deterministic for a seed and differs across seeds", () => {

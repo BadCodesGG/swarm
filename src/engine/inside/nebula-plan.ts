@@ -9,7 +9,7 @@
 
 import { fork, type Rng } from "@/lib/rng";
 import type { SessionTrace } from "@/lib/trace/types";
-import { ORBIT_RADIUS, STATIONS, stationCounts } from "./layout";
+import { agentPose, FOLD_TIME, newPose, ORBIT_RADIUS, returnPose, SPAWN_TIME, STATIONS, stationCounts } from "./layout";
 
 /** Subagents that get their own cloud; the rest keep their single point. */
 export const CLOUD_AGENTS = 47;
@@ -23,7 +23,7 @@ const FILAMENT_SHARE = 0.1;
 /** A `fork` stream no other part of the project draws from. */
 export const NEBULA_STREAM = 0x6e65_0000;
 
-const ORCHESTRATOR_SHARE = 0.25;
+const ORCHESTRATOR_SHARE = 0.12;
 const STATION_SHARE = 0.09;
 const DUST_SHARE = 0.05;
 const MIN_POINTS = 48;
@@ -90,6 +90,48 @@ function rankClouds(trace: SessionTrace): Ranking {
 export function cloudRadius(trace: SessionTrace, id: number): number {
   const { sigma } = rankClouds(trace);
   return id >= 0 && id < sigma.length ? sigma[id] * RADIUS_SIGMAS : 0;
+}
+
+/** How much of its light a cloud keeps once its agent has returned. */
+export const RETURNED_DIM = 0.3;
+
+export interface CloudState {
+  x: number;
+  y: number;
+  z: number;
+  /** 0 before the spawn, ramping to 1 over `SPAWN_TIME`, down to `RETURNED_DIM` over the fold after the return. */
+  life: number;
+  /** 0 while the agent runs, 1 once it has returned (ramping over the fold). */
+  returned: number;
+}
+
+export const newCloudState = (): CloudState => ({ x: 0, y: 0, z: 0, life: 0, returned: 0 });
+
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const easeOut = (u: number) => 1 - (1 - u) ** 3;
+const scratchPose = newPose();
+
+/**
+ * Where agent `id`'s cloud is at trace time `t` and how lit it is. A live cloud rides its agent; a
+ * returned one stays where the agent was when it reported back, dimmed, while the point itself
+ * folds home along the tether. The orchestrator's is always lit.
+ */
+export function cloudAt(trace: SessionTrace, id: number, t: number, out: CloudState): CloudState {
+  const a = trace.agents[id];
+  if (!a || a.parent < 0) {
+    out.x = out.y = out.z = 0;
+    out.life = 1;
+    out.returned = 0;
+    return out;
+  }
+  const fold = a.returned ? clamp01((t - a.returnT) / FOLD_TIME) : 0;
+  const p = fold > 0 ? returnPose(trace, id, scratchPose) : agentPose(trace, id, t, scratchPose);
+  out.x = p.x;
+  out.y = p.y;
+  out.z = p.z;
+  out.returned = fold;
+  out.life = easeOut(clamp01((t - a.spawnT) / SPAWN_TIME)) * (1 - (1 - RETURNED_DIM) * fold);
+  return out;
 }
 
 /** Box-Muller, one draw. */
@@ -200,10 +242,10 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
       local[k * 4 + 2] = gz;
       const dist = Math.hypot(gx / aspect, gy, gz) / 3.4;
       local[k * 4 + 3] = Math.min(1, 0.72 * dist + 0.28 * r());
-      // Mostly small sharp points, some medium, and a few large soft ones that carry the glow.
+      // Mostly fine grains of a pixel or so, some a little larger, and a few soft ones that carry a halo.
       const size = r();
-      const bright = !isStation && size > 0.955;
-      meta[k * 4 + 1] = bright ? 1.9 + r() * 0.7 : size > 0.78 ? 1.2 + r() * 0.3 : 0.75 + r() * 0.3;
+      const bright = !isStation && size > 0.97;
+      meta[k * 4 + 1] = bright ? 1.6 + r() * 0.6 : size > 0.78 ? 1.15 + r() * 0.35 : 0.7 + r() * 0.3;
       meta[k * 4 + 2] = bright ? 1 : 0;
     }
   }

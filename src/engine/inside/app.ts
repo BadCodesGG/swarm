@@ -48,6 +48,7 @@ import { MAX_ANCHORS, type AgentAnchor, type CameraMode, type InsideOverlay, typ
 import { createUniforms } from "./scene/common";
 import { createCore } from "./scene/core";
 import { createNebula } from "./scene/nebula";
+import { cloudAt, newCloudState } from "./nebula-plan";
 import { createParticles } from "./scene/particles";
 import { createPulses } from "./scene/pulses";
 import { createSpokes } from "./scene/spokes";
@@ -390,6 +391,7 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
   let overlayFrame = 0;
   let overlaySig = "";
   const anchorPose = newPose();
+  const anchorCloud = newCloudState();
 
   /** The agent the camera is on: Follow's, else the selected one while the visitor flies, else the shot's. */
   const focusAgent = () => (followId >= 0 ? followId : mode === "manual" ? selected : (want?.agent ?? -1));
@@ -403,9 +405,10 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
       const radius = nebula.radiusOf(id);
       if (radius <= 0) return;
       const a = trace.agents[id];
-      agentPose(trace, id, t, anchorPose);
-      const c = project(anchorPose.x, anchorPose.y, anchorPose.z);
-      const edge = project(anchorPose.x + right.x * radius, anchorPose.y + right.y * radius, anchorPose.z + right.z * radius);
+      // The label sits on the cloud, which stays put once the agent has returned.
+      cloudAt(trace, id, t, anchorCloud);
+      const c = project(anchorCloud.x, anchorCloud.y, anchorCloud.z);
+      const edge = project(anchorCloud.x + right.x * radius, anchorCloud.y + right.y * radius, anchorCloud.z + right.z * radius);
       const r = Math.hypot(edge.x - c.x, edge.y - c.y);
       if (!onCanvas(c, r)) return;
       all.push({
@@ -423,8 +426,8 @@ export async function startInside(canvas: HTMLCanvasElement, opts: StartOptions)
     };
     consider(0);
     for (let i = 1; i < trace.agents.length; i++) consider(i);
-    // The focused cluster first, then the orchestrator, then the biggest on screen.
-    const rank = (a: AgentAnchor) => (a.focus ? 2 : a.id === 0 ? 1 : 0);
+    // The focused cluster first, then the orchestrator, then the biggest live ones on screen, then the returned.
+    const rank = (a: AgentAnchor) => (a.focus ? 3 : a.id === 0 ? 2 : a.live ? 1 : 0);
     all.sort((p, q) => rank(q) - rank(p) || q.r - p.r || p.id - q.id);
     return all.slice(0, MAX_ANCHORS);
   };

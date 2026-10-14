@@ -11,11 +11,11 @@
  */
 
 import { Color, InstancedBufferAttribute, Mesh, Vector4, type Object3D } from "three/webgpu";
-import { attribute, clamp, cos, exp, float, length, mix, sin, smoothstep, uniform, uniformArray, varying, vec2, vec3, vec4 } from "three/tsl";
+import { attribute, clamp, cos, dot, exp, float, length, mix, modelViewMatrix, sin, smoothstep, uniform, uniformArray, varying, vec2, vec3, vec4 } from "three/tsl";
 import type { SessionTrace } from "@/lib/trace/types";
 import { agentPose, FOLD_TIME, newPose, SPAWN_TIME, stationPos } from "../layout";
 import { DUST_SLOT, planNebula, SLOTS, STATION_SLOT0, type NebulaPlan } from "../nebula-plan";
-import { modelColor, spriteGeometry, spriteMaterial, type FloatNode, type Vec3Node, type Vec4Node } from "./common";
+import { modelColor, spriteGeometry, spriteMaterial, type FloatNode, type InsideUniforms, type Vec3Node, type Vec4Node } from "./common";
 
 const STATION_COLOUR = 0xa7b1c2;
 const ORCHESTRATOR_GAIN = 0.85;
@@ -39,7 +39,7 @@ export interface Nebula {
   dispose(): void;
 }
 
-export function createNebula(parent: Object3D, budget: number): Nebula {
+export function createNebula(parent: Object3D, budget: number, u: InsideUniforms): Nebula {
   // Three vec4 per slot: (x, y, z, sigma), (r, g, b, lit fraction) and the offset to the parent.
   const data = uniformArray(Array.from({ length: SLOTS * 3 }, () => new Vector4()), "vec4");
   const time = uniform(0);
@@ -89,7 +89,11 @@ export function createNebula(parent: Object3D, budget: number): Nebula {
     const white = glowing.mul(point).mul(0.45).mul(thin);
     const strength = phase.mul(0.6).add(0.45).mul(lit).mul(depth).mul(thin).mul(dim);
     const rgb = tint.mul(point.mul(strength).add(halo.mul(lit).mul(thin))).add(vec3(1, 0.97, 0.92).mul(white).mul(lit));
-    return vec4(rgb, 0);
+    // Distance cue: what lies well past the focus fades and loses its colour, so far clusters are soft nebulae.
+    const far = varying(smoothstep(1.7, 4.5, modelViewMatrix.mul(vec4(centre, 1)).z.negate().div(u.focus))) as unknown as FloatNode;
+    const luma = dot(rgb, vec3(0.3, 0.59, 0.11));
+    const faded = mix(rgb, vec3(luma).mul(0.85), far.mul(0.7)).mul(float(1).sub(far.mul(0.5)));
+    return vec4(faded, 0);
   });
   const mesh = new Mesh(spriteGeometry(), material);
   mesh.frustumCulled = false;

@@ -40,6 +40,10 @@ export interface AgentAnchor {
   tokens: number;
   /** Spawned and not yet returned (the orchestrator is always live). */
   live: boolean;
+  /** 0 in the focus, up to 1 for a cluster far past it: its label shrinks and fades. */
+  far: number;
+  /** The cluster the camera is on. */
+  focus: boolean;
 }
 
 /** Screen positions (CSS px) and text the DOM overlay draws over the canvas. */
@@ -53,13 +57,16 @@ export interface InsideOverlay {
   height: number;
   /** The part of the canvas the scene is framed in (the whole canvas when unframed). */
   frame: { x: number; y: number; w: number; h: number };
+  /** Where the orchestrator is (may be off screen). */
   core: { x: number; y: number };
-  boundary: { x: number; y: number };
   stations: StationLabel[];
   probes: ProbeLabel[];
   /** The orchestrator first, then the busiest visible subagents by tokens so far; at most `MAX_ANCHORS`. */
   anchors: AgentAnchor[];
 }
+
+/** Who flies the camera: the director, the visitor (drag or wheel), or Follow. */
+export type CameraMode = "director" | "manual" | "follow";
 
 /** Most anchors the engine publishes. */
 export const MAX_ANCHORS = 12;

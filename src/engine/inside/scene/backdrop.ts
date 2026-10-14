@@ -1,6 +1,7 @@
 /**
  * The space the swarm sits in: a radial light falloff behind everything (#10162b at the centre,
- * #0a0d18 at 55%, #070910 at the edge, centred on the core) and a sparse field of faint dust.
+ * #0a0d18 at 55%, #070910 at the edge, centred on the core) and a field of faint dust spread through
+ * the whole world, so the camera's travel parallaxes it: near dust slides past faster than far.
  */
 
 import { InstancedBufferAttribute, Mesh, Vector2, type Scene } from "three/webgpu";
@@ -8,7 +9,7 @@ import { attribute, color, exp, float, length, mix, screenSize, screenUV, smooth
 import { rng } from "@/lib/rng";
 import { spriteGeometry, spriteMaterial } from "./common";
 
-const DUST = 260;
+const DUST = 900;
 
 export interface Backdrop {
   /** Where the core is on screen, as a 0..1 UV (y down). */
@@ -29,10 +30,11 @@ export function createBackdrop(scene: Scene): Backdrop {
   const r = rng(77);
   const data = new Float32Array(DUST * 4);
   for (let i = 0; i < DUST; i++) {
-    // A thick shell around the scene, mostly behind it, so the dust reads as depth, not noise.
+    // A ball through the world (flattened a little), denser towards the middle, where the camera spends its time.
     const theta = r() * Math.PI * 2;
-    const rad = 2 + r() * 9;
-    data.set([Math.cos(theta) * rad * 1.5, Math.sin(theta) * rad, -2 - r() * 10, 0.08 + r() ** 3 * 0.35], i * 4);
+    const phi = Math.acos(2 * r() - 1);
+    const rad = 3 + 52 * r() ** 1.4;
+    data.set([Math.sin(phi) * Math.cos(theta) * rad * 1.2, Math.cos(phi) * rad * 0.7, Math.sin(phi) * Math.sin(theta) * rad, 0.1 + r() ** 3 * 0.4], i * 4);
   }
   const geometry = spriteGeometry();
   geometry.setAttribute("aDust", new InstancedBufferAttribute(data, 4));

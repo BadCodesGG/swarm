@@ -22,7 +22,7 @@ import {
   OneFactor,
   OneMinusSrcAlphaFactor,
 } from "three/webgpu";
-import { cameraProjectionMatrix, cross, float, length, max, modelViewMatrix, positionLocal, select, uniform, varying, vec3, vec4 } from "three/tsl";
+import { cameraProjectionMatrix, cross, float, length, max, modelViewMatrix, positionLocal, pow, select, uniform, varying, vec3, vec4 } from "three/tsl";
 import type { Node } from "three/webgpu";
 import type { ModelFamily } from "@/lib/trace/types";
 
@@ -38,6 +38,8 @@ export function createUniforms() {
     pixelScale: uniform(450),
     /** Screen px per design px: 1 at the 1440x900 hero framing (100 px per world unit), less on a phone. */
     sizeScale: uniform(1),
+    /** Distance from the eye to what the camera looks at, world units: the nebula fades what is far past it. */
+    focus: uniform(10),
   };
 }
 export type InsideUniforms = ReturnType<typeof createUniforms>;
@@ -95,7 +97,10 @@ export function spriteMaterial(
 ): MeshBasicNodeMaterial {
   const corner = positionLocal.xy;
   const centreView = modelViewMatrix.mul(vec4(centre, 1)).xyz;
-  const worldRadius = radiusPx.div(DESIGN_PX_PER_UNIT);
+  // Seen from further than the design's 9 units a sprite grows a little (to the 0.7 power), so a
+  // far cluster stays a visible haze instead of shrinking to nothing as the camera pulls back.
+  const boost = pow(max(centreView.z.negate().div(DESIGN_DEPTH), 1), 0.7);
+  const worldRadius = radiusPx.div(DESIGN_PX_PER_UNIT).mul(boost);
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = cameraProjectionMatrix.mul(vec4(centreView.add(vec3(corner.mul(worldRadius), 0)), 1));
   const rPx = length(varying(corner.mul(radiusPx)));
@@ -105,6 +110,8 @@ export function spriteMaterial(
 
 /** Design px per world unit at the hero framing. */
 export const DESIGN_PX_PER_UNIT = 100;
+/** Eye to subject distance at the hero framing, world units. */
+export const DESIGN_DEPTH = 9;
 
 export const RIBBON_SEGMENTS = 32;
 

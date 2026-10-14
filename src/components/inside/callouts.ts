@@ -52,7 +52,7 @@ export function labelSize(a: AgentAnchor, statChars: number): { w: number; h: nu
   return { w: Math.ceil(chars * CHAR_W) + 4, h: LABEL_H };
 }
 
-const hits = (a: Rect, b: Rect, pad = PAD) => a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
+export const hits = (a: Rect, b: Rect, pad = PAD) => a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
 
 type Pt = { x: number; y: number };
 
@@ -129,6 +129,33 @@ export function placeCallouts(anchors: readonly AgentAnchor[], statChars: (a: Ag
       taken.push(placed.box);
       out.push(placed);
     }
+  }
+  return out;
+}
+
+export interface FarLabel {
+  anchor: AgentAnchor;
+  box: Rect;
+}
+
+const FAR_CHARS = 18;
+const FAR_CHAR_W = 5.6;
+
+/**
+ * Small faint name tags for the clusters far past the focus: set just under each cloud, only where
+ * they touch no callout, no station label and no other tag, and only inside `bounds`.
+ */
+export function placeFarLabels(anchors: readonly AgentAnchor[], taken: readonly Rect[], bounds: Rect, max = 6): FarLabel[] {
+  const out: FarLabel[] = [];
+  const used: Rect[] = [...taken];
+  for (const a of anchors) {
+    if (out.length >= max) break;
+    const w = Math.min(a.name.length, FAR_CHARS) * FAR_CHAR_W + 2;
+    const box: Rect = { x: a.x - w / 2, y: a.y + a.r + 5, w, h: 10 };
+    if (box.x < bounds.x || box.y < bounds.y || box.x + box.w > bounds.x + bounds.w || box.y + box.h > bounds.y + bounds.h) continue;
+    if (used.some((r) => hits(box, r, 4))) continue;
+    used.push(box);
+    out.push({ anchor: a, box });
   }
   return out;
 }

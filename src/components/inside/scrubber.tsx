@@ -1,12 +1,33 @@
 "use client";
 
-import { memo, useMemo, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { memo, useCallback, useMemo, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { InsideApp } from "@/engine/inside/app";
 import { clock, idleCutLabel, MODEL_VARS } from "@/engine/inside/format";
 import { axisTicks, barHeight, buildLanes, LANE_BINS, type Lanes } from "@/engine/inside/lanes";
 import type { IdleCut, Timeline } from "@/lib/trace/timeline";
 import { nextRate, RATES, shownRate } from "./rates";
-import { useClock, useTimeline } from "./use-engine";
+import { useClock, useEngineSnapshot, useTimeline } from "./use-engine";
+
+/** Hands the camera back to the director: on while it flies the camera, a button once the visitor or Follow has it. */
+function DirectorToggle({ app }: { app: InsideApp }) {
+  const read = useCallback(() => app.cameraMode(), [app]);
+  const mode = useEngineSnapshot(read, Object.is, 100);
+  const on = mode === "director";
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-keyshortcuts="D"
+      aria-label={on ? "D director camera is flying" : "D hand the camera back to the director"}
+      onClick={() => app.resumeDirector()}
+      className="-mx-1 -my-1 flex min-h-6 items-center self-start rounded-md border-0 bg-transparent px-1 text-left font-mono text-[11px] outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1"
+      data-director
+    >
+      <span className="mr-[1ch] text-muted">D</span>
+      <span className={on ? "text-opus" : "text-faint"}>director{on ? " on" : ""}</span>
+    </button>
+  );
+}
 
 /** Pause bars while playing, a triangle while paused; the design's 48 px round control. */
 export function PlayButton({ app, playing, size }: { app: InsideApp; playing: boolean; size: 44 | 48 }) {
@@ -257,6 +278,10 @@ export function Timeline({
         <span>
           <span className="text-muted">Click</span> any agent
         </span>
+        <span>
+          <span className="text-muted">Drag</span> orbit, <span className="text-muted">wheel</span> zoom
+        </span>
+        <DirectorToggle app={app} />
         {onNextAgent ? (
           <button
             ref={nextAgentRef}

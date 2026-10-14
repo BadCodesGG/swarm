@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentAnchor } from "@/engine/inside/overlay-api";
 import { pathOf, placeCallouts, type Rect } from "./callouts";
 
-const anchor = (id: number, x: number, y: number, r = 30): AgentAnchor => ({ id, x, y, r, model: "sonnet", name: `agent ${id}`, tokens: 1000 * id, live: true });
+const anchor = (id: number, x: number, y: number, r = 30): AgentAnchor => ({ id, x, y, r, model: "sonnet", name: `agent ${id}`, tokens: 1000 * id, live: true, far: 0, focus: false });
 const centre = { x: 700, y: 400 };
 const stat = () => 14;
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;

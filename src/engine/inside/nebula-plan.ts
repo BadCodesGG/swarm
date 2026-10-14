@@ -14,10 +14,10 @@ import { STATIONS, stationCounts } from "./layout";
 /** Subagents that get their own cloud; the rest keep their single point. */
 export const CLOUD_AGENTS = 47;
 export const STATION_SLOT0 = 1 + CLOUD_AGENTS;
-/** A faint field of dust over the whole boundary disc, in world units. */
+/** A faint field of dust through the whole world, in world units. */
 export const DUST_SLOT = STATION_SLOT0 + STATIONS.length;
 export const SLOTS = DUST_SLOT + 1;
-const DUST_RADIUS = 3.9;
+const DUST_RADIUS = 34;
 /** Share of an agent cloud's points spent on a faint filament back along its tether. */
 const FILAMENT_SHARE = 0.1;
 /** A `fork` stream no other part of the project draws from. */
@@ -134,10 +134,12 @@ export function planNebula(trace: SessionTrace, seed: number, budget: number): N
       meta[k * 4] = s;
       meta[k * 4 + 3] = r();
       if (s === DUST_SLOT) {
-        // Uniform over the disc, thin in depth, appearing in random order.
+        // Uniform through a flattened ball round the whole world, appearing in random order.
         const a = r() * Math.PI * 2;
-        const d = Math.sqrt(r()) * DUST_RADIUS;
-        local.set([Math.cos(a) * d, Math.sin(a) * d, (r() - 0.5) * 1.6, r()], k * 4);
+        const c = 2 * r() - 1;
+        const d = Math.cbrt(r()) * DUST_RADIUS;
+        const ring = Math.sqrt(1 - c * c);
+        local.set([Math.cos(a) * ring * d * 1.2, c * d * 0.7, Math.sin(a) * ring * d, r()], k * 4);
         meta[k * 4 + 1] = 0.8 + r() * 0.3;
         meta[k * 4 + 2] = 3;
         continue;

@@ -2,7 +2,6 @@
 
 import Experience, { type StartOptions, type StillOptions } from "@/components/experience";
 import type { BoxApp } from "@/engine/box/app";
-import { ActTools } from "@/components/site/act-tools";
 import { withHandoff } from "@/lib/box/handoff";
 import { BoxHud } from "./box-hud";
 import { firstVisitParams } from "./playground";
@@ -15,12 +14,7 @@ const start = (canvas: HTMLCanvasElement, opts: StartOptions): Promise<BoxApp> =
 const stillStart = (canvas: HTMLCanvasElement, opts: StillOptions): Promise<BoxApp> =>
   import("@/engine/box/still").then(({ startBoxStill }) => startBoxStill(canvas, { ...opts, params: firstVisitParams(withHandoff(opts.params)) }));
 
-const overlay = (app: BoxApp, { still }: { still: boolean }) => (
-  <>
-    <BoxHud app={app} />
-    <ActTools act="box" render={{ isWebGPU: app.isWebGPU, still, crowdMode: app.stats().crowdMode }} float />
-  </>
-);
+const overlay = (app: BoxApp, { still }: { still: boolean }) => <BoxHud app={app} still={still} />;
 
 export default function BoxExperience() {
   return (

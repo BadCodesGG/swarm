@@ -10,6 +10,7 @@ import type { BoxApp } from "@/engine/box/app";
 import type { EscapeRecord } from "@/engine/box/tally";
 import { clock } from "@/engine/box/explain";
 import { useMedia } from "@/components/inside/use-engine";
+import { ActTools, FallbackBadge, HandoffNote, type ActRender } from "@/components/site/act-tools";
 import { countsLine, nextAnnouncement, trialsLine, type Said } from "./announce";
 import { InterceptPanel, MarkerCard } from "./debrief";
 import { EscapeExplainer } from "./escape-explainer";
@@ -91,7 +92,7 @@ type ThresholdKey = "monitorThreshold" | "auditBudget";
  * hand). The selected lab's layers, thresholds and cast are in the column beside it; the plot, the
  * intercepted chat and the logs are below. Trials run off the main thread.
  */
-export function BoxHud({ app }: { app: BoxApp }) {
+export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean }) {
   const [snap, refresh] = useBoxSnapshot(app);
   const overlay = useBoxOverlay(app);
   const { world } = snap;
@@ -352,6 +353,8 @@ export function BoxHud({ app }: { app: BoxApp }) {
       <RunControls playing={snap.playing} running={running} onPlay={onRun} onReset={() => app.reset(snap.seed)} onRunTrials={() => runTrials(runsSoFar)} />
     </div>
   );
+  // How the scene is drawn, for the WebGL 2 badge and the "?" sheet.
+  const render: ActRender = { isWebGPU: app.isWebGPU, still, crowdMode: app.stats().crowdMode };
 
   return (
     <div
@@ -359,12 +362,23 @@ export function BoxHud({ app }: { app: BoxApp }) {
       data-plot-ready={plotReady ? "true" : "false"}
     >
       <div className="box-border flex min-h-full flex-col gap-3.5 px-6 py-4 max-[640px]:px-3.5">
-        <BoxHeader tally={tally} />
+        <BoxHeader
+          tally={tally}
+          status={
+            <>
+              <HandoffNote />
+              <FallbackBadge render={render} />
+            </>
+          }
+        />
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
           <PresetStrip current={preset} onPick={(p) => load(presetScenario(p))} />
           <ModeBar mode={mode} editing={editing} onMode={setMode} onEdit={setEditing} />
           <div className="grow" />
-          <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
+          <div className="flex items-center gap-2">
+            <ActTools act="box" render={render} badge={false} note={false} />
+            <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
+          </div>
         </div>
         <div className="flex flex-wrap items-start gap-4">
           <div className="flex min-w-0 flex-[0_1_340px] flex-col gap-3 max-[914px]:flex-[1_1_340px]">

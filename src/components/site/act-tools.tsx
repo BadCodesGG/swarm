@@ -42,16 +42,27 @@ export function FallbackBadge({ render, className = "" }: { render: ActRender; c
   );
 }
 
+/** On the Box, the note that its cast came from Act 1. Client only: it reads the address bar. */
+export function HandoffNote() {
+  const [seeded] = useState(() => activeHandoff(new URLSearchParams(window.location.search)));
+  if (!seeded) return null;
+  return (
+    <p className={pill + " border-panel-border text-label"} data-handoff-note>
+      ACT 1 CAST: {seeded.agents} AGENTS{seeded.models.length > 0 ? ` / ${seeded.models.length} MODEL${seeded.models.length === 1 ? "" : "S"}` : ""}
+    </p>
+  );
+}
+
 /**
  * The page-level furniture of an act: the first-visit tour, the "?" button and sheet, the WebGL 2
  * badge, and on the Box the note that its cast came from Act 1. Mounted by the act's overlay, so
- * it only ever runs on the client, after the engine is up. `className` places the cluster.
+ * it only ever runs on the client, after the engine is up. `badge` and `note` off leave those to
+ * the act's own header.
  */
-export function ActTools({ act, render, badge = true, float = false }: { act: ActId; render: ActRender; badge?: boolean; float?: boolean }) {
+export function ActTools({ act, render, badge = true, note = true }: { act: ActId; render: ActRender; badge?: boolean; note?: boolean }) {
   const [touring, setTouring] = useState(() => shouldShowTour(act, { search: window.location.search, automated: navigator.webdriver === true }));
   const [help, setHelp] = useState(false);
   const fallback = onFallback(render);
-  const [seeded] = useState(() => (act === "box" ? activeHandoff(new URLSearchParams(window.location.search)) : null));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,12 +78,6 @@ export function ActTools({ act, render, badge = true, float = false }: { act: Ac
     markTourSeen(act);
     setTouring(false);
   };
-
-  const note = seeded ? (
-    <p className={pill + " border-panel-border text-label"} data-handoff-note>
-      ACT 1 CAST: {seeded.agents} AGENTS{seeded.models.length > 0 ? ` / ${seeded.models.length} MODEL${seeded.models.length === 1 ? "" : "S"}` : ""}
-    </p>
-  ) : null;
 
   const helpButton = (
     <button
@@ -91,15 +96,9 @@ export function ActTools({ act, render, badge = true, float = false }: { act: Ac
 
   return (
     <>
-      {float ? (
-        <div className="pointer-events-none fixed inset-x-0 top-0.5 z-10 flex flex-wrap justify-center gap-1.5 px-2" data-act-status>
-          {note}
-          {badge ? <FallbackBadge render={render} /> : null}
-        </div>
-      ) : null}
-      <div className={float ? "pointer-events-none fixed right-3 bottom-3 z-10" : "pointer-events-none flex items-center gap-2"} data-act-tools>
-        {float ? null : note}
-        {float || !badge ? null : <FallbackBadge render={render} />}
+      <div className="pointer-events-none flex items-center gap-2" data-act-tools>
+        {note && act === "box" ? <HandoffNote /> : null}
+        {badge ? <FallbackBadge render={render} /> : null}
         {helpButton}
       </div>
       {touring ? <Tour act={act} onDone={finishTour} /> : null}

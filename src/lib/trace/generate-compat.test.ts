@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { generateTrace, type SampleSize } from "./generate";
 import type { SessionTrace } from "./types";
+import { validateTrace } from "./validate";
 
 /**
  * Digest of the fields a sample had before the brief, permission, size, think time and
@@ -40,5 +41,36 @@ const LEGACY: Record<SampleSize, string> = {
 describe("hero seed 50 legacy fields", () => {
   it.each(["small", "medium", "large"] as const)("%s keeps every pre-existing field", (size) => {
     expect(legacyDigest(generateTrace(50, size))).toBe(LEGACY[size]);
+  });
+});
+
+describe("the added sample fields", () => {
+  const SEEDS = [1, 2, 3, 50];
+
+  it("gives every spawn a brief of at most 280 characters", () => {
+    for (const seed of SEEDS) {
+      const spawns = generateTrace(seed, "medium").events.filter((e) => e.kind === "spawn");
+      expect(spawns.length).toBeGreaterThan(0);
+      for (const s of spawns) expect(s.excerpt && s.excerpt.length <= 280, `seed ${seed}`).toBe(true);
+    }
+  });
+
+  it("gives results a permission and a size, with some human waits, and turns a think time", () => {
+    const t = generateTrace(50, "medium");
+    const results = t.events.filter((e) => e.kind === "result");
+    expect(results.every((e) => e.permission !== undefined && Number.isInteger(e.size) && (e.size as number) >= 0)).toBe(true);
+    expect(results.some((e) => e.permission === "user")).toBe(true);
+    expect(results.some((e) => e.permission === "rule")).toBe(true);
+    expect(t.events.filter((e) => e.kind === "turn").every((e) => (e.thinkMs ?? -1) >= 0)).toBe(true);
+  });
+
+  it("puts exactly one valid compaction in large, and none in small or medium", () => {
+    for (const seed of SEEDS) {
+      const count = (size: SampleSize) => generateTrace(seed, size).events.filter((e) => e.kind === "compact").length;
+      expect(count("large"), `seed ${seed}`).toBe(1);
+      expect(count("small"), `seed ${seed}`).toBe(0);
+      expect(count("medium"), `seed ${seed}`).toBe(0);
+      expect(validateTrace(generateTrace(seed, "large")), `seed ${seed}`).toEqual([]);
+    }
   });
 });

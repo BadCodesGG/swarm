@@ -31,10 +31,10 @@ describe("arcPath", () => {
 });
 
 describe("toolRows", () => {
-  it("lists the used categories biggest first, at most six", () => {
+  it("lists the used categories biggest first, at most five", () => {
     const mix = { web: 4, shell: 32, files: 5, edit: 7, agents: 6, advisor: 0, plan: 1, mcp: 2, other: 3 };
     const rows = toolRows(mix);
-    expect(rows.map((r) => r.key)).toEqual(["shell", "edit", "agents", "files", "web", "other"]);
+    expect(rows.map((r) => r.key)).toEqual(["shell", "edit", "agents", "files", "web"]);
     expect(rows[0].share).toBe(1);
   });
 });

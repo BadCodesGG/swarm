@@ -261,13 +261,13 @@ export function Hud({ app }: { app: InsideApp }) {
             ring and the scrubber stays at the bottom as on the board; it gives way first on a short screen. */}
         <div ref={slot} className="max-h-[340px] min-h-[200px] flex-[1_1_300px]" aria-hidden="true" />
         <NowPanel app={app} narrow />
-        {/* Shown only while focused, so the keyboard has a way to the agents without changing the board's look. */}
+        {/* Shown only while focused, floating over the top of the page so showing and hiding it never moves the layout. */}
         <button
           ref={nextAgent}
           type="button"
           aria-keyshortcuts="A"
           onClick={() => cycle(1)}
-          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:ring-2 focus-visible:ring-layer-1"
+          className="pointer-events-auto sr-only min-h-11 rounded-xl border border-panel-border bg-[rgba(12,16,28,0.86)] px-3.5 text-left font-mono text-xs text-label outline-none focus-visible:not-sr-only focus-visible:absolute focus-visible:inset-x-4 focus-visible:top-20 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-layer-1"
         >
           Select the next agent (A)
         </button>
@@ -362,7 +362,7 @@ export function Hud({ app }: { app: InsideApp }) {
               <Roster app={app} onClose={() => setRosterOpen(false)} />
             </div>
           ) : (
-            <KeyPanel open={typeof window === "undefined" || window.innerHeight >= 820} />
+            <KeyPanel open={typeof window === "undefined" || window.innerHeight >= 960} />
           )}
         </div>
         {rightColumn ? (

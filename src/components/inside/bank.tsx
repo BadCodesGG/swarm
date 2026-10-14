@@ -57,7 +57,7 @@ function useBank(app: InsideApp): BankSnap {
     const agents = rosterAt(tl, t)
       .filter((e) => e.id > 0 && e.status === "working")
       .sort((a, b) => b.tokens - a.tokens)
-      .slice(0, 6)
+      .slice(0, 5)
       .map((e) => ({ id: e.id, label: e.label, model: e.model, tokens: e.tokens }));
     const data = {
       t,
@@ -79,7 +79,7 @@ function useBank(app: InsideApp): BankSnap {
   return useEngineSnapshot(read, (a, b) => a.key === b.key, BANK_MS);
 }
 
-const frame = "flex h-[132px] min-w-0 flex-col gap-1.5 overflow-hidden rounded-[10px] border border-panel-border bg-panel px-3 py-2.5 font-mono";
+const frame = "pointer-events-auto flex h-[132px] min-w-0 flex-col gap-1.5 overflow-hidden rounded-[10px] border border-panel-border bg-panel px-3 py-2.5 font-mono";
 
 function Panel({ title, value, valueClass = "", children, label }: { title: string; value?: ReactNode; valueClass?: string; children: ReactNode; label: string }) {
   return (
@@ -254,7 +254,7 @@ export function BankBar({ app, open, onToggle, children, controls }: { app: Insi
   const tl = useTimeline(app);
   const last = s.log[s.log.length - 1];
   return (
-    <div className="flex min-w-0 items-center gap-x-4 gap-y-1 font-mono">
+    <div className="flex min-w-0 items-center gap-x-4 gap-y-1.5 font-mono max-sm:flex-wrap max-sm:gap-x-2">
       <button
         type="button"
         aria-expanded={open}
@@ -269,7 +269,7 @@ export function BankBar({ app, open, onToggle, children, controls }: { app: Insi
         </svg>
       </button>
       {open ? null : (
-        <dl className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-0.5 text-[11px]" aria-label="Instruments, summary" data-bank-summary>
+        <dl className="m-0 flex min-w-0 items-baseline gap-x-3.5 overflow-hidden whitespace-nowrap text-[11px] max-sm:order-last max-sm:basis-full max-sm:justify-between" aria-label="Instruments, summary" data-bank-summary>
           <Num label="LIVE" value={`${s.live}`} />
           <Num label="CALLS" value={`${s.calls}`} />
           <Num label="TOK/MIN" value={compact(s.rate)} />

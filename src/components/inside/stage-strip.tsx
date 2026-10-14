@@ -45,10 +45,10 @@ export function StageStrip({ app, compact = false }: { app: InsideApp; compact?:
                 aria-current={on ? "step" : undefined}
                 aria-label={`${s.label}, inferred stage, from ${Math.round(s.start)} seconds: seek here`}
                 onClick={() => app.seek(s.start)}
-                style={on ? { background: TONE[s.id], borderTopColor: TONE[s.id] } : { borderTopColor: done ? TONE[s.id] : "var(--control)" }}
+                style={on ? { background: `color-mix(in srgb, ${TONE[s.id]} 16%, transparent)`, borderTopColor: TONE[s.id], color: TONE[s.id] } : { borderTopColor: done ? TONE[s.id] : "var(--control)" }}
                 className={`flex w-full min-w-0 items-center truncate border-0 border-t-2 px-2 text-left font-mono tracking-[0.14em] outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${
                   compact ? "min-h-8 text-[9px]" : "min-h-8 text-[10px]"
-                } ${on ? "font-bold text-ground" : done ? "bg-transparent text-muted hover:text-ink" : "bg-transparent text-rule hover:text-label"}`}
+                } ${on ? "font-bold" : done ? "bg-transparent text-muted hover:text-ink" : "bg-transparent text-rule hover:text-label"}`}
               >
                 <span className="truncate">
                   {compact ? "" : `${String(i + 1).padStart(2, "0")} `}

@@ -49,8 +49,8 @@ export interface ToolRow {
   share: number;
 }
 
-/** The used tool categories, biggest first, at most `max`. */
-export function toolRows(mix: Record<ToolCategory, number>, max = 6): ToolRow[] {
+/** The used tool categories, biggest first, at most `max` (five fit a panel). */
+export function toolRows(mix: Record<ToolCategory, number>, max = 5): ToolRow[] {
   const rows = (Object.entries(mix) as [ToolCategory, number][]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, max);
   const top = rows[0]?.[1] ?? 0;
   return rows.map(([key, count]) => ({ key, count, share: top > 0 ? count / top : 0 }));

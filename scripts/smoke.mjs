@@ -285,32 +285,30 @@ async function stepInside(browser) {
       check("medium: the counter reads countersAt at the new time", callsBack === back.counters.toolCalls, `${callsBack} vs ${back.counters.toolCalls}`);
 
       // Clicking an agent selects it and fills the card.
-      // Paused, so the scene is a pure function of the playhead: find a moment with several agents out.
-      let crowded = false;
-      for (const at of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
-        await page.mouse.click(box.x + box.width * at, box.y + box.height / 2);
-        await page.waitForTimeout(250);
-        if ((await inside(page)).agentsAlive >= 3) {
-          crowded = true;
-          break;
-        }
-      }
-      check("medium: found a moment with several live subagents", crowded);
-      const target = await page.evaluate(() => {
-        const { screenOf, agents, selected } = window.__swarm.inside;
-        // screenOf is canvas px; the mouse and elementFromPoint take viewport px.
-        const rect = document.querySelector("canvas").getBoundingClientRect();
-        const pts = [];
-        for (let id = 1; id < agents; id++) {
-          const p = screenOf(id);
-          if (p) pts.push({ id, x: rect.left + p.x, y: rect.top + p.y });
-        }
-        const clear = pts.filter((p) => {
-          const el = document.elementFromPoint(p.x, p.y);
-          return el instanceof HTMLCanvasElement && p.id !== selected;
+      // Paused, so the scene is a pure function of the playhead. The camera frames one cluster, so most
+      // live agents sit off screen: look for a moment with one in the open, clear of every panel.
+      const findTarget = () =>
+        page.evaluate(() => {
+          const { screenOf, agents, selected } = window.__swarm.inside;
+          // screenOf is canvas px; the mouse and elementFromPoint take viewport px.
+          const rect = document.querySelector("canvas").getBoundingClientRect();
+          for (let id = 1; id < agents; id++) {
+            const p = screenOf(id);
+            if (!p) continue;
+            const x = rect.left + p.x;
+            const y = rect.top + p.y;
+            if (id !== selected && document.elementFromPoint(x, y) instanceof HTMLCanvasElement) return { id, x, y };
+          }
+          return null;
         });
-        return clear[0] ?? null;
-      });
+      let target = null;
+      for (const at of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.35, 0.55, 0.65, 0.45]) {
+        await page.mouse.click(box.x + box.width * at, box.y + box.height / 2);
+        await page.waitForTimeout(500);
+        target = await findTarget();
+        if (target) break;
+      }
+      check("medium: found a moment with a live subagent in the open", target !== null);
       check("medium: an agent is on screen to click", target !== null);
       await page.mouse.click(target.x, target.y);
       await waitInside(page, (id) => window.__swarm.inside.selected === id, target.id);

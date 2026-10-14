@@ -116,6 +116,7 @@ export function Hud({ app }: { app: InsideApp }) {
   const side = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const column = useRef<HTMLDivElement>(null);
   const nextAgent = useRef<HTMLButtonElement>(null);
   const agentBar = useRef<HTMLButtonElement>(null);
   /** Where focus goes when the card or station panel closes: the control that had it when it opened. */
@@ -196,7 +197,10 @@ export function Hud({ app }: { app: InsideApp }) {
     fit();
     const ro = new ResizeObserver(fit);
     for (const el of [slot.current, top.current, side.current, row.current, bottom.current]) if (el) ro.observe(el);
+    const scroller = column.current;
+    scroller?.addEventListener("scroll", fit, { passive: true });
     return () => {
+      scroller?.removeEventListener("scroll", fit);
       ro.disconnect();
       app.setFrame(null);
     };
@@ -239,9 +243,11 @@ export function Hud({ app }: { app: InsideApp }) {
 
   if (narrow) {
     return (
-      <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 px-4 pt-3 pb-4 font-sans text-ink">
-        {/* Inert under the open sheet, so Tab cannot reach the controls it covers; `contents` keeps the column's layout. */}
-        <div className="contents" inert={sheetShown} data-under-sheet>
+      <div className="pointer-events-none absolute inset-0 font-sans text-ink">
+        {/* The column scrolls when its panels outgrow a short screen (a drag on any panel scrolls it); the
+            scene frame follows the slot as it moves. Inert under the open sheet, so Tab cannot reach the controls it covers. */}
+        <div ref={column} className="absolute inset-0 overflow-y-auto overscroll-contain" inert={sheetShown} data-under-sheet>
+        <div className="flex min-h-full flex-col gap-2.5 px-4 pt-3 pb-4">
         <header className="flex items-center justify-between gap-2">
           <Link href="/" className={`pointer-events-auto flex min-h-11 items-center gap-2 font-mono text-xs tracking-[0.12em] text-label ${linkRing}`}>
             {LOGO}
@@ -261,9 +267,9 @@ export function Hud({ app }: { app: InsideApp }) {
         <SourceSwitcher app={app} narrow />
         <Counters app={app} compact />
         <StageStrip app={app} compact />
-        {/* The design's 300 px scene band. It takes spare height up to 340 px, so the cards sit under the
-            ring and the scrubber stays at the bottom as on the board; it gives way first on a short screen. */}
-        <div ref={slot} className="max-h-[340px] min-h-[200px] flex-[1_1_300px]" aria-hidden="true" />
+        {/* The scene band. It takes nearly all the spare height up to 340 px (the spacer below gets the rest, so
+            the scrubber stays at the bottom as on the board); with no spare height it keeps 150 px and the column scrolls. */}
+        <div ref={slot} className="max-h-[340px] min-h-[150px] flex-[100_1_150px]" aria-hidden="true" />
         <NowPanel app={app} narrow />
         {/* Shown only while focused, floating over the top of the page so showing and hiding it never moves the layout. */}
         <button
@@ -299,6 +305,7 @@ export function Hud({ app }: { app: InsideApp }) {
           </div>
         ) : null}
         <Timeline app={app} narrow />
+        </div>
         </div>
         {sheetShown ? (
           <div
@@ -352,8 +359,9 @@ export function Hud({ app }: { app: InsideApp }) {
           <ActTools act="inside" render={{ isWebGPU: app.isWebGPU }} />
           <AudioToggle />
         </header>
-        <div className="flex items-stretch gap-3">
-          <div className="min-w-0 flex-1">
+        {/* The strip wants 520 px; below that it takes its own row and the buttons wrap under it. */}
+        <div className="flex flex-wrap items-stretch gap-x-3 gap-y-2">
+          <div className="min-w-0 flex-[1_1_520px]">
             <StageStrip app={app} />
           </div>
           <BankToggle open={bankOpen} onToggle={() => setBankPref(!bankOpen)} controls={bankId} />

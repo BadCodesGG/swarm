@@ -68,6 +68,14 @@ export async function stepHud(browser, h) {
     const id = await target.getAttribute("data-stage");
     await page.waitForFunction((i) => document.querySelector(`[data-stage="${i}"]`)?.getAttribute("aria-current") === "step", id, { timeout: 4000 }).catch(() => {});
     check("hud: that stage is lit", (await target.getAttribute("aria-current")) === "step");
+    // At 960 px the toolbar is too narrow to share: the strip takes its own row, every stage a usable target.
+    await page.setViewportSize({ width: 960, height: 720 });
+    await page.waitForTimeout(300);
+    const cells = await stages.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+    const stripW = Math.round((await strip.boundingBox()).width);
+    check("hud: at 960 px every stage is at least 24 px wide and the strip keeps its 520 px", cells.every((w) => w >= 24) && stripW >= 520, `stages ${cells.join(", ")} px, strip ${stripW} px`);
+    await page.setViewportSize(view);
+    await page.waitForTimeout(300);
 
     // --- a mid-run moment: the agents' roster ---
     await page.mouse.click(mid.x + mid.width * 0.55, mid.y + mid.height / 2);

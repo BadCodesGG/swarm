@@ -384,6 +384,24 @@ async function stepInsidePhone(browser) {
     await page.keyboard.press("Enter");
     await waitInside(page, () => window.__swarm.inside.selected === 0);
     const bar = page.locator('button[aria-expanded][aria-label^="Selected agent"]');
+    await bar.waitFor({ state: "visible" });
+    // With the agent bar added the column still fits an 844 px phone; on a shorter one it scrolls to the scrubber.
+    const column = () => page.evaluate(() => {
+      const s = document.querySelector("[data-under-sheet]");
+      const bar = document.querySelector("[data-scrubber]").getBoundingClientRect();
+      return { content: s.scrollHeight, height: s.clientHeight, top: s.scrollTop, scrubber: bar.bottom, view: innerHeight };
+    });
+    const tall = await column();
+    check("phone: with an agent selected the column fits 844 px", tall.content <= tall.height, `content ${tall.content} of ${tall.height}`);
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector("[data-under-sheet]").scrollTo(0, 1e6));
+    await page.waitForTimeout(200);
+    const short = await column();
+    check("phone: at 667 px the column scrolls the scrubber into view", short.top > 0 && short.scrubber <= short.view, `scrolled ${short.top}, scrubber bottom ${Math.round(short.scrubber)} of ${short.view}`);
+    await page.evaluate(() => document.querySelector("[data-under-sheet]").scrollTo(0, 0));
+    await page.setViewportSize(phone.viewport);
+    await page.waitForTimeout(300);
     await bar.click();
     const dialog = page.getByRole("dialog", { name: "Selected agent details" });
     await dialog.waitFor({ state: "visible" });

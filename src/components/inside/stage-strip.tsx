@@ -38,7 +38,8 @@ export function StageStrip({ app, compact = false }: { app: InsideApp; compact?:
           const on = s.id === current;
           const done = order >= 0 && i < order;
           return (
-            <li key={s.id} className="min-w-0" style={{ flex: `${Math.max(0.1, (s.end - s.start) / span)} 1 0` }}>
+            // Sized to its label first, then the spare width goes by each stage's share of the run.
+            <li key={s.id} className="min-w-6" style={{ flex: `${Math.max(0.1, (s.end - s.start) / span)} 1 auto` }}>
               <button
                 type="button"
                 data-stage={s.id}
@@ -46,9 +47,7 @@ export function StageStrip({ app, compact = false }: { app: InsideApp; compact?:
                 aria-label={`${s.label}, inferred stage, from ${Math.round(s.start)} seconds: seek here`}
                 onClick={() => app.seek(s.start)}
                 style={on ? { background: `color-mix(in srgb, ${TONE[s.id]} 16%, transparent)`, borderTopColor: TONE[s.id], color: TONE[s.id] } : { borderTopColor: done ? TONE[s.id] : "var(--control)" }}
-                className={`flex w-full min-w-0 items-center truncate border-0 border-t-2 px-2 text-left font-mono tracking-[0.14em] outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${
-                  compact ? "min-h-8 text-[9px]" : "min-h-8 text-[10px]"
-                } ${on ? "font-bold" : done ? "bg-transparent text-muted hover:text-ink" : "bg-transparent text-rule hover:text-label"}`}
+                className={`flex min-h-8 w-full min-w-0 items-center truncate border-0 border-t-2 px-2 text-left font-mono text-[10px] tracking-[0.14em] outline-none focus-visible:ring-2 focus-visible:ring-layer-1 ${on ? "font-bold" : done ? "bg-transparent text-muted hover:text-ink" : "bg-transparent text-faint hover:text-label"}`}
               >
                 <span className="truncate">
                   {compact ? "" : `${String(i + 1).padStart(2, "0")} `}

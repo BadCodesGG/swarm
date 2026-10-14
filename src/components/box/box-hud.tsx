@@ -425,7 +425,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
             </details>
           </div>
           {/* Beside the lab column the scene fills the window's height less the header and the strip, and never drops under 400 px (scripts/smoke-box.mjs checks it): a card under it makes the page longer, not the scene shorter. */}
-          <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-3 max-[914px]:order-first min-[915px]:min-h-[max(600px,calc(100vh-190px))]">
+          <div className="flex min-w-0 flex-[999_1_490px] flex-col gap-3 max-[914px]:order-first min-[915px]:min-h-[max(600px,calc(100vh-190px))]">
             <div ref={slot} className="relative min-h-[260px] rounded-[10px] border border-panel-border max-[914px]:aspect-[760/560] min-[915px]:min-h-[400px] min-[915px]:flex-1" data-scene-slot>
               {multi ? <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} /> : <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />}
             </div>

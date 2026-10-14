@@ -84,3 +84,27 @@ export function SceneLabels({
     </svg>
   );
 }
+
+/** The rings' colours in the legend, as the map draws them (`--layer-1` to `--layer-5`). */
+const LEGEND: [LayerId, string, string][] = [
+  ["sandbox", "Sandbox", "text-layer-1"],
+  ["permissions", "Permissions", "text-layer-2"],
+  ["network", "Network", "text-layer-3"],
+  ["monitor", "Monitor", "text-layer-4"],
+  ["audit", "Audit", "text-layer-5"],
+];
+
+/** A small key in the scene's corner: which ring is which, inside out, and that a dashed ring is off. Text, not colour alone. */
+export function RingLegend() {
+  return (
+    <div className="pointer-events-none absolute bottom-3.5 left-3.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-[10px] border border-panel-border bg-[rgba(7,9,16,0.92)] px-2.5 py-2 font-mono text-[10px] max-[914px]:hidden" data-ring-legend>
+      <span className="mr-1 tracking-[0.14em] text-label uppercase">Rings, inside out</span>
+      {LEGEND.map(([layer, name, tone], i) => (
+        <span key={layer} className={tone}>
+          {String(i + 1).padStart(2, "0")} {name}
+        </span>
+      ))}
+      <span className="ml-1.5 text-escape-text">dashed = off</span>
+    </div>
+  );
+}

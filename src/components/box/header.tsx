@@ -1,50 +1,85 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Tally } from "@/engine/box/tally";
-import { percent } from "@/engine/box/explain";
+import { clock, percent } from "@/engine/box/explain";
 import AudioToggle from "@/components/audio-toggle";
+import { countsLine, nextAnnouncement, type Said } from "./announce";
 
-const mono = "font-mono";
+/** Ms between two spoken changes of the caught count; an escape or a reset is spoken at once. */
+const COUNTS_GAP = 5000;
 
-function Counter({ label, value, tone }: { label: string; value: string; tone?: "escape" }) {
+/** A screen reader hears the caught and escaped counts when they change, at most every few seconds. */
+export function CountsStatus({ caught, escaped }: { caught: number; escaped: number }) {
+  const said = useRef<Said>({ caught, escaped, at: 0 });
+  const [line, setLine] = useState("");
+  useEffect(() => {
+    const last = said.current;
+    if (caught === last.caught && escaped === last.escaped) return;
+    const now = performance.now();
+    // Said now, or once the gap is up (a held change is said even if nothing else changes by then).
+    const wait = nextAnnouncement(last, { caught, escaped }, now, COUNTS_GAP) ? 0 : Math.max(0, last.at + COUNTS_GAP - now);
+    const id = window.setTimeout(() => {
+      said.current = { caught, escaped, at: performance.now() };
+      setLine(countsLine(caught, escaped));
+    }, wait);
+    return () => window.clearTimeout(id);
+  }, [caught, escaped]);
   return (
-    <div className="flex flex-col gap-[3px]">
-      <dt className="text-[10px] tracking-[0.12em] text-faint">{label}</dt>
-      <dd className={`m-0 text-[18px] tabular-nums ${tone === "escape" ? "font-semibold text-[#ff6f95]" : "font-medium"}`} data-counter={label.toLowerCase()}>
+    <p role="status" className="sr-only" data-status="counts">
+      {line}
+    </p>
+  );
+}
+
+function Counter({ label, value, hook, title, tone }: { label: string; value: string; hook: string; title?: string; tone?: "escape" }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="font-mono text-[10px] tracking-[0.14em] text-label uppercase">{label}</dt>
+      <dd className={`m-0 font-mono text-[18px] leading-tight tabular-nums ${tone === "escape" ? "font-semibold text-[#ff6f95]" : "text-ink-strong"}`} data-counter={hook} title={title}>
         {value}
       </dd>
     </div>
   );
 }
 
-/** The top bar: wordmark home, the SIMULATION tag and its caveat, any status pills, and the live counters. */
-export function BoxHeader({ tally, status }: { tally: Readonly<Tally>; status?: ReactNode }) {
+/**
+ * The top bar, one row on a desktop: the wordmark home, the SIMULATION tag and its caveat, any status
+ * pills, then `controls` (the scenario menu and the mode switch), the live counters and `tools` (the
+ * help and copy-link buttons), with the sound switch last. On a phone it wraps, the counters on a row
+ * of their own at the left edge.
+ */
+export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<Tally>; status?: ReactNode; controls?: ReactNode; tools?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center gap-x-4 gap-y-3 max-[1157px]:gap-x-2.5">
-      <Link
-        href="/"
-        className={`${mono} flex min-h-11 items-center gap-2.5 pr-2 max-[1157px]:-order-2 max-[1157px]:pr-0 text-[13px] tracking-[0.12em] text-label hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none`}
-      >
-        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-          <circle cx="9" cy="9" r="3.2" fill="#ffb54d" />
-          <circle cx="9" cy="9" r="7.5" fill="none" stroke="#ffb54d" strokeOpacity="0.45" strokeWidth="1" />
-          <circle cx="15.5" cy="5" r="1.4" fill="#4fd8eb" />
-          <circle cx="3" cy="13.4" r="1.4" fill="#a78bff" />
-        </svg>
-        SWARM <span className="text-faint">/</span> <span className="font-semibold text-ink">THE BOX</span>
-      </Link>
-      <span className={`${mono} rounded-full max-[1157px]:-order-2 border border-escape/50 px-2.5 py-[5px] text-[10px] font-semibold tracking-[0.14em] text-escape-text`}>SIMULATION</span>
-      <span className="text-sm text-label">Abstract agents and abstract actions. Nothing here is a real technique.</span>
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b border-[rgba(150,172,214,0.12)] bg-chrome px-6 py-3 max-[640px]:px-3.5" data-box-header>
+      <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          className="flex min-h-11 items-center gap-2 font-mono text-[13px] tracking-[0.14em] whitespace-nowrap text-ink hover:text-white focus-visible:rounded focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="8" fill="none" stroke="#a78bff" strokeWidth="1.5" />
+            <circle cx="10" cy="10" r="3.5" fill="#ffb54d" />
+            <circle cx="16" cy="5" r="1.6" fill="#4fd8eb" />
+          </svg>
+          SWARM <span className="text-rule">/</span> <b className="font-semibold text-ink-strong">THE BOX</b>
+        </Link>
+        <span className="rounded-full border border-escape/45 px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] text-escape-text">SIMULATION</span>
+      </div>
+      <span className="max-w-[210px] text-xs leading-[1.35] text-faint max-[640px]:max-w-none">Abstract agents and abstract actions. Nothing here is a real technique.</span>
       {status ? <div className="flex flex-wrap items-center gap-1.5 empty:hidden">{status}</div> : null}
-      <div className="grow" />
-      <dl className={`${mono} m-0 flex flex-wrap gap-x-7 gap-y-2 text-ink max-[640px]:basis-full`}>
-        <Counter label="TICK" value={tally.tick.toLocaleString("en-US")} />
-        <Counter label="CAUGHT" value={tally.caughtTotal.toLocaleString("en-US")} />
-        <Counter label="ESCAPED" value={tally.escaped.toLocaleString("en-US")} tone="escape" />
-        <Counter label="USEFUL WORK" value={percent(tally.usefulWork)} />
+      <div className="ml-auto flex flex-wrap items-center gap-2.5 max-[640px]:ml-0">{controls}</div>
+      <dl className="m-0 ml-2 flex gap-5 max-[640px]:ml-0 max-[640px]:basis-full">
+        <Counter label="Time" value={clock(tally.tick)} hook="tick" title={`Tick ${tally.tick.toLocaleString("en-US")}`} />
+        <Counter label="Caught" value={tally.caughtTotal.toLocaleString("en-US")} hook="caught" />
+        <Counter label="Escaped" value={tally.escaped.toLocaleString("en-US")} hook="escaped" tone="escape" />
+        <Counter label="Useful work" value={percent(tally.usefulWork)} hook="useful work" />
       </dl>
-      {/* Below the wide layout the counters wrap, so the toggle joins the wordmark row. */}
-      <AudioToggle className="max-[1157px]:-order-1 max-[1157px]:ml-auto" />
+      <div className="flex items-center gap-1.5 max-[640px]:ml-auto">
+        {tools}
+        <AudioToggle className="rounded-[10px]" />
+      </div>
     </header>
   );
 }

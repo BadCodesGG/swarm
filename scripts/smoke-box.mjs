@@ -8,12 +8,12 @@
  *      escapes within ESCAPE_TIMEOUT_MS and the "What just happened" explainer appears, then names a
  *      layer to turn on once the worker's replay has proved it; "Run 100 trials" adds a plotted
  *      point within TRIALS_TIMEOUT_MS.
- *   6. The playground: a plain `/box` opens the breakout preset with its strip of presets; the lab
+ *   6. The playground: a plain `/box` opens the breakout preset, checked in the Scenario menu; the lab
  *      selector changes `data-lab` on the one layer panel; a layer flip on one lab reaches that lab
  *      only; "Edit world" adds and removes a lab; a share link restores the scenario in a fresh page;
  *      one agent card played puts a line in the turn log.
- *   7. `/box?shot=breakout`: a marker click and the key 2 open a detail card that names the layers
- *      that would have stopped it, Escape closes it, a branch from a marker shows both outcomes, and
+ *   7. `/box?shot=breakout`: a marker click and the key 2 open a step in the story rail that names the
+ *      layers that would have stopped it, [ opens the previous step, Escape closes it, a branch from a marker shows both outcomes, and
  *      "Replay with this switched on" reruns with that layer on.
  *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
  *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
@@ -140,8 +140,21 @@ export function boxSteps({ check, openPage, software = false }) {
     const { context, page, problems } = await openPage(browser, "/box");
     try {
       await waitForFrames(page, "box");
-      const presets = await page.locator("[data-preset]").evaluateAll((els) => els.map((e) => `${e.dataset.preset}:${e.getAttribute("aria-pressed")}`));
-      check("the preset strip offers five presets, breakout current on a first visit", presets.length === 5 && presets[0] === "breakout:true", presets.join(" "));
+      // The presets are radio items in the Scenario menu, a popover the button opens.
+      const openMenu = async () => {
+        await page.locator("[data-scenario-menu]").click();
+        await page.locator("[data-scenario-items]").waitFor({ state: "visible", timeout: 5_000 });
+      };
+      await openMenu();
+      const presets = await page.locator("[data-preset]").evaluateAll((els) => els.map((e) => `${e.dataset.preset}:${e.getAttribute("role")}:${e.getAttribute("aria-checked")}`));
+      check(
+        "the Scenario menu offers five presets as radio items, breakout checked on a first visit",
+        presets.length === 5 && presets.every((p) => p.includes(":menuitemradio:")) && presets[0] === "breakout:menuitemradio:true",
+        presets.join(" "),
+      );
+      await page.keyboard.press("Escape");
+      await page.locator("[data-scenario-items]").waitFor({ state: "hidden", timeout: 5_000 });
+      check("Escape closes the Scenario menu", true);
       const labs = await labsOf(page);
       check("a first visit opens the breakout preset's three labs", labs.map((l) => l.id).join() === "meridian,kestrel,halcyon", labs.map((l) => l.id).join());
 
@@ -156,10 +169,12 @@ export function boxSteps({ check, openPage, software = false }) {
       const after = await labsOf(page);
       check("a flip on KESTREL reaches KESTREL only", after[1].layers.network === !net && after[0].layers.network === labs[0].layers.network && after[2].layers.network === labs[2].layers.network);
 
+      await openMenu();
       await page.locator('[data-preset="air-gapped"]').click();
       await page.waitForFunction(() => window.__swarm.box.links.length === 0 && window.__swarm.box.labs.length === 3, null, { timeout: 10_000 });
-      check("a preset click loads it (air gapped has no links)", (await page.locator('[data-preset="air-gapped"]').getAttribute("aria-pressed")) === "true");
+      check("a preset click loads it (air gapped has no links)", (await page.locator('[data-preset="air-gapped"]').getAttribute("aria-checked")) === "true");
 
+      await openMenu();
       await page.locator("[data-edit-world]").click();
       await page.locator("[data-add-lab]").click();
       await page.waitForFunction(() => window.__swarm.box.labs.length === 4, null, { timeout: 10_000 });
@@ -217,6 +232,9 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.keyboard.press("2");
       await page.locator('[data-marker-card="2"]').waitFor({ timeout: 5_000 });
       check("the key 2 opens card 2", true);
+      await page.keyboard.press("[");
+      await page.locator('[data-marker-card="1"]').waitFor({ timeout: 5_000 });
+      check("the key [ opens the step before it", true);
       await page.keyboard.press("Escape");
       await page.locator("[data-marker-card]").waitFor({ state: "detached", timeout: 5_000 });
       check("Escape closes the card", true);

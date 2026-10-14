@@ -179,6 +179,15 @@ export function spreadLine(xs: readonly number[], min: number, lo: number, hi: n
   return out;
 }
 
+/** The step the previous (-1) or next (1) control opens among the numbers shown: from none, the first or the last; at an end, the same one. */
+export function stepAfter(ns: readonly number[], selected: number | null, dir: 1 | -1): number | null {
+  const sorted = [...ns].sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  if (selected === null || !sorted.includes(selected)) return dir === 1 ? sorted[0] : sorted[sorted.length - 1];
+  const i = sorted.indexOf(selected) + dir;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, i))];
+}
+
 /** The newest line not yet spoken, once `gap` ms have passed since the last one; null otherwise. */
 export function nextInterceptLine(lines: readonly InterceptLine[], spoken: number, lastAt: number, now: number, gap: number): InterceptLine | null {
   if (spoken >= lines.length || now - lastAt < gap) return null;

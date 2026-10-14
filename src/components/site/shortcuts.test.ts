@@ -19,3 +19,11 @@ describe("SHORTCUTS", () => {
     expect(speeds?.does).toBe("Playback speed: 1x, 20x, 200x");
   });
 });
+
+describe("the Box's step keys", () => {
+  it("lists [ and ] for the previous and next breakout step", () => {
+    const row = SHORTCUTS.box.find((r) => r.keys.includes("["));
+    expect(row?.keys).toEqual(["[", "]"]);
+    expect(row?.does).toBe("Open the previous or next breakout step");
+  });
+});

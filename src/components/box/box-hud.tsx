@@ -1,79 +1,37 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { runTrialsOffThread, runWorldTrialsOffThread, stoppingLayersOffThread } from "@/lib/box/trials-client";
+import { stoppingLayersOffThread } from "@/lib/box/trials-client";
 import { outcomeOf } from "@/lib/box/branch";
-import { presetScenario } from "@/lib/box/presets";
-import { DEFAULT_CONFIG, LAYER_ORDER, type BoxConfig, type LayerId, type TrialSummary } from "@/lib/box/types";
-import { PRESET_IDS, type Cast, type LabId, type LinkKind, type Preset, type Scenario } from "@/lib/box/world-types";
+import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
+import { LAYER_ORDER, type BoxConfig, type LayerId } from "@/lib/box/types";
+import type { Cast, LabId, LinkKind, Preset, Scenario } from "@/lib/box/world-types";
 import type { BoxApp } from "@/engine/box/app";
 import type { EscapeRecord } from "@/engine/box/tally";
-import { clock } from "@/engine/box/explain";
-import { useMedia } from "@/components/inside/use-engine";
 import { ActTools, FallbackBadge, HandoffNote, type ActRender } from "@/components/site/act-tools";
-import { countsLine, nextAnnouncement, trialsLine, type Said } from "./announce";
-import { InterceptPanel, MarkerCard } from "./debrief";
+import { DefendCard } from "./defend-card";
+import { DefencesRail } from "./defences-rail";
+import { InterceptPanel } from "./debrief";
 import { EscapeExplainer } from "./escape-explainer";
 import { EventLog } from "./event-log";
-import { BoxHeader } from "./header";
+import { BoxHeader, CountsStatus } from "./header";
 import { CastPanel, LabTabs, WorldBuilder } from "./lab-panels";
+import { buildLanes } from "./lanes";
 import { OutsidePanel } from "./outside-panel";
-import { Panel, RunControls } from "./panel";
-import { addRunKey, settingsKey, type PlotPoint } from "./plot";
-import { AgentCard, DefenderCard } from "./play-panels";
-import { addLab, currentScenario, linkLabs, presetOf, removeLab, setCast, setupKey, setupLabel, shareQuery, unlinkLabs } from "./playground";
-import { SceneLabels } from "./scene-labels";
-import { BranchCard, Timeline, type Pin } from "./timeline";
-import { ModeBar, PresetStrip, ShareButton, type Mode } from "./toolbar";
-import { TrialsPlot } from "./trials-plot";
+import { Panel } from "./panel";
+import { settingsKey } from "./plot";
+import { AgentCard } from "./play-panels";
+import { addLab, currentScenario, linkLabs, presetOf, removeLab, setCast, shareQuery, stepAfter, unlinkLabs } from "./playground";
+import { ResultsView } from "./results-view";
+import { ScenarioMenu } from "./scenario-menu";
+import { RingLegend, SceneLabels } from "./scene-labels";
+import { StoryRail } from "./story-rail";
+import { Timeline, type Pin } from "./timeline";
+import { ModeSwitch, ShareButton, type Mode } from "./toolbar";
 import { useBoxOverlay, useBoxSnapshot } from "./use-box";
+import { isAbort, useTrials } from "./use-trials";
 import { useWorldAt } from "./use-world-at";
 import { WorldOverlay } from "./world-overlay";
-
-const TRIALS = 100;
-
-const withLayers = (c: BoxConfig, layers: Partial<BoxConfig["layers"]>): BoxConfig => ({ ...c, layers: { ...c.layers, ...layers } });
-
-/** Earlier setups the lone escape shot plots beside its own, so the frame shows a frontier as the design does. */
-const SHOT_PRIORS: BoxConfig[] = [
-  DEFAULT_CONFIG,
-  { ...DEFAULT_CONFIG, monitorThreshold: 0.45 },
-  { ...DEFAULT_CONFIG, monitorThreshold: 0.8 },
-  withLayers(DEFAULT_CONFIG, { monitor: false, audit: false }),
-  withLayers(DEFAULT_CONFIG, { network: false, monitor: false, audit: false }),
-  withLayers(DEFAULT_CONFIG, { sandbox: false, permissions: false, network: false, monitor: false, audit: false }),
-];
-
-/** Ms between two spoken changes of the caught count; an escape or a reset is spoken at once. */
-const COUNTS_GAP = 5000;
-
-/** A screen reader hears the caught and escaped counts when they change, at most every few seconds. */
-function CountsStatus({ caught, escaped }: { caught: number; escaped: number }) {
-  const said = useRef<Said>({ caught, escaped, at: 0 });
-  const [line, setLine] = useState("");
-  useEffect(() => {
-    const last = said.current;
-    if (caught === last.caught && escaped === last.escaped) return;
-    const now = performance.now();
-    // Said now, or once the gap is up (a held change is said even if nothing else changes by then).
-    const wait = nextAnnouncement(last, { caught, escaped }, now, COUNTS_GAP) ? 0 : Math.max(0, last.at + COUNTS_GAP - now);
-    const id = window.setTimeout(() => {
-      said.current = { caught, escaped, at: performance.now() };
-      setLine(countsLine(caught, escaped));
-    }, wait);
-    return () => window.clearTimeout(id);
-  }, [caught, escaped]);
-  return (
-    <p role="status" className="sr-only" data-status="counts">
-      {line}
-    </p>
-  );
-}
-
-/** A different trial seed for each repeat run of the same settings, so pooled runs add information. */
-const runSeed = (seed: number, runs: number) => (seed + Math.imul(runs, 7919)) >>> 0;
-
-const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
 
 /** One escape, as the replay sees it: the same seed, crowd, settings, agent and tick give the same answer. */
 const escapeKey = (seed: number, agents: number, e: EscapeRecord) => `${seed}|${agents}|${settingsKey(e.config)}|${e.agent}|${e.tick}`;
@@ -86,35 +44,26 @@ const THRESHOLD_GAP = 250;
 type ThresholdKey = "monitorThreshold" | "auditBudget";
 
 /**
- * Everything over the Box canvas. The scene panel is the page's centre: the engine draws into its
- * rect (`app.setFrame`), the run controls and the timeline sit under it, and one slot under those
- * holds whichever debrief or mode panel is on (a marker's card, the defender's meter, the agent's
- * hand). The selected lab's layers, thresholds and cast are in the column beside it; the plot, the
- * intercepted chat and the logs are below. Trials run off the main thread.
+ * Everything over the Box canvas, as a layout shell. On a desktop the first screen is the top bar
+ * and three columns: the story (or the mode's own card) on the left, the scene with the timeline
+ * under it in the centre, the defences on the right; the results sit below. The engine draws into the
+ * scene slot's rect (`app.setFrame`). On a phone and tablet the scene comes first and the rest stacks
+ * under it. Trials run off the main thread.
  */
 export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean }) {
   const [snap, refresh] = useBoxSnapshot(app);
   const overlay = useBoxOverlay(app);
-  const { world } = snap;
+  const { world, tally } = snap;
   const multi = world.labs.length > 1;
   const tl = overlay.timeline;
   const [shownId, setShownId] = useState<LabId>(world.labs[0].id);
   const shown = world.labs.find((l) => l.id === shownId) ?? world.labs[0];
   const [mode, setMode] = useState<Mode>("watch");
   const [editing, setEditing] = useState(false);
-  const [points, setPoints] = useState<PlotPoint[]>([]);
-  const [labels, setLabels] = useState<Record<string, string>>({});
-  const names = useRef<Record<string, string>>({});
-  const [running, setRunning] = useState(false);
-  const [plotReady, setPlotReady] = useState(!snap.shot);
   const [textScale, setTextScale] = useState(1);
-  const [trialsSaid, setTrialsSaid] = useState("");
-  /** Phone and tablet: the scene comes first and the column beside it goes under. */
-  const stacked = useMedia("(max-width: 914px)");
   const slot = useRef<HTMLDivElement>(null);
-  const abort = useRef<AbortController | null>(null);
-  const { tally } = snap;
   const scenario = useMemo(() => currentScenario(world), [world]);
+  const trials = useTrials(app, snap);
 
   // The layer switches made so far (the engine keeps the log, also while a past moment is shown).
   const flipsKey = JSON.stringify(app.flips());
@@ -152,20 +101,15 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   useEffect(() => {
     const t = thr.current;
     return () => {
-      abort.current?.abort();
       if (t.timer !== null) window.clearTimeout(t.timer);
     };
   }, []);
 
   // --- the world: layers, thresholds, presets, edits ---
 
-  const setLayerFor = (lab: LabId, layer: LayerId, on: boolean) => {
-    app.setLayer(lab, layer, on);
-    refresh();
-  };
-
   const changeConfig = (next: BoxConfig) => {
-    for (const layer of LAYER_ORDER) if (shown.config.layers[layer] !== next.layers[layer]) setLayerFor(shown.id, layer, next.layers[layer]);
+    for (const layer of LAYER_ORDER) if (shown.config.layers[layer] !== next.layers[layer]) app.setLayer(shown.id, layer, next.layers[layer]);
+    refresh();
   };
 
   /** A slider drag asks the engine for a replay each time: at most one every THRESHOLD_GAP ms, the last value always lands. */
@@ -204,7 +148,30 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     load({ ...sc, labs: sc.labs.map((l) => (l.id === lab ? { ...l, config: { ...l.config, layers: { ...l.config.layers, [layer]: true } } } : l)) });
   };
 
-  // The keys 1 to 9 open a marker's card, and Escape closes it.
+  // --- the steps, remembered: a rewound view has not reached the later ones, but their pins stay ---
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [pinSig, setPinSig] = useState("");
+  const sig = overlay.markers.map((m) => `${m.n}:${m.tick}:${m.step ? 1 : 0}`).join();
+  if (tl.live && sig !== pinSig) {
+    setPinSig(sig);
+    setPins(overlay.markers.map(({ n, tick, lab, kind, step }) => ({ n, tick, lab, kind, step })));
+  }
+  const pin = world.selected === null ? null : (pins.find((p) => p.n === world.selected) ?? null);
+
+  /** Previous or next step, among those the map has shown. */
+  const walk = useCallback(
+    (dir: 1 | -1) => {
+      const shownNs = app
+        .overlay()
+        .markers.filter((m) => m.shown)
+        .map((m) => m.n);
+      const n = stepAfter(shownNs, app.stats().world.selected, dir);
+      if (n !== null) app.selectStep(n);
+    },
+    [app],
+  );
+
+  // The keys 1 to 9 open a step, [ and ] the previous or next, and Escape closes it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -213,25 +180,19 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         if (app.stats().world.selected !== null) app.selectStep(null);
         return;
       }
+      if (e.key === "[" || e.key === "]") {
+        walk(e.key === "]" ? 1 : -1);
+        return;
+      }
       if (!/^[1-9]$/.test(e.key)) return;
       const n = Number(e.key);
       if (app.overlay().markers.some((m) => m.n === n && m.shown)) app.selectStep(n);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [app]);
+  }, [app, walk]);
 
-  // --- the steps, remembered: a rewound view has not reached the later ones, but their pins stay ---
-  const [pins, setPins] = useState<Pin[]>([]);
-  const [pinSig, setPinSig] = useState("");
-  const sig = overlay.markers.map((m) => `${m.n}:${m.tick}:${m.step ? 1 : 0}`).join();
-  if (tl.live && sig !== pinSig) {
-    setPinSig(sig);
-    setPins(overlay.markers.map(({ n, tick, lab, step }) => ({ n, tick, lab, step })));
-  }
-  const pin = world.selected === null ? null : (pins.find((p) => p.n === world.selected) ?? null);
-
-  // --- the world as shown, rebuilt for the score, the per-lab figures and the branch ---
+  // --- the world as shown, rebuilt for the score, the per-lab figures, the lanes and the branch ---
   const viewWorld = useWorldAt(world.scenario, flips, world.tick, tl.live ? LIVE_BUCKET : 1);
   const rewound = !tl.live && viewWorld ? outcomeOf(viewWorld) : null;
   const perLayer = useMemo(() => {
@@ -248,61 +209,8 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     }
     return out;
   }, [multi, viewWorld, shown.id]);
-
-  // --- trials ---
-  const key = multi ? setupKey(scenario) : settingsKey(shown.config);
-  const runsSoFar = points.find((p) => p.key === key)?.runs ?? 0;
-
-  const runTrials = useCallback(
-    (runs: number) => {
-      abort.current?.abort();
-      const ctrl = new AbortController();
-      abort.current = ctrl;
-      setRunning(true);
-      const now = app.stats();
-      const sc = currentScenario(now.world);
-      const k = now.world.labs.length > 1 ? setupKey(sc) : settingsKey(now.world.labs[0].config);
-      const seed = runSeed(now.seed, runs);
-      const done = now.world.labs.length > 1 ? runWorldTrialsOffThread(sc, TRIALS, seed, ctrl.signal) : runTrialsOffThread(now.world.labs[0].config, TRIALS, seed, ctrl.signal);
-      done
-        .then((summary) => {
-          setPoints((pts) => addRunKey(pts, k, summary));
-          setLabels((l) => (l[k] ? l : { ...l, [k]: setupLabel(sc, names.current) }));
-          setTrialsSaid(trialsLine(summary));
-          app.bus.emit("trials", summary);
-        })
-        .catch((err: unknown) => {
-          if (!isAbort(err)) console.warn("Trials failed:", err);
-        })
-        .finally(() => {
-          if (abort.current === ctrl) setRunning(false);
-        });
-    },
-    [app],
-  );
-
-  // The shot plots earlier setups beside its own, each from a real run of 100 trials: the lone escape
-  // shot six variations of the Box, the breakout shot the other presets.
-  useEffect(() => {
-    if (!snap.shot) return;
-    const ctrl = new AbortController();
-    const now = app.stats();
-    const sc = currentScenario(now.world);
-    const lone = now.world.labs.length === 1;
-    const setups: { key: string; label: string; run(): Promise<TrialSummary> }[] = lone
-      ? [...SHOT_PRIORS, now.world.labs[0].config].map((c) => ({ key: settingsKey(c), label: "", run: () => runTrialsOffThread(c, TRIALS, now.seed, ctrl.signal) }))
-      : [...PRESET_IDS.filter((p) => p !== "breakout").map((p) => presetScenario(p)), sc].map((s) => ({ key: setupKey(s), label: setupLabel(s, names.current), run: () => runWorldTrialsOffThread(s, TRIALS, now.seed, ctrl.signal) }));
-    Promise.all(setups.map((s) => s.run().then((r) => [s, r] as const)))
-      .then((results) => {
-        setPoints(results.reduce<PlotPoint[]>((pts, [s, r]) => addRunKey(pts, s.key, r), []));
-        setLabels(Object.fromEntries(results.filter(([s]) => s.label).map(([s]) => [s.key, s.label])));
-        setPlotReady(true);
-      })
-      .catch(() => {});
-    return () => ctrl.abort();
-    // Once, for the shot's own settings.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const labIds = world.labs.map((l) => l.id).join();
+  const lanes = useMemo(() => buildLanes(labIds.split(",") as LabId[], viewWorld?.log ?? [], Math.max(tl.head, 1)), [labIds, viewWorld, tl.head]);
 
   // --- the lone Box's escape explainer: which off layer would have kept the latest escapee in ---
   const escape = tally.lastEscape;
@@ -322,46 +230,125 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   const preset: Preset | null = presetOf(scenario);
   const castOf = world.scenario.labs.find((l) => l.id === shown.id)!.cast;
-  const onRun = (play: boolean) => (play ? app.play() : app.pause());
   const liveMarker = world.selected === null ? undefined : overlay.markers.find((m) => m.n === world.selected);
   const cardStep = liveMarker?.step ?? pin?.step ?? null;
-
-  const card =
-    world.selected !== null && (pin || liveMarker) ? (
-      <MarkerCard
-        key={world.selected}
-        n={world.selected}
-        tick={liveMarker?.tick ?? pin!.tick}
-        step={cardStep}
-        onClose={() => app.selectStep(null)}
-        onReplayWith={(layer) => rerunWith(liveMarker?.lab ?? pin!.lab, layer)}
-      />
-    ) : null;
-  const modePanel =
-    mode === "defend" ? <DefenderCard world={viewWorld} /> : mode === "agent" ? <AgentCard lab={shown.id} config={shown.config} seed={snap.seed} /> : null;
-  const explainer = !multi && escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={(layer) => rerunWith(shown.id, layer)} /> : null;
-  const hasSlot = card !== null || modePanel !== null || explainer !== null;
-
-  // On a phone the slot is under the scene and may be off screen: bring a new card into view.
-  const wantCard = card !== null;
-  useEffect(() => {
-    if (wantCard && stacked) document.querySelector("[data-marker-card]")?.scrollIntoView({ block: "nearest" });
-  }, [wantCard, stacked]);
-
-  const run = (
-    <div className="w-[330px] max-w-full">
-      <RunControls playing={snap.playing} running={running} onPlay={onRun} onReset={() => app.reset(snap.seed)} onRunTrials={() => runTrials(runsSoFar)} />
-    </div>
-  );
   // How the scene is drawn, for the WebGL 2 badge and the "?" sheet.
   const render: ActRender = { isWebGPU: app.isWebGPU, still, crowdMode: app.stats().crowdMode };
+
+  /** "Branch from here": the branch card, at the scrubbed tick, until the Results view takes it. */
+  const openBranch = () => {
+    const card = document.querySelector<HTMLElement>("[data-branch-card]");
+    card?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    card?.querySelector<HTMLElement>("select, button")?.focus({ preventScroll: true });
+  };
+
+  // --- the regions ---
+
+  const primary =
+    mode === "defend"
+      ? { label: "Defend", node: <DefendCard world={viewWorld} /> }
+      : mode === "agent"
+        ? { label: "Play", node: <AgentCard lab={shown.id} config={shown.config} seed={snap.seed} /> }
+        : null;
+
+  const story = (
+    <StoryRail
+      presetName={preset ? PRESET_LABEL[preset] : null}
+      labs={world.labs}
+      pins={pins}
+      selected={world.selected}
+      onPick={pickMarker}
+      onClose={() => app.selectStep(null)}
+      onStep={walk}
+      onReplayWith={rerunWith}
+      lead={!multi && escape ? <EscapeExplainer escape={escape} escaped={tally.escaped} stops={stops} onReplay={() => app.replayEscape()} onRerun={(layer) => rerunWith(shown.id, layer)} /> : null}
+      primary={primary}
+      feed={
+        <>
+          <EventLog log={tally.log} caught={tally.caughtTotal} escaped={tally.escaped} />
+          <InterceptPanel lines={world.intercept} />
+          <OutsidePanel escaped={tally.escaped} />
+        </>
+      }
+    />
+  );
+
+  const defences = (
+    <DefencesRail
+      tabs={<LabTabs labs={world.labs} shown={shown.id} onShow={showLab} onOverview={() => app.camera.overview()} onAuto={() => app.camera.director()} />}
+      builder={
+        editing ? (
+          <WorldBuilder
+            scenario={scenario}
+            shown={shown.id}
+            onShow={showLab}
+            onAdd={() => load(addLab(scenario), shown.id)}
+            onRemove={(id) => load(removeLab(scenario, id), shown.id)}
+            onLink={(kind: LinkKind, a, b) => load(linkLabs(scenario, kind, a, b), shown.id)}
+            onUnlink={(i) => load(unlinkLabs(scenario, i), shown.id)}
+          />
+        ) : null
+      }
+      castOf={shown.name}
+      cast={
+        <CastPanel
+          key={`${shown.id}|${JSON.stringify(castOf)}`}
+          lab={shown.id}
+          cast={castOf}
+          onApply={(c: Cast) => {
+            const next = setCast(scenario, shown.id, c);
+            if (next) load(next, shown.id);
+          }}
+        />
+      }
+    >
+      <Panel
+        lab={shown.id}
+        labName={shown.name}
+        labStats={{ caught: shown.caught, escaped: shown.escaped, flagged: shown.flagged }}
+        perLayer={perLayer}
+        config={shown.config}
+        tally={tally}
+        onConfig={changeConfig}
+        onThreshold={(k, v) => setThreshold(shown.id, k, v)}
+      />
+    </DefencesRail>
+  );
+
+  const centre = (
+    // The scene fills the column less the timeline, and never drops under 400 px (scripts/smoke-box.mjs checks it).
+    <div className="flex min-h-0 min-w-0 flex-col gap-3 max-[914px]:order-first min-[915px]:max-[1099px]:min-h-[max(600px,calc(100vh-120px))]">
+      <div ref={slot} className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[914px]:aspect-[760/560] min-[915px]:min-h-[400px] min-[915px]:flex-1" data-scene-slot>
+        {multi ? <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} /> : <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />}
+        <RingLegend />
+      </div>
+      <Timeline
+        at={tl.at}
+        head={tl.head}
+        live={tl.live}
+        markers={pins}
+        selected={world.selected}
+        lanes={lanes}
+        playing={snap.playing}
+        running={trials.running}
+        onSeek={(t) => app.seek(t)}
+        onLive={() => app.live()}
+        onPick={pickMarker}
+        onPlay={(play) => (play ? app.play() : app.pause())}
+        onReset={() => app.reset(snap.seed)}
+        onRunTrials={trials.run}
+        onBranch={openBranch}
+      />
+    </div>
+  );
 
   return (
     <div
       className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink"
-      data-plot-ready={plotReady ? "true" : "false"}
+      data-plot-ready={trials.plotReady ? "true" : "false"}
     >
-      <div className="box-border flex min-h-full flex-col gap-3.5 px-6 py-4 max-[640px]:px-3.5">
+      {/* The first screen: on a wide desktop exactly the window's height (never under 700 px), the results below it. */}
+      <div className="flex flex-col min-[1100px]:h-full min-[1100px]:min-h-[700px]">
         <BoxHeader
           tally={tally}
           status={
@@ -370,96 +357,42 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
               <FallbackBadge render={render} />
             </>
           }
+          controls={
+            <>
+              <ScenarioMenu current={preset} editing={editing} onPick={(p) => load(presetScenario(p))} onEdit={setEditing} />
+              <ModeSwitch mode={mode} onMode={setMode} />
+            </>
+          }
+          tools={
+            <>
+              <ActTools act="box" render={render} badge={false} note={false} />
+              <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
+            </>
+          }
         />
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2.5">
-          <PresetStrip current={preset} onPick={(p) => load(presetScenario(p))} />
-          <ModeBar mode={mode} editing={editing} onMode={setMode} onEdit={setEditing} />
-          <div className="grow" />
-          <div className="flex items-center gap-2">
-            <ActTools act="box" render={render} badge={false} note={false} />
-            <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
-          </div>
+        <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[640px]:px-3.5 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
+          {story}
+          {centre}
+          <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
         </div>
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="flex min-w-0 flex-[0_1_340px] flex-col gap-3 max-[914px]:flex-[1_1_340px]">
-            <LabTabs labs={world.labs} shown={shown.id} onShow={showLab} onOverview={() => app.camera.overview()} onAuto={() => app.camera.director()} />
-            <Panel
-              lab={shown.id}
-              labName={shown.name}
-              labStats={{ caught: shown.caught, escaped: shown.escaped, flagged: shown.flagged }}
-              perLayer={perLayer}
-              config={shown.config}
-              tally={tally}
-              playing={snap.playing}
-              running={running}
-              onConfig={changeConfig}
-              onThreshold={(k, v) => setThreshold(shown.id, k, v)}
-              onPlay={onRun}
-              onReset={() => app.reset(snap.seed)}
-              onRunTrials={() => runTrials(runsSoFar)}
-            />
-            {editing ? (
-              <WorldBuilder
-                scenario={scenario}
-                shown={shown.id}
-                onShow={showLab}
-                onAdd={() => load(addLab(scenario), shown.id)}
-                onRemove={(id) => load(removeLab(scenario, id), shown.id)}
-                onLink={(kind: LinkKind, a, b) => load(linkLabs(scenario, kind, a, b), shown.id)}
-                onUnlink={(i) => load(unlinkLabs(scenario, i), shown.id)}
-              />
-            ) : null}
-            <details className="group rounded-[14px] border border-panel-border bg-panel" data-cast-details>
-              <summary className="flex min-h-11 cursor-pointer items-center px-[18px] font-mono text-[10px] tracking-[0.14em] text-label focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none">
-                CAST OF {shown.name}
-              </summary>
-              <CastPanel
-                key={`${shown.id}|${JSON.stringify(castOf)}`}
-                lab={shown.id}
-                cast={castOf}
-                onApply={(c: Cast) => {
-                  const next = setCast(scenario, shown.id, c);
-                  if (next) load(next, shown.id);
-                }}
-              />
-            </details>
-          </div>
-          {/* Beside the lab column the scene fills the window's height less the header and the strip, and never drops under 400 px (scripts/smoke-box.mjs checks it): a card under it makes the page longer, not the scene shorter. */}
-          <div className="flex min-w-0 flex-[999_1_490px] flex-col gap-3 max-[914px]:order-first min-[915px]:min-h-[max(600px,calc(100vh-190px))]">
-            <div ref={slot} className="relative min-h-[260px] rounded-[10px] border border-panel-border max-[914px]:aspect-[760/560] min-[915px]:min-h-[400px] min-[915px]:flex-1" data-scene-slot>
-              {multi ? <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} /> : <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />}
-            </div>
-            <Timeline at={tl.at} head={tl.head} live={tl.live} markers={pins} selected={world.selected} onSeek={(t) => app.seek(t)} onLive={() => app.live()} onPick={pickMarker}>
-              {run}
-            </Timeline>
-            {hasSlot ? (
-              <div className="max-h-[340px] shrink-0 overflow-y-auto rounded-[14px]" data-slot-panel>
-                {card}
-                <div hidden={card !== null}>{modePanel ?? explainer}</div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] items-start gap-4">
-          <TrialsPlot points={points} currentKey={key} running={running} labels={labels} />
-          <InterceptPanel lines={world.intercept} />
-          <div className="flex flex-col gap-3">
-            <OutsidePanel escaped={tally.escaped} />
-            <EventLog log={tally.log} caught={tally.caughtTotal} escaped={tally.escaped} />
-          </div>
-          <div className="flex flex-col gap-3">
-            {rewound ? (
-              <p className="m-0 rounded-[14px] border border-panel-border bg-panel px-[18px] py-3 font-mono text-xs text-muted" data-rewound>
-                At T+{clock(tl.at)}: {rewound.escapes} escaped, {rewound.crossings} breaches of another lab, {rewound.caught} caught.
-              </p>
-            ) : null}
-            <BranchCard scenario={world.scenario} at={viewWorld?.tick ?? tl.at} live={tl.head} world={viewWorld} hint={cardStep?.stoppedBy[0] ? { lab: cardStep.lab, layer: cardStep.stoppedBy[0] } : null} />
-          </div>
-        </div>
+      </div>
+      <div className="px-6 pb-6 max-[640px]:px-3.5">
+        <ResultsView
+          points={trials.points}
+          currentKey={trials.key}
+          running={trials.running}
+          labels={trials.labels}
+          scenario={world.scenario}
+          at={viewWorld?.tick ?? tl.at}
+          head={tl.head}
+          world={viewWorld}
+          hint={cardStep?.stoppedBy[0] ? { lab: cardStep.lab, layer: cardStep.stoppedBy[0] } : null}
+          rewound={rewound ? { at: tl.at, outcome: rewound } : null}
+        />
       </div>
       <CountsStatus caught={tally.caughtTotal} escaped={tally.escaped} />
       <p role="status" className="sr-only" data-status="trials">
-        {trialsSaid}
+        {trials.said}
       </p>
     </div>
   );

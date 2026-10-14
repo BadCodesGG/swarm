@@ -13,6 +13,7 @@ import {
   setCast,
   setupLabel,
   spreadLine,
+  stepAfter,
   spreadPoints,
   shareQuery,
   unlinkLabs,
@@ -144,5 +145,23 @@ describe("presetOf", () => {
     const s = presetScenario("air-gapped");
     expect(presetOf(s)).toBe("air-gapped");
     expect(presetOf({ ...s, labs: s.labs.map((l, i) => (i ? l : { ...l, config: { ...l.config, layers: { ...l.config.layers, audit: false } } })) })).toBeNull();
+  });
+});
+
+describe("stepAfter", () => {
+  it("moves to the next or previous step number shown", () => {
+    expect(stepAfter([1, 2, 4], 2, 1)).toBe(4);
+    expect(stepAfter([1, 2, 4], 4, -1)).toBe(2);
+  });
+
+  it("opens the first step going forward and the last going back when none is open", () => {
+    expect(stepAfter([3, 1, 2], null, 1)).toBe(1);
+    expect(stepAfter([3, 1, 2], null, -1)).toBe(3);
+  });
+
+  it("stays put at either end, and has nothing to open with no steps", () => {
+    expect(stepAfter([1, 2], 2, 1)).toBe(2);
+    expect(stepAfter([1, 2], 1, -1)).toBe(1);
+    expect(stepAfter([], null, 1)).toBeNull();
   });
 });

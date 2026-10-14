@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { stoppingLayersOffThread } from "@/lib/box/trials-client";
 import { outcomeOf } from "@/lib/box/branch";
+import { forkFlips } from "@/lib/box/fork";
 import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
 import { LAYER_ORDER, type BoxConfig, type LayerId } from "@/lib/box/types";
-import type { Cast, LabId, LinkKind, Preset, Scenario } from "@/lib/box/world-types";
+import type { Cast, Flip, LabId, LinkKind, Preset, Scenario } from "@/lib/box/world-types";
 import type { BoxApp } from "@/engine/box/app";
 import type { EscapeRecord } from "@/engine/box/tally";
 import { ActTools, FallbackBadge, HandoffNote, type ActRender } from "@/components/site/act-tools";
@@ -22,13 +23,14 @@ import { Panel } from "./panel";
 import { settingsKey } from "./plot";
 import { AgentCard } from "./play-panels";
 import { addLab, currentScenario, linkLabs, presetOf, removeLab, setCast, shareQuery, stepAfter, unlinkLabs } from "./playground";
-import { ResultsView } from "./results-view";
+import { BranchedPill, ResultsView } from "./results-view";
 import { ScenarioMenu } from "./scenario-menu";
 import { RingLegend, SceneLabels } from "./scene-labels";
 import { StoryRail } from "./story-rail";
 import { Timeline, type Pin } from "./timeline";
 import { ModeSwitch, ShareButton, type Mode } from "./toolbar";
 import { useBoxOverlay, useBoxSnapshot } from "./use-box";
+import { isResultsQuery, withResultsView } from "./view";
 import { isAbort, useTrials } from "./use-trials";
 import { useWorldAt } from "./use-world-at";
 import { WorldOverlay } from "./world-overlay";
@@ -62,6 +64,12 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   const [editing, setEditing] = useState(false);
   const [textScale, setTextScale] = useState(1);
   const slot = useRef<HTMLDivElement>(null);
+  // The Results view is a page over the Watch layout (`?view=results`); `pushed` says Back-to-the-map can pop the entry it pushed.
+  const [view, setView] = useState<"watch" | "results">(() => (typeof window !== "undefined" && isResultsQuery(window.location.search) ? "results" : "watch"));
+  const pushed = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  // The run this one was forked from, for "Back to the original".
+  const [branched, setBranched] = useState<{ at: number; original: { scenario: Scenario; flips: Flip[]; head: number } } | null>(null);
   const scenario = useMemo(() => currentScenario(world), [world]);
   const trials = useTrials(app, snap);
 
@@ -80,8 +88,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     let last = "";
     const report = () => {
       const el = slot.current;
-      if (el) {
-        const r = el.getBoundingClientRect();
+      const r = el?.getBoundingClientRect();
+      // Hidden (the Results view is up): hand the engine nothing, so it never gets a zero-size rect; the last real one stays until the slot is back.
+      if (r && r.width > 0 && r.height > 0) {
         const key = `${r.left}|${r.top}|${r.width}|${r.height}`;
         if (key !== last) {
           last = key;
@@ -96,6 +105,40 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     raf = requestAnimationFrame(report);
     return () => cancelAnimationFrame(raf);
   }, [app]);
+
+  useEffect(() => {
+    const onPop = () => setView(isResultsQuery(window.location.search) ? "results" : "watch");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // While Results shows, the run holds still (so the branch card's tick and comparison stay put); it carries on when the map returns.
+  useEffect(() => {
+    if (view !== "results") return;
+    root.current?.scrollTo({ top: 0, behavior: "instant" });
+    const was = app.stats().playing;
+    if (was) app.pause();
+    return () => {
+      if (was) app.play();
+    };
+  }, [view, app]);
+
+  const openResults = useCallback(() => {
+    if (!isResultsQuery(window.location.search)) {
+      window.history.pushState(null, "", withResultsView(window.location.href, true));
+      pushed.current = true;
+    }
+    setView("results");
+  }, []);
+  const closeResults = useCallback(() => {
+    if (pushed.current) {
+      pushed.current = false;
+      window.history.back();
+    } else {
+      window.history.replaceState(null, "", withResultsView(window.location.href, false));
+      setView("watch");
+    }
+  }, []);
 
   const thr = useRef<{ timer: number | null; pending: [LabId, ThresholdKey, number] | null }>({ timer: null, pending: null });
   useEffect(() => {
@@ -131,6 +174,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   /** Starts a new world; a lab to `focus` keeps the camera on it afterwards. */
   const load = (next: Scenario, focus?: LabId) => {
+    setBranched(null);
     app.loadScenario(next);
     app.play();
     if (focus && next.labs.length > 1 && next.labs.some((l) => l.id === focus)) app.camera.focus(focus);
@@ -202,10 +246,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     const base = honest * viewWorld.tick;
     const out = {} as Record<LayerId, { caught: number; costShare: number }>;
     for (const layer of LAYER_ORDER) {
-      out[layer] = {
-        caught: viewWorld.log.filter((e) => e.type === "caught" && e.lab === shown.id && e.layer === layer).length,
-        costShare: base > 0 ? rt.state.cost[layer] / base : 0,
-      };
+      out[layer] = { caught: viewWorld.log.filter((e) => e.type === "caught" && e.lab === shown.id && e.layer === layer).length, costShare: base > 0 ? rt.state.cost[layer] / base : 0 };
     }
     return out;
   }, [multi, viewWorld, shown.id]);
@@ -235,11 +276,33 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
   // How the scene is drawn, for the WebGL 2 badge and the "?" sheet.
   const render: ActRender = { isWebGPU: app.isWebGPU, still, crowdMode: app.stats().crowdMode };
 
-  /** "Branch from here": the branch card, at the scrubbed tick, until the Results view takes it. */
+  /** "Branch from here": the Results view at the scrubbed tick, with the branch card ready. */
   const openBranch = () => {
-    const card = document.querySelector<HTMLElement>("[data-branch-card]");
-    card?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    card?.querySelector<HTMLElement>("select, button")?.focus({ preventScroll: true });
+    openResults();
+    window.setTimeout(() => document.querySelector<HTMLElement>("[data-branch-card] select")?.focus({ preventScroll: true }), 60);
+  };
+
+  /** "Watch the branch": fork the live run at `at` with the layer on; the map shows where it branched and the way back. */
+  const watchBranch = (lab: LabId, layer: LayerId, at: number) => {
+    const base = app.stats().world.scenario;
+    const original = branched?.original ?? { scenario: base, flips: app.flips(), head: tl.head };
+    app.loadScenario(base, { flips: forkFlips(app.flips(), at, { lab, layer, on: true }), tick: at });
+    app.play();
+    setBranched({ at, original });
+    closeResults();
+  };
+  const backToOriginal = () => {
+    if (!branched) return;
+    const { scenario: sc, flips: fl, head } = branched.original;
+    app.loadScenario(sc, { flips: fl, tick: head });
+    app.play();
+    setBranched(null);
+  };
+  /** "Keep this change": the layer goes on now, in the live run. */
+  const keepChange = (lab: LabId, layer: LayerId) => {
+    app.setLayer(lab, layer, true);
+    refresh();
+    closeResults();
   };
 
   // --- the regions ---
@@ -290,6 +353,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         ) : null
       }
       castOf={shown.name}
+      onOpenResults={openResults}
       cast={
         <CastPanel
           key={`${shown.id}|${JSON.stringify(castOf)}`}
@@ -319,8 +383,13 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     // The scene fills the column less the timeline, and never drops under 400 px (scripts/smoke-box.mjs checks it).
     <div className="flex min-h-0 min-w-0 flex-col gap-3 max-[914px]:order-first min-[915px]:max-[1099px]:min-h-[max(600px,calc(100vh-120px))]">
       <div ref={slot} className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[914px]:aspect-[760/560] min-[915px]:min-h-[400px] min-[915px]:flex-1" data-scene-slot>
-        {multi ? <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} /> : <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />}
+        {multi ? (
+          <WorldOverlay overlay={overlay} shownLab={shown.id} onPick={pickMarker} onLab={showLab} />
+        ) : (
+          <SceneLabels config={shown.config} markers={tally.markers} escape={escape} stage={snap.escapeStage} textScale={textScale} />
+        )}
         <RingLegend />
+        {branched ? <BranchedPill at={branched.at} onBack={backToOriginal} /> : null}
       </div>
       <Timeline
         at={tl.at}
@@ -335,7 +404,10 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
         onLive={() => app.live()}
         onPick={pickMarker}
         onPlay={(play) => (play ? app.play() : app.pause())}
-        onReset={() => app.reset(snap.seed)}
+        onReset={() => {
+          setBranched(null);
+          app.reset(snap.seed);
+        }}
         onRunTrials={trials.run}
         onBranch={openBranch}
       />
@@ -346,50 +418,56 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     <div
       className="absolute inset-0 overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink"
       data-plot-ready={trials.plotReady ? "true" : "false"}
+      ref={root}
     >
       {/* The first screen: on a wide desktop exactly the window's height (never under 700 px), the results below it. */}
-      <div className="flex flex-col min-[1100px]:h-full min-[1100px]:min-h-[700px]">
-        <BoxHeader
-          tally={tally}
-          status={
-            <>
-              <HandoffNote />
-              <FallbackBadge render={render} />
-            </>
-          }
-          controls={
-            <>
-              <ScenarioMenu current={preset} editing={editing} onPick={(p) => load(presetScenario(p))} onEdit={setEditing} />
-              <ModeSwitch mode={mode} onMode={setMode} />
-            </>
-          }
-          tools={
-            <>
-              <ActTools act="box" render={render} badge={false} note={false} />
-              <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
-            </>
-          }
-        />
-        <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[640px]:px-3.5 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
-          {story}
-          {centre}
-          <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
+      <div className={view === "results" ? "hidden" : "contents"}>
+        <div className="flex flex-col min-[1100px]:h-full min-[1100px]:min-h-[700px]">
+          <BoxHeader
+            tally={tally}
+            status={
+              <>
+                <HandoffNote />
+                <FallbackBadge render={render} />
+              </>
+            }
+            controls={
+              <>
+                <ScenarioMenu current={preset} editing={editing} onPick={(p) => load(presetScenario(p))} onEdit={setEditing} />
+                <ModeSwitch mode={mode} onMode={setMode} />
+              </>
+            }
+            tools={
+              <>
+                <ActTools act="box" render={render} badge={false} note={false} />
+                <ShareButton link={() => `${window.location.pathname}?${shareQuery(currentScenario(app.stats().world))}`} />
+              </>
+            }
+          />
+          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[640px]:px-3.5 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
+            {story}
+            {centre}
+            <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
+          </div>
         </div>
       </div>
-      <div className="px-6 pb-6 max-[640px]:px-3.5">
-        <ResultsView
-          points={trials.points}
-          currentKey={trials.key}
-          running={trials.running}
-          labels={trials.labels}
-          scenario={world.scenario}
-          at={viewWorld?.tick ?? tl.at}
-          head={tl.head}
-          world={viewWorld}
-          hint={cardStep?.stoppedBy[0] ? { lab: cardStep.lab, layer: cardStep.stoppedBy[0] } : null}
-          rewound={rewound ? { at: tl.at, outcome: rewound } : null}
-        />
-      </div>
+      <ResultsView
+        open={view === "results"}
+        points={trials.points}
+        currentKey={trials.key}
+        running={trials.running}
+        labels={trials.labels}
+        scenario={scenario}
+        at={viewWorld?.tick ?? tl.at}
+        head={tl.head}
+        world={viewWorld}
+        hint={cardStep?.stoppedBy[0] ? { lab: cardStep.lab, layer: cardStep.stoppedBy[0] } : null}
+        rewound={rewound ? { at: tl.at, outcome: rewound } : null}
+        onBack={closeResults}
+        onRun={trials.run}
+        onWatch={watchBranch}
+        onKeep={keepChange}
+      />
       <CountsStatus caught={tally.caughtTotal} escaped={tally.escaped} />
       <p role="status" className="sr-only" data-status="trials">
         {trials.said}

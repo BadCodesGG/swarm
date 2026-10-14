@@ -2,7 +2,7 @@
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
  *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,branch,lower]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,branch,results,fork,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
  * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
@@ -30,7 +30,7 @@ const PORT = Number(value("port", 3128));
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = path.join(ROOT, ".shots");
 
-/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `branch` branches from step 1, `lower` also shoots the page scrolled to its foot. */
+/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `branch` branches from step 1, `results` opens the Results view and runs its comparison, `fork` (after `results`) presses "Watch the branch" and shoots the map with its Branched pill, `lower` also shoots the page scrolled to its foot. */
 const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
@@ -99,9 +99,24 @@ async function attempt(strategy) {
     }
     if (actions.includes("branch")) {
       await page.locator('[data-timeline-marker="1"]').click();
+      await page.locator("[data-branch-from-here]").click();
       await page.locator("[data-branch]").click();
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
     }
+    if (actions.includes("results")) {
+      if (!(await page.locator("[data-results-view]").isVisible())) await page.locator("[data-open-results]:visible").click();
+      await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 10_000 });
+      if (!(await page.locator("[data-branch-result]").count())) {
+        await page.locator("[data-branch]").click();
+        await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
+      }
+    }
+    if (actions.includes("fork")) {
+      await page.locator("[data-watch-branch]").click();
+      await page.locator("[data-branched-pill]").waitFor({ timeout: 10_000 });
+    }
+    // With the Results view up, the scene slot is hidden on purpose: its labs and labels are not on screen to check.
+    const resultsShown = await page.locator("[data-results-view]").isVisible();
     if (actions.includes("marker") && !(await page.locator("[data-marker-card]").count())) await page.locator('[data-step-marker="1"]:visible').click();
     if (actions.includes("agent")) {
       await page.locator('[data-mode="agent"]').click();
@@ -130,6 +145,7 @@ async function attempt(strategy) {
     });
     // Drawn boxes that touch, and boxes or labs the slot's edge cuts, as Chromium laid them out (not the placer's estimate).
     info.scene = await measureScene(page);
+    info.resultsShown = resultsShown;
     // The camera as the shot shows it: a rewind or a branch puts the director on a beat.
     info.camera = await page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm.box.camera)));
     const base = await nextShotBase();
@@ -191,9 +207,9 @@ try {
     ...result.errors,
     ...result.threeWarnings.map((w) => `THREE warning: ${w}`),
     ...scene.clashes.map((c) => `scene labels overlap: ${c}`),
-    ...scene.cut.map((c) => `scene label cut by the slot's edge: ${c}`),
+    ...(info.resultsShown ? [] : scene.cut).map((c) => `scene label cut by the slot's edge: ${c}`),
     // On the overview every lab is in the scene; on a beat the director frames one lab on purpose.
-    ...(info.camera?.mode === "director" && !info.camera.focus ? scene.labsCut : []).map((id) => `lab not wholly inside the scene: ${id}`),
+    ...(!info.resultsShown && info.camera?.mode === "director" && !info.camera.focus ? scene.labsCut : []).map((id) => `lab not wholly inside the scene: ${id}`),
   ];
   if (problems.length) {
     console.error(`Console errors, warnings, label overlaps or cut-off labels (${problems.length}):`);

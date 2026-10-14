@@ -117,4 +117,10 @@ describe("placeTags", () => {
     const [t] = placeTags([{ key: "a", text: "Everything off", at: at(224, 60) }], [], [at(224, 60)]);
     expect(t.anchor).toBe("end");
   });
+  it("sizes a name by the character width it is given", () => {
+    // 14 characters: 71 units wide at the default width, so it cannot sit right of x 200; at 2.7 it is 38 and can.
+    const tag = { key: "a", text: "Everything off", at: at(180, 60) };
+    expect(placeTags([tag], [], [at(180, 60)])[0].anchor).toBe("end");
+    expect(placeTags([tag], [], [at(180, 60)], [], 2.7)[0].anchor).toBe("start");
+  });
 });

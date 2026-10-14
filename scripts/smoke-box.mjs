@@ -13,7 +13,7 @@
  *      only; "Edit world" adds and removes a lab; a share link restores the scenario in a fresh page;
  *      one agent card played puts a line in the turn log.
  *   7. `/box?shot=breakout`: a marker click and the key 2 open a step in the story rail that names the
- *      layers that would have stopped it, [ opens the previous step, Escape closes it, a branch from a marker shows both outcomes, and
+ *      layers that would have stopped it, [ opens the previous step, Escape closes it, a branch from a marker opens the Results view (Back returns to the map) and shows both outcomes, Watch the branch forks the run (pill, then back to the original), and
  *      "Replay with this switched on" reruns with that layer on.
  *   8. Layout: at 1440x900 the scene keeps at least 400 px of height with a marker card open and
  *      every lab, name and button is wholly inside it with none overlapping; at 390x844 the scene
@@ -244,10 +244,29 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.locator("[data-back-to-live]").waitFor({ timeout: 10_000 });
       const past = await page.evaluate(() => window.__swarm.box.stats.tick);
       check("a timeline pin rewinds the engine", past < 600, `tick ${past}`);
+      await page.locator("[data-branch-from-here]").click();
+      await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 5_000 });
+      check("Branch from here opens the Results view at ?view=results with the scene slot still mounted", page.url().includes("view=results") && (await page.locator("[data-scene-slot]").count()) === 1, page.url());
       await page.locator("[data-branch]").click();
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
       const rows = await page.locator("[data-branch-result] tbody tr").allInnerTexts();
       check("a branch from a marker shows both outcomes side by side", rows.length === 4, rows.join(" / ").replace(/\s+/g, " "));
+      await page.locator("[data-run-more]").click();
+      await page.waitForFunction(() => /stops \d+ of 100 breakouts/.test(document.querySelector("[data-headline]")?.textContent ?? ""), null, { timeout: TRIALS_TIMEOUT_MS });
+      const headline = await page.locator("[data-headline]").innerText();
+      check("the Results headline reads off the plotted setup", /stops \d+ of 100 breakouts and keeps \d+% of the work/.test(headline) && (await page.locator("[data-setup-diff]").count()) === 1, headline);
+      await page.goBack();
+      await page.locator("[data-results-view]").waitFor({ state: "hidden", timeout: 5_000 });
+      check("the browser's Back returns to the map", !page.url().includes("view=results"), page.url());
+      await page.locator("[data-branch-from-here]").click();
+      await page.locator("[data-watch-branch]").click();
+      await page.locator("[data-branched-pill]").waitFor({ timeout: 10_000 });
+      check("Watch the branch forks the run and the map shows the Branched pill", (await page.locator("[data-results-view]").isHidden()) && /Branched at T\+\d\d:\d\d/.test(await page.locator("[data-branched-pill]").innerText()));
+      await page.locator("[data-unbranch]").click();
+      await page.locator("[data-branched-pill]").waitFor({ state: "detached", timeout: 5_000 });
+      check("Back to the original drops the pill", true);
+      // The fork cleared the open step; the pin opens its card again.
+      await page.locator('[data-timeline-marker="1"]').click();
 
       // The pin on the timeline opened step 1's card too.
       const replay = page.locator("[data-replay-with]").first();
@@ -257,6 +276,19 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.waitForFunction(() => window.__swarm.box.stats.tick < 200 && window.__swarm.box.playing, null, { timeout: 10_000 });
       const rerun = await box(page);
       check('"Replay with this switched on" reruns from the start with that layer on', rerun.labs.some((l) => l.layers[layer]), `${layer} on, tick ${rerun.stats.tick}`);
+      // A link with ?view=results opens straight on the Results view; "Keep this change" switches the layer on and returns to the map.
+      const direct = await openPage(browser, "/box?shot=breakout&view=results");
+      try {
+        await direct.page.waitForFunction(() => window.__swarm?.box?.settled === true, null, { timeout: READY_TIMEOUT_MS });
+        await direct.page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 10_000 });
+        const offBefore = await direct.page.evaluate(() => Object.values(window.__swarm.box.config.layers).filter((on) => !on).length);
+        await direct.page.locator("[data-keep-change]").click();
+        await direct.page.locator("[data-results-view]").waitFor({ state: "hidden", timeout: 5_000 });
+        const offAfter = await direct.page.evaluate(() => Object.values(window.__swarm.box.config.layers).filter((on) => !on).length);
+        check("?view=results opens the Results view on load, and Keep this change returns to the map", direct.problems.length === 0 && (await direct.page.locator("[data-scene-slot]").isVisible()), `${offBefore} -> ${offAfter} layers off in the shown lab, ${direct.problems.join(" | ")}`);
+      } finally {
+        await direct.context.close();
+      }
       check("the breakout shot logged no console errors or THREE warnings", problems.length === 0, problems.join(" | "));
     } finally {
       await context.close();
@@ -314,7 +346,8 @@ export function boxSteps({ check, openPage, software = false }) {
       await desktop.page.waitForTimeout(400);
       const top1 = await scroller();
       const plain = await desktop.page.evaluate(() => window.__swarm.box.camera.mode);
-      check("desktop: a plain wheel over the map scrolls the page and leaves the camera alone", top1 > top0 && plain === "director", `scrollTop ${top0} to ${top1}, camera ${plain}`);
+      // The results live in their own view now, so a desktop page has nothing to scroll (-1); where it does scroll, the wheel must move it.
+      check("desktop: a plain wheel over the map scrolls the page (where there is one) and leaves the camera alone", (top0 < 0 || top1 > top0) && plain === "director", `scrollTop ${top0} to ${top1}, camera ${plain}`);
       // The page has scrolled, so aim again at the same spot of the slot.
       const moved = await desktop.page.evaluate(() => {
         const r = document.querySelector("[data-scene-slot]").getBoundingClientRect();

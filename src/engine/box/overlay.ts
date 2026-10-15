@@ -132,5 +132,11 @@ export interface CameraControl {
   focus(lab: LabId): void;
   /** Fly out to every lab and stay there. */
   overview(): void;
+  /**
+   * Keeps every lab in view while the story has the camera: the overview fitted to the slot, with
+   * room in px for the names under the labs and the marker buttons at the trails' ends, in place of
+   * the story's beats (the phone layout's short slot has no room to zoom in on one lab).
+   */
+  keepAll(on: boolean): void;
 }
 

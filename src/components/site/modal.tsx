@@ -13,6 +13,8 @@ export function Modal({
   describedBy,
   onClose,
   closeKey,
+  placement = "center",
+  returnFocus,
   className = "",
   children,
   ...data
@@ -23,14 +25,23 @@ export function Modal({
   onClose(): void;
   /** One more key that closes it (the `?` sheet closes on `?`). */
   closeKey?: string;
+  /** "bottom" makes it a bottom sheet: full width, hugging the bottom edge, a click on the dimmed page closes it. */
+  placement?: "center" | "bottom";
+  /** Where focus goes on close, when the opener is not the element focused at open (a tap does not focus a button in every browser). */
+  returnFocus?: () => HTMLElement | null;
   className?: string;
   children: ReactNode;
   "data-dialog"?: string;
+  "aria-modal"?: boolean;
+  role?: "dialog";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
+  const back = useRef(returnFocus);
+  const downOnBackdrop = useRef(false);
   useEffect(() => {
     close.current = onClose;
+    back.current = returnFocus;
   });
 
   useEffect(() => {
@@ -62,7 +73,8 @@ export function Modal({
     return () => {
       window.removeEventListener("keydown", onKey, true);
       if (dialog.open) dialog.close();
-      if (before?.isConnected) before.focus();
+      const to = back.current?.() ?? before;
+      if (to?.isConnected) to.focus();
     };
   }, [closeKey]);
 
@@ -75,7 +87,14 @@ export function Modal({
         e.preventDefault();
         close.current();
       }}
-      className={`pointer-events-auto m-auto max-h-[calc(100dvh-24px)] w-[min(30rem,calc(100vw-24px))] overflow-y-auto rounded-[16px] border border-panel-border bg-panel p-0 text-body shadow-[0_24px_80px_rgba(0,0,0,0.6)] backdrop:bg-black/55 ${className}`}
+      // A click on the dimmed page closes a sheet, but only when the press began there too: a drag that starts inside and ends outside is not one.
+      onPointerDown={placement === "bottom" ? (e) => void (downOnBackdrop.current = e.target === e.currentTarget) : undefined}
+      onClick={placement === "bottom" ? (e) => e.target === e.currentTarget && downOnBackdrop.current && close.current() : undefined}
+      className={`pointer-events-auto border border-panel-border p-0 text-body backdrop:bg-black/55 ${
+        placement === "bottom"
+          ? "fixed inset-x-0 bg-panel-solid top-auto bottom-0 m-0 max-h-[calc(100dvh-72px)] w-full max-w-none overflow-hidden rounded-t-[18px] border-b-0 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]"
+          : "m-auto bg-panel max-h-[calc(100dvh-24px)] w-[min(30rem,calc(100vw-24px))] overflow-y-auto rounded-[16px] shadow-[0_24px_80px_rgba(0,0,0,0.6)]"
+      } ${className}`}
       {...data}
     >
       {children}

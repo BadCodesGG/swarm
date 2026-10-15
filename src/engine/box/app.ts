@@ -36,7 +36,7 @@ import { createPost } from "../shared/post";
 import { adaptQuality, budgetOptions, maxPixelRatio, qualityOverride, resolveQuality, TIERS } from "../shared/quality";
 import { startBoxAudio } from "../audio/box";
 import { createRenderer } from "../shared/renderer";
-import { activeItem, createDirector, focusPose, mixPose, overviewPose, type Director, type Pose, type StoryItem } from "./camera";
+import { activeItem, createDirector, fittedOverview, focusPose, mixPose, overviewPose, type Director, type Pose, type StoryItem } from "./camera";
 import { createCrowd } from "./crowd";
 import { TARGET_STRIDE } from "./crowd/integrate";
 import { homes, ringPoint, wander, type EscapePath, type Point } from "./layout";
@@ -211,6 +211,11 @@ const TRAIL_POOL = 6;
 const MAP_DOT = 1.05;
 /** Seconds a flight of the camera takes when the visitor sends it somewhere. */
 const FLY_S = 0.9;
+/**
+ * CSS px kept clear inside the slot's edges when every lab is kept in view, at a text scale of 1: a
+ * marker button's half side and a little beside it, and a lab's two-line name block under its ring.
+ */
+const KEEP_ALL_INSET = { x: 20, y: 32 } as const;
 
 const PALE = hex(0xd6e4ff);
 const PINK = hex(0xff4d7d);
@@ -317,11 +322,15 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
 
   // --- the story clock and the camera ---
   let story = 0;
+  /** The tick the last replay ran the sim to: events up to it already happened, so their labs read breached at once. */
+  let replayed = -Infinity;
   /** Replaying: the story clock runs on its own until it catches up with the sim. */
   let replaying = false;
   /** A shot holds the story at one tick. */
   let frozen: number | null = null;
   let mode: CameraMode = "director";
+  /** The page asked for every lab to stay in view (the phone layout): the story's beats give way to the fitted overview. */
+  let keepAll = false;
   let freePose: Pose = { x: 0, y: 0, w: 760, h: 560 };
   let fly: { from: Pose; to: Pose; t0: number } | null = null;
   let reduced = reducedQuery.matches;
@@ -584,6 +593,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     links.set(shapes);
     accumulator = 0;
     story = 0;
+    replayed = -Infinity;
     replaying = false;
     escapeStage = 0;
     rebuildDirector();
@@ -631,6 +641,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     caughtLayer.fill(0);
     accumulator = 0;
     story = 0;
+    replayed = -Infinity;
     replaying = false;
     escapeStage = 0;
     rebuildDirector();
@@ -647,6 +658,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       },
     });
     story = world.tick;
+    replayed = world.tick;
     markLanded();
     writeAgents();
     drawCatchMarkers();
@@ -717,9 +729,17 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
   };
   reducedQuery.addEventListener("change", onReduced);
 
+  /** The text scale the map's labels use in this slot (`WorldOverlay` and the engine's own DOM agree on it). */
+  const textScale = () => (slot().width < 640 ? 1.25 : 1);
+  /** Every lab in view, fitted to the slot as it is now (so a resize refits it on the next frame). */
+  const keptOverview = (): Pose => {
+    const k = textScale();
+    return fittedOverview(frames, slot(), { x: KEEP_ALL_INSET.x * k, y: KEEP_ALL_INSET.y * k });
+  };
   const poseNow = (): Pose => {
     if (!map) return director.overview;
     if (mode === "free") return freePose;
+    if (keepAll) return keptOverview();
     return director.pose(story, reduced);
   };
 
@@ -757,11 +777,18 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       mode = "director";
       fly = null;
     },
+    // With every lab kept in view, the story's camera is the overview: hand it back rather than park a flown-to pose (a close-up, or one a resize would not refit).
     focus(lab) {
+      if (keepAll) return control.director();
       const f = frames.find((x) => x.id === lab);
       if (f) flyTo(focusPose(f));
     },
-    overview: () => flyTo(overviewPose(frames)),
+    overview: () => (keepAll ? control.director() : flyTo(overviewPose(frames))),
+    keepAll(on) {
+      keepAll = on;
+      // A window narrowed after a drag or a zoom: the free pose would crop the labs, so the story takes the camera back.
+      if (on) control.director();
+    },
   };
   const inSlot = (e: { clientX: number; clientY: number }) => {
     const s = pageSlot();
@@ -822,7 +849,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     const labViews: LabView[] = labs.map((L) => {
       const id = L.runtime.id;
       const at = proj(L.frame);
-      const breachedAt = breachTicks(director.items)[id];
+      const breachedAt = breachTicks(director.items, replayed)[id];
       const status: LabStatus = breachedAt !== undefined && story >= breachedAt ? "breached" : "held";
       return {
         id,
@@ -903,7 +930,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         labs: labViews,
         links: linkViews,
         markers: markerViews,
-        camera: { mode, reduced, focus: mode === "director" && act && map ? act.lab : null, pose: { ...pose }, scale: view.scale },
+        // `focus` names the lab a beat frames; with every lab kept in view no beat is framed.
+        camera: { mode, reduced, focus: mode === "director" && !keepAll && act && map ? act.lab : null, pose: { ...pose }, scale: view.scale },
         outside,
         trails: [...runs.values()].filter((r) => story >= r.tick).map((r): [Point, Point] => [proj(r.path.start), proj(r.path.end)]),
       };
@@ -1018,7 +1046,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
         crackOf.set(item.lab, { angle: Math.atan2(end.y - f.y, end.x - f.x), amount: 1 });
       }
     }
-    const breachedAt = breachTicks(items);
+    const breachedAt = breachTicks(items, replayed);
     for (const L of labs) {
       const id = L.runtime.id;
       const crack = crackOf.get(id);
@@ -1123,7 +1151,7 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
     }
     frameCamera(poseNow());
     buildOverlay();
-    overlayDom?.update(overlayState, pageSlot().width < 640 ? 1.25 : 1);
+    overlayDom?.update(overlayState, textScale());
     if (drawable) post.render();
     debug.frame++;
     syncDebug();
@@ -1225,6 +1253,8 @@ export async function startBox(canvas: HTMLCanvasElement, opts: StartOptions): P
       const last = lastEscapeRun();
       if (!last) return;
       story = Math.max(0, last.item.start - 1);
+      // The escape plays again from its start, so its lab waits for the agent to get out once more.
+      replayed = -Infinity;
       frozen = null;
       replaying = true;
       landed.clear();

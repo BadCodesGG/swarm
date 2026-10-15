@@ -11,7 +11,7 @@ import { button } from "./toolbar";
 export function LabTabs({ labs, shown, onShow, onOverview, onAuto }: { labs: readonly WorldLabSnapshot[]; shown: LabId; onShow(id: LabId): void; onOverview(): void; onAuto(): void }) {
   return (
     <div className="flex flex-col gap-2">
-      <div role="group" aria-label="Choose a lab" className="flex flex-wrap gap-1.5" data-lab-tabs>
+      <div role="group" aria-label="Choose a lab" className="flex flex-wrap gap-0.5 rounded-xl border border-panel-border bg-chrome p-[3px]" data-lab-tabs>
         {labs.map((l) => (
           <button
             key={l.id}
@@ -20,21 +20,21 @@ export function LabTabs({ labs, shown, onShow, onOverview, onAuto }: { labs: rea
             data-lab-tab={l.id}
             data-status={l.status}
             onClick={() => onShow(l.id)}
-            className={`flex min-h-11 flex-col items-start justify-center rounded-[10px] border px-3 py-1 font-mono text-[11px] leading-tight focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none ${
-              l.status === "breached" ? "border-escape/60 text-escape-text" : "border-haiku/40 text-haiku"
-            } ${shown === l.id ? "bg-control" : "bg-transparent hover:bg-white/5"}`}
+            className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-[9px] border-0 px-1.5 py-1 font-mono leading-tight focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none ${
+              shown === l.id ? "bg-control font-semibold text-ink-strong" : "bg-transparent text-muted hover:bg-white/5"
+            }`}
           >
-            <span className="font-bold text-ink">{l.name}</span>
-            <span className="tracking-[0.1em]">{l.status === "breached" ? "BREACHED" : "HELD"}</span>
+            <span className="text-[11px]">{l.name}</span>
+            <span className={`text-[9px] tracking-[0.1em] ${l.status === "breached" ? "text-escape-text" : "text-haiku"}`}>{l.status === "breached" ? "BREACHED" : "HELD"}</span>
           </button>
         ))}
       </div>
       {labs.length > 1 ? (
         <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={onOverview} className={`${button} min-h-9 text-xs`}>
+          <button type="button" onClick={onOverview} className={`${button} flex-1 text-xs`}>
             All labs
           </button>
-          <button type="button" onClick={onAuto} className={`${button} min-h-9 text-xs`}>
+          <button type="button" onClick={onAuto} className={`${button} flex-1 text-xs`}>
             Follow the story
           </button>
         </div>

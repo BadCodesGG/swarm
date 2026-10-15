@@ -61,12 +61,17 @@ export function markerSlots(items: readonly StoryItem[]): MarkerSlot[] {
   return slots;
 }
 
-/** The tick each lab starts to read as breached: when its agent is out, or the crossing lands. */
-export function breachTicks(items: readonly StoryItem[]): Partial<Record<LabId, number>> {
+/**
+ * The tick each lab starts to read as breached: when its agent is out, or the crossing lands. After a
+ * replay to `replayed`, an event at or before that tick already happened, so its lab reads breached
+ * from the replayed tick on instead of waiting for its queued pulse; a live run passes nothing.
+ */
+export function breachTicks(items: readonly StoryItem[], replayed = -Infinity): Partial<Record<LabId, number>> {
   const out: Partial<Record<LabId, number>> = {};
   for (const i of items) {
     if (i.kind === "held") continue;
-    const at = i.kind === "escape" ? i.start + Math.round(ESCAPE_TICKS * 0.75) : i.end;
+    const played = i.kind === "escape" ? i.start + Math.round(ESCAPE_TICKS * 0.75) : i.end;
+    const at = i.tick <= replayed ? Math.min(played, replayed) : played;
     out[i.lab] = Math.min(out[i.lab] ?? Infinity, at);
   }
   return out;

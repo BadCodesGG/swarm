@@ -74,6 +74,20 @@ describe("markers and breaches", () => {
     expect(b.meridian).toBeUndefined();
   });
 
+  it("reads a lab breached at once after a replay past its breach event, without waiting for the pulse", () => {
+    // Replayed to tick 170: the escape (152) and the crossing (158) happened, the crossing's pulse lands at 178 + CROSS_TICKS.
+    const b = breachTicks(items, 170);
+    expect(b.kestrel).toBeLessThanOrEqual(170);
+    expect(b.halcyon).toBeLessThanOrEqual(170);
+    expect(b.meridian).toBeUndefined();
+  });
+
+  it("keeps the pulse-then-breach timing for events after the replayed tick", () => {
+    const b = breachTicks(items, 155);
+    expect(b.kestrel).toBeLessThanOrEqual(155);
+    expect(b.halcyon).toBe(crossed.end);
+  });
+
   it("settles after the last beat has lingered", () => {
     expect(settledTick(items)).toBe(held.end + LINGER_TICKS + 1);
     expect(settledTick([])).toBe(0);

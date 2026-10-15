@@ -187,6 +187,36 @@ describe("layoutWorldLabels", () => {
     boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
   });
 
+  it("slides a lab's name farther from its ring when the markers crowd every spot beside it (a 320 phone after a fork)", () => {
+    const small = {
+      bounds: { x0: 18, y0: 104.2, x1: 287, y1: 301.3 },
+      labs: [
+        { id: "meridian", name: "MERIDIAN", status: "HELD", x: 113, y: 166, r: 24 },
+        { id: "kestrel", name: "KESTREL", status: "BREACHED", x: 192, y: 166, r: 24 },
+        { id: "halcyon", name: "HALCYON", status: "BREACHED", x: 153, y: 214, r: 24 },
+      ],
+      links: [],
+      markers: [
+        { n: 1, x: 193, y: 141.3 },
+        { n: 2, x: 233.7, y: 195.3 },
+        { n: 3, x: 226.8, y: 118.2 },
+        { n: 4, x: 240.2, y: 155.9 },
+      ],
+      outside: null,
+      k: 1.25,
+      sparse: true,
+    };
+    const l = layoutWorldLabels(small);
+    const boxes = boxesOf(l);
+    boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
+    for (const r of boxes) {
+      for (const m of small.markers) expect(touchesDisc(r, m, MARKER_BUTTON * small.k + 2)).toBe(false);
+      expect(r.y1).toBeLessThanOrEqual(small.bounds.y1);
+    }
+    // A name may meet its own ring where the slot's edge pulls it back (MERIDIAN, at the top); never another's.
+    for (const t of l.labs) for (const lab of small.labs) if (lab.id !== t.id) expect(touchesDisc(rectOf(t), lab, lab.r + 3)).toBe(false);
+  });
+
   it("keeps every box inside the slot and off the rings, the marker buttons and the trails", () => {
     const trail: [Point, Point] = [{ x: 640, y: 250 }, { x: 800, y: 150 }];
     const l = layoutWorldLabels({ ...input, segments: [trail] });
@@ -210,6 +240,15 @@ describe("layoutWorldLabels", () => {
     const name = rectOf(l.links[0]);
     expect(segmentHits(name, under.points[0], under.points[1])).toBe(false);
     expect(Math.abs(l.links[0].y - 400)).toBeLessThan(40);
+  });
+
+  it("keeps a lab's name off a box it is told to avoid, such as the rings key in the slot's corner", () => {
+    // The key along the slot's foot, right where Halcyon's name would go under its ring.
+    const key: Rect = { x0: 14, y0: 640, x1: 600, y1: 672 };
+    const without = rectOf(layoutWorldLabels(input).labs.find((t) => t.id === "halcyon")!);
+    expect(overlaps(without, key)).toBe(true);
+    const l = layoutWorldLabels({ ...input, avoid: [key] });
+    for (const r of boxesOf(l)) expect(overlaps(r, key)).toBe(false);
   });
 
   it("brings a name back inside the slot when every spot round its ring would leave it", () => {

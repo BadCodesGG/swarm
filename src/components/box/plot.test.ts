@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, type BoxConfig } from "@/lib/box/types";
-import { addRun, boxHits, frontierPath, placeLabel, placeTags, settingsKey, toPlot } from "./plot";
+import { addRun, boxHits, frontierPath, placeLabel, placeTags, settingsKey, toPlot, type Segment } from "./plot";
 
 const networkOff: BoxConfig = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
 
@@ -116,5 +116,108 @@ describe("placeTags", () => {
   it("turns left near the right edge", () => {
     const [t] = placeTags([{ key: "a", text: "Everything off", at: at(224, 60) }], [], [at(224, 60)]);
     expect(t.anchor).toBe("end");
+  });
+  it("with no clear spot, keeps the name off text already placed before it keeps it off the frontier", () => {
+    // Dots all round the point block every candidate; the band under the axis (the tick labels) is taken.
+    const dots: { x: number; y: number }[] = [];
+    for (let x = 16; x <= 96; x += 8) for (let y = 120; y <= 170; y += 8) dots.push(at(x, y));
+    const band = { x: 0, y: 171, width: 232, height: 29 };
+    const [t] = placeTags([{ key: "a", text: "Everything off", at: at(40, 168) }], [], dots, [band]);
+    expect(t.box.y + t.box.height).toBeLessThanOrEqual(band.y);
+  });
+  it("sizes a name by the character width it is given", () => {
+    // 14 characters: 71 units wide at the default width, so it cannot sit right of x 200; at 2.7 it is 38 and can.
+    const tag = { key: "a", text: "Everything off", at: at(180, 60) };
+    expect(placeTags([tag], [], [at(180, 60)])[0].anchor).toBe("end");
+    expect(placeTags([tag], [], [at(180, 60)], [], { charWidth: 2.7 })[0].anchor).toBe("start");
+  });
+  it("sizes a name's box and its offsets by the text height it is given", () => {
+    // A narrow phone's plot draws its text twice as tall in viewBox units; the box and its distance from the dot follow.
+    const [small] = placeTags([{ key: "a", text: "A", at: at(100, 80) }], [], [at(100, 80)]);
+    const [tall] = placeTags([{ key: "a", text: "A", at: at(100, 80) }], [], [at(100, 80)], [], { height: 20 });
+    expect(small.box.height).toBe(10);
+    expect(tall.box.height).toBe(20);
+    expect(tall.y - 80).toBe(2 * (small.y - 80));
+  });
+
+  // Dots that block every spot round (100, 100) but the far ones above it: a name there needs a leader back to its dot.
+  const ring = [at(110, 103), at(88, 103), at(110, 88), at(88, 88), at(110, 111), at(88, 111), at(100, 88), at(100, 114)];
+
+  it("passes over a spot whose leader would run through a name already placed", () => {
+    // Up and to the left is the first free spot, but a text box sits on the way there; up and to the right is next.
+    const onTheWay = { x: 93, y: 88, width: 3, height: 4 };
+    const [t] = placeTags([{ key: "a", text: "A", at: at(100, 100) }], [], [at(100, 100), ...ring], [onTheWay], { leaders: true });
+    expect(t).toMatchObject({ anchor: "start", y: 79 });
+    // The leader starts 4 units off the dot, toward the name, and ends just short of it.
+    const [from, to] = t.leader!;
+    expect(to).toEqual({ x: 111, y: 80 });
+    expect(Math.hypot(from.x - 100, from.y - 100)).toBeCloseTo(4);
+    expect((from.x - 100) / (from.y - 100)).toBeCloseTo((111 - 100) / (80 - 100));
+  });
+
+  it("keeps a later name off an earlier name's leader", () => {
+    // A goes straight up with a leader down to its dot; B's first spot sits on that leader, so B turns left.
+    const tags = placeTags(
+      [
+        { key: "a", text: "A", at: at(100, 100) },
+        { key: "b", text: "B", at: at(90, 78) },
+      ],
+      [],
+      [at(100, 100), at(90, 78), ...ring, at(110, 76), at(88, 76)],
+      [],
+      { leaders: true },
+    );
+    expect(tags[0]).toMatchObject({ anchor: "middle", y: 70, leader: [at(100, 96), at(100, 71)] });
+    expect(tags[1]).toMatchObject({ anchor: "end", leader: null });
+  });
+
+  it("keeps an earlier name off the leader of a later name that has nowhere else to go", () => {
+    // The Results plot 309 px wide (a 390 phone): "Rushed launch" first took the spot right of its dot, and the only
+    // spot left for "Everything off" then needed a leader through it (scripts/sweep-box.mjs, invariant 5).
+    const fk = 580 / 309;
+    const top = at(131.65, 21.67);
+    const rushed = at(157.15, 170);
+    const off = at(206.34, 170);
+    const frontier: Segment[] = [
+      [top, rushed],
+      [rushed, off],
+    ];
+    const dots = [top, rushed, top, off];
+    const label = placeLabel(at(140.48, 117.5), frontier, dots, { width: 32 * fk, ascent: 5.67 * fk, height: 13.04 * fk });
+    const bands = [label.box, { x: 0, y: 178 - 4.62 * fk, width: 232, height: 200 }, { x: 0, y: 0, width: 30.05, height: 200 }];
+    const tags = placeTags(
+      [
+        { key: "default", text: "Default lab", at: top },
+        { key: "rushed", text: "Rushed launch", at: rushed },
+        { key: "air", text: "Air gapped", at: top },
+        { key: "off", text: "Everything off", at: off },
+      ],
+      frontier,
+      dots,
+      bands,
+      { charWidth: 2.7 * fk, height: 5.52 * fk, leaders: true },
+    );
+    expect(tags.map((t) => t.key)).toEqual(["default", "rushed", "air", "off"]);
+    expect(tags.find((t) => t.key === "off")?.leader).not.toBeNull();
+    for (const t of tags) for (const other of tags) if (t !== other && t.leader) expect(boxHits(other.box, [t.leader], []), `${t.text} over ${other.text}`).toBe(false);
+  });
+
+  it("gives the small plot's numbers no leaders, and keeps none of their spots off one", () => {
+    // The same crowd as above: without leaders the name takes the first spot clear of the text and the dots.
+    const [t] = placeTags([{ key: "a", text: "A", at: at(100, 100) }], [], [at(100, 100), ...ring]);
+    expect(t.leader).toBeNull();
+  });
+
+  it("draws no leader for a name beside its dot", () => {
+    const [t] = placeTags([{ key: "a", text: "Breakout", at: at(100, 80) }], [], [at(100, 80)], [], { leaders: true });
+    expect(t.leader).toBeNull();
+  });
+});
+
+describe("placeLabel", () => {
+  it("sizes the current setup's label by the size it is given", () => {
+    const p = placeLabel({ x: 120, y: 60 }, [], [], { width: 90, ascent: 14, height: 36 });
+    expect(p.box).toMatchObject({ width: 90, height: 36 });
+    expect(p.box.y).toBe(p.y - 14);
   });
 });

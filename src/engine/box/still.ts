@@ -219,7 +219,7 @@ export function createStillBox({ params, enter, paint }: StillBoxOptions): BoxAp
     replayEscape() {},
     setFrame: (frame) => paint(frame && "w" in frame ? { x: frame.x, y: frame.y, width: frame.w, height: frame.h } : frame),
     overlay: emptyOverlay,
-    camera: { mode: () => "director", director() {}, focus() {}, overview() {} },
+    camera: { mode: () => "director", director() {}, focus() {}, overview() {}, keepAll() {} },
     selectStep(n) {
       selected = n;
       refresh();

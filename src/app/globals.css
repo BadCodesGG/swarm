@@ -7,6 +7,8 @@
      carries under a panel or a band must not read through it (a blur softens the sliver that does). */
   --panel: rgba(12, 16, 28, 0.96);
   --chrome: rgba(7, 9, 16, 0.96);
+  /* The panel's colour fully opaque, for a sheet over the page: nothing under it may read through. */
+  --panel-solid: #0c101c;
   --panel-border: rgba(150, 172, 214, 0.16);
 
   --ink: #eef2f8;
@@ -41,6 +43,7 @@
 @theme inline {
   --color-ground: var(--ground);
   --color-panel: var(--panel);
+  --color-panel-solid: var(--panel-solid);
   --color-chrome: var(--chrome);
   --color-panel-border: var(--panel-border);
   --color-ink: var(--ink);

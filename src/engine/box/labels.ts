@@ -371,6 +371,8 @@ export interface WorldLabelsInput {
   conduits?: readonly { link: number; points: readonly Point[] }[];
   /** Text scale: 1 at the design's size. */
   k: number;
+  /** Boxes already on the scene that text keeps off, such as the rings key in the slot's corner. */
+  avoid?: readonly Rect[];
   /**
    * A small slot (a phone's): the link names are left off and OUTSIDE shows only where it is clear,
    * since text with no clean spot would cover a button or a name. Lab names always show.
@@ -408,6 +410,13 @@ function labSpots(l: WorldLabInput, k: number): { x: number; y: number; anchor: 
     { x: l.x - l.r - 10 * k, y: l.y, anchor: "end" },
     { x: l.x, y: below + 22 * k, anchor: "middle" },
     { x: l.x, y: above - 22 * k, anchor: "middle" },
+    // A phone's small slot, the markers crowding the ring: the block beside the ring slid farther out, a step at a time.
+    ...[12, 24, 36].flatMap((d) => [
+      { x: l.x + side, y: below + (4 + d) * k, anchor: "start" as const },
+      { x: l.x - side, y: below + (4 + d) * k, anchor: "end" as const },
+      { x: l.x + side, y: above - d * k, anchor: "start" as const },
+      { x: l.x - side, y: above - d * k, anchor: "end" as const },
+    ]),
   ];
 }
 
@@ -426,11 +435,11 @@ export function clampInto<T extends TextSpec>(t: T, outer: Rect): T {
  * with no clear spot takes the least crowded one: a name always shows). A spot that would run off
  * the slot is first pulled back inside it, so no text is cut by the slot's edge.
  */
-export function layoutWorldLabels({ bounds, labs, links, markers, outside, segments = [], conduits = [], k, sparse = false }: WorldLabelsInput): WorldLabelLayout {
+export function layoutWorldLabels({ bounds, labs, links, markers, outside, segments = [], conduits = [], k, avoid = [], sparse = false }: WorldLabelsInput): WorldLabelLayout {
   const chords = conduits.map((c) => ({ link: c.link, pieces: c.points.slice(1).map((q, i): [Point, Point] => [c.points[i], q]) }));
   const rings = labs.map((l) => ({ c: { x: l.x, y: l.y }, r: l.r + 3 }));
   const buttons = markers.map((m) => ({ c: { x: m.x, y: m.y }, r: MARKER_BUTTON * k + 2 }));
-  const boxes: Rect[] = [];
+  const boxes: Rect[] = [...avoid];
   const crowded = (r: Rect, own?: number, link?: number): number => {
     // Text cut off by the slot is worse than text beside a button.
     let n = inside(r, bounds) ? 0 : 3;

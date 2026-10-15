@@ -1,9 +1,30 @@
+import { DEFENDER_BUDGET } from "./budget";
 import { validCast } from "./cast";
 import { LAYER_ORDER, type BoxConfig } from "./types";
 import { LAB_IDS, LINK_KINDS, type LabSpec, type Link, type LinkKind, type Scenario } from "./world-types";
 
 /** The share format's version: bump it when the encoding changes, and old links read as null. */
 export const SHARE_VERSION = 1;
+
+/** The Defend budget's parameter, in whole percent: absent means the default, so old links are unchanged. */
+const BUDGET_PARAM = "d";
+/** The Defend budget's range and step, in percent. */
+export const BUDGET_MIN_PCT = 10;
+export const BUDGET_MAX_PCT = 40;
+export const BUDGET_STEP_PCT = 5;
+
+/** A budget as the slider offers it: a multiple of the step within the range (the default for anything that is not a number). */
+export function clampBudget(budget: number): number {
+  if (!Number.isFinite(budget)) return DEFENDER_BUDGET;
+  const pct = Math.round((budget * 100) / BUDGET_STEP_PCT) * BUDGET_STEP_PCT;
+  return Math.min(BUDGET_MAX_PCT, Math.max(BUDGET_MIN_PCT, pct)) / 100;
+}
+
+/** The Defend budget in these parameters: the default when absent or not a number, else clamped to 10% to 40% in steps of 5. */
+export function budgetFromParams(p: URLSearchParams): number {
+  const raw = p.get(BUDGET_PARAM);
+  return raw !== null && /^\d{1,10}$/.test(raw) ? clampBudget(Number(raw) / 100) : DEFENDER_BUDGET;
+}
 
 const MAX_AGENTS = 2000;
 const MAX_LINKS = 12;
@@ -12,9 +33,10 @@ const KIND_CODE: Record<LinkKind, string> = { "shared-cache": "c", "model-regist
 /**
  * A scenario as URL parameters: `v`, `s` (seed), one `b` per lab, one `k` per link. A lab reads
  * `id.agents.layerMask.monitorPct.auditPermille.roguePermille.sandbagPct.getOut-persist-recruit`,
- * a link `kindCode.labIndex-labIndex`. Numbers are rounded to those units.
+ * a link `kindCode.labIndex-labIndex`. Numbers are rounded to those units. A Defend `budget` other than
+ * the default adds `d`, its percent.
  */
-export function scenarioToParams(s: Scenario): URLSearchParams {
+export function scenarioToParams(s: Scenario, budget: number = DEFENDER_BUDGET): URLSearchParams {
   const p = new URLSearchParams();
   p.set("v", String(SHARE_VERSION));
   p.set("s", String(s.seed >>> 0));
@@ -28,6 +50,8 @@ export function scenarioToParams(s: Scenario): URLSearchParams {
     );
   }
   for (const link of s.links) p.append("k", `${KIND_CODE[link.kind]}.${link.labs.map((id) => s.labs.findIndex((l) => l.id === id)).join("-")}`);
+  const kept = clampBudget(budget);
+  if (kept !== DEFENDER_BUDGET) p.set(BUDGET_PARAM, String(Math.round(kept * 100)));
   return p;
 }
 

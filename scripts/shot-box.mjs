@@ -1,11 +1,11 @@
 /**
  * Takes a reproducible screenshot of the Act 2 escape moment from the production build.
  *
- *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--seed=1812] [--name=box]
- *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,agent,branch,lower]
+ *   npm run build && node scripts/shot-box.mjs [--webgl] [--mobile] [--viewport=768x1024] [--seed=1812] [--name=box]
+ *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,unfork,lab,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
- * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch),
+ * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
  * (unless --webgl), zero console errors or `THREE.` warnings, no two scene labels or marker buttons
  * overlapping and none cut by the scene's edge (as drawn, after the `--do` actions), and writes `.shots/<name>-<n>.png`
@@ -30,11 +30,14 @@ const PORT = Number(value("port", 3128));
 const BASE = `http://localhost:${PORT}`;
 const SHOTS = path.join(ROOT, ".shots");
 
-/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `branch` branches from step 1, `lower` also shoots the page scrolled to its foot. */
+/** Playground states to reach before the shot: `marker` opens step 1's card, `agent` plays a card in agent mode, `defend` switches to Defend mode (its card, and the tip once the worker has proved it), `branch` branches from step 1, `results` opens the Results view and runs its comparison, `fork` (after `results`) presses "Watch the branch" and shoots the map with its Branched pill, `unfork` (after `fork`) presses "Back to the original", `lab` taps Kestrel's name on the map, `step3` (phone) walks the step card to step 3, `sheet` (phone) opens the Defences sheet, `feed` (phone) the Feed sheet, `lower` also shoots the page scrolled to its foot. */
 const actions = value("do", "").split(",").filter(Boolean);
 
 const wantWebGL = flag("webgl");
 const mobile = flag("mobile");
+const [vw, vh] = value("viewport", "1440x900").split("x").map(Number);
+/** The phone layout (a tab bar leads to the results): a phone, or any window of 914 px and under. */
+const phoneLayout = mobile || vw <= 914;
 const name = value("name", `${mobile ? "box-mobile" : "box"}${wantWebGL ? "-webgl" : ""}`);
 const query = new URLSearchParams({ shot: value("shot", "escape") });
 const seed = value("seed", null);
@@ -76,7 +79,7 @@ async function attempt(strategy) {
             userAgent:
               "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
           }
-        : { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+        : { viewport: { width: vw, height: vh }, deviceScaleFactor: 1 },
     );
     const page = await context.newPage();
     page.on("console", (msg) => {
@@ -99,10 +102,51 @@ async function attempt(strategy) {
     }
     if (actions.includes("branch")) {
       await page.locator('[data-timeline-marker="1"]').click();
+      await page.locator("[data-branch-from-here]").click();
       await page.locator("[data-branch]").click();
       await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
     }
+    if (actions.includes("results")) {
+      if (!(await page.locator("[data-results-view]").isVisible())) await page.locator(phoneLayout ? '[data-phone-tab="results"]' : "[data-open-results]:visible").click();
+      await page.locator("[data-results-view]").waitFor({ state: "visible", timeout: 10_000 });
+      if (!(await page.locator("[data-branch-result]").count())) {
+        await page.locator("[data-branch]").click();
+        await page.locator("[data-branch-result]").waitFor({ timeout: 30_000 });
+      }
+    }
+    if (actions.includes("fork")) {
+      await page.locator("[data-watch-branch]").click();
+      await page.locator("[data-branched-pill]").waitFor({ timeout: 10_000 });
+    }
+    if (actions.includes("unfork")) {
+      await page.locator("[data-unbranch]").click();
+      await page.locator("[data-branched-pill]").waitFor({ state: "detached", timeout: 5_000 });
+    }
+    if (actions.includes("lab")) await page.locator('[data-lab-name="kestrel"]:visible').click();
+    // With the Results view up, the scene slot is hidden on purpose: its labs and labels are not on screen to check.
+    const resultsShown = await page.locator("[data-results-view]").isVisible();
     if (actions.includes("marker") && !(await page.locator("[data-marker-card]").count())) await page.locator('[data-step-marker="1"]:visible').click();
+    if (actions.includes("defend")) {
+      await page.locator('[data-mode="defend"]').click();
+      // In the phone layout the Defend card lives in the Defences sheet: the `sheet` action opens it and waits.
+      if (!phoneLayout) {
+        await page.locator("[data-defender-score]").waitFor({ timeout: 10_000 });
+        // The tip waits for a replay in the worker; a run with no escape has none.
+        await page.locator("[data-defend-tip]").waitFor({ timeout: 15_000 }).catch(() => {});
+      }
+    }
+    if (actions.includes("step3")) {
+      // The phone's step card: next until it reads step 3 (the first press opens step 2).
+      for (let i = 0; i < 4 && (await page.locator("[data-step-card]").getAttribute("data-step-card-n")) !== "3"; i++) {
+        await page.locator("[data-step-next]").click();
+        await page.waitForTimeout(250);
+      }
+    }
+    if (actions.includes("sheet")) {
+      await page.locator('[data-phone-tab="defences"]').click();
+      if (actions.includes("defend")) await page.locator("dialog [data-defender-score]").waitFor({ timeout: 10_000 });
+    }
+    if (actions.includes("feed")) await page.locator('[data-phone-tab="feed"]').click();
     if (actions.includes("agent")) {
       await page.locator('[data-mode="agent"]').click();
       for (let i = 0; i < 3; i++) {
@@ -130,6 +174,7 @@ async function attempt(strategy) {
     });
     // Drawn boxes that touch, and boxes or labs the slot's edge cuts, as Chromium laid them out (not the placer's estimate).
     info.scene = await measureScene(page);
+    info.resultsShown = resultsShown;
     // The camera as the shot shows it: a rewind or a branch puts the director on a beat.
     info.camera = await page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm.box.camera)));
     const base = await nextShotBase();
@@ -191,9 +236,9 @@ try {
     ...result.errors,
     ...result.threeWarnings.map((w) => `THREE warning: ${w}`),
     ...scene.clashes.map((c) => `scene labels overlap: ${c}`),
-    ...scene.cut.map((c) => `scene label cut by the slot's edge: ${c}`),
+    ...(info.resultsShown ? [] : scene.cut).map((c) => `scene label cut by the slot's edge: ${c}`),
     // On the overview every lab is in the scene; on a beat the director frames one lab on purpose.
-    ...(info.camera?.mode === "director" && !info.camera.focus ? scene.labsCut : []).map((id) => `lab not wholly inside the scene: ${id}`),
+    ...(!info.resultsShown && info.camera?.mode === "director" && !info.camera.focus ? scene.labsCut : []).map((id) => `lab not wholly inside the scene: ${id}`),
   ];
   if (problems.length) {
     console.error(`Console errors, warnings, label overlaps or cut-off labels (${problems.length}):`);

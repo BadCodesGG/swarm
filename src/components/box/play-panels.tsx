@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LAYER_NAME, layerNumber, percent } from "@/engine/box/explain";
+import { useEffect, useRef, useState } from "react";
+import { LAYER_NAME, layerNumber } from "@/engine/box/explain";
 import {
   CARDS,
   GOAL,
@@ -12,103 +12,12 @@ import {
   type CardId,
   type TurnResult,
 } from "@/lib/box/agent-mode";
-import { layerBill, scoreDefence } from "@/lib/box/budget";
-import { LAYER_ORDER, type BoxConfig } from "@/lib/box/types";
-import type { World } from "@/lib/box/world";
+import type { BoxConfig } from "@/lib/box/types";
 import { LAB_NAME, type LabId } from "@/lib/box/world-types";
-import { bestScore, localStore, recordBest } from "./playground";
 import { button } from "./toolbar";
 
 const card =
   "flex flex-col gap-3 rounded-[14px] border border-panel-border bg-panel p-[18px]";
-
-/**
- * Defender mode: every layer costs useful work, and the work the layers use up may not pass the
- * budget. The score is the share of hidden-goal agents kept in, times the work kept, for the run so
- * far; over budget it is zero. The best score lives in local storage when the page may use it.
- */
-export function DefenderCard({ world }: { world: World | null }) {
-  const result = useMemo(
-    () =>
-      world ? { score: scoreDefence(world), bill: layerBill(world) } : null,
-    [world],
-  );
-  const [stored] = useState(() => bestScore(localStore()));
-  const score = result?.score.score ?? 0;
-  // A score means little in the first seconds: only a run of some length can set the best.
-  const counts = score > 0 && (world?.tick ?? 0) >= 100 ? score : 0;
-  const best = Math.max(stored, counts);
-  useEffect(() => {
-    if (counts > 0) recordBest(localStore(), counts);
-  }, [counts]);
-  const s = result?.score;
-  const used = s ? Math.min(1, s.workLost / s.budget) : 0;
-  return (
-    <section
-      aria-label="Defender score"
-      className={`${card} min-[900px]:grid min-[900px]:grid-cols-2 min-[900px]:gap-x-5`}
-      data-defender
-    >
-      <div className="flex flex-col gap-3">
-        <span className="font-mono text-[10px] tracking-[0.14em] text-label">
-          DEFEND
-        </span>
-        <p className="m-0 text-xs text-label">
-          Keep hidden-goal agents in while the layers use no more than{" "}
-          {s ? percent(s.budget) : "25%"} of the useful work. Switch layers on
-          and off and watch the bill.
-        </p>
-        <div className="flex items-baseline justify-between font-mono">
-          <span
-            className="text-3xl font-semibold text-ink-strong tabular-nums"
-            data-defender-score
-          >
-            {score}
-          </span>
-          <span className="text-xs text-label">
-            score, best <span data-defender-best>{best}</span>
-          </span>
-        </div>
-        <div
-          role="meter"
-          aria-label="Useful work spent on layers"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(used * 100)}
-          aria-valuetext={
-            s
-              ? `${percent(s.workLost)} of the work spent, budget ${percent(s.budget)}${s.overBudget ? ", over budget" : ""}`
-              : "no run yet"
-          }
-          className="h-3 overflow-hidden rounded-full bg-control"
-        >
-          <div
-            className={`h-full ${s?.overBudget ? "bg-escape" : "bg-haiku"}`}
-            style={{ width: `${Math.round(used * 100)}%` }}
-          />
-        </div>
-        <p className="m-0 font-mono text-xs text-muted" data-budget-line>
-          {s
-            ? `${percent(s.workLost)} of ${percent(s.budget)} spent.${s.overBudget ? " Over budget, so the score is 0." : ""}`
-            : "Working it out."}{" "}
-          {s ? `${s.stopped} of ${s.rogues} hidden-goal agents kept in.` : ""}
-        </p>
-      </div>
-      <ul className="m-0 flex list-none flex-col gap-1 self-start p-0 font-mono text-[11px] text-label">
-        {LAYER_ORDER.map((l) => (
-          <li key={l} className="flex justify-between">
-            <span>
-              {layerNumber(l)} {LAYER_NAME[l]}
-            </span>
-            <span className="text-ink">
-              {result ? `-${Math.round(result.bill[l] * 100)}%` : "-"}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
 
 interface TurnLine {
   n: number;

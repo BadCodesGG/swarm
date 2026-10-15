@@ -1,4 +1,5 @@
 import { escapeTotal, labOf, replayWorld, runWorld, setLayer, type World } from "./world";
+import { rogueCount } from "./sim";
 import type { Flip, Snapshot } from "./world-types";
 
 /** A point in a world's life that can be rebuilt exactly: the scenario, the flips so far and the tick. */
@@ -27,15 +28,28 @@ export interface BranchOutcome {
   /** Agents stopped by a layer, hidden-goal or not. */
   caught: number;
   work: number;
+  /** The work as a share of what the honest agents could have done so far, as the trials count it (1 before the first tick). */
+  workShare: number;
 }
 
 export function outcomeOf(world: World): BranchOutcome {
+  const possible = world.scenario.labs.reduce((n, l) => n + (l.agents - rogueCount(l.config, l.agents)), 0) * world.tick;
   return {
     escapes: escapeTotal(world),
     crossings: world.log.filter((e) => e.type === "contact" && e.outcome === "crossed").length,
     caught: world.log.filter((e) => e.type === "caught").length,
     work: world.work,
+    workShare: possible > 0 ? world.work / possible : 1,
   };
+}
+
+/** Which measures are better higher; the rest (escapes, breaches) are better lower. */
+const HIGHER_IS_BETTER: ReadonlySet<keyof BranchOutcome> = new Set(["caught", "work", "workShare"]);
+
+/** How the branch's figure compares with the original's, in a word. */
+export function branchVerdict(key: keyof BranchOutcome, base: number, branch: number): "better" | "worse" | "same" {
+  if (branch === base) return "same";
+  return branch > base === HIGHER_IS_BETTER.has(key) ? "better" : "worse";
 }
 
 /** Run the snapshot on as it was, and again with `change`, each for `ticks` more ticks. */

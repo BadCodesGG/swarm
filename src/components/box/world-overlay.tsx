@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type CSSProperties } from "react";
-import { layoutWorldLabels, type TextSpec } from "@/engine/box/labels";
+import { layoutWorldLabels, type Rect, type TextSpec } from "@/engine/box/labels";
 import type { BoxOverlay } from "@/engine/box/overlay";
 import type { LabId } from "@/lib/box/world-types";
 import { spreadPoints } from "./playground";
@@ -41,11 +41,14 @@ const textStyle = (t: TextSpec, color: string): CSSProperties => ({
 export function WorldOverlay({
   overlay,
   shownLab,
+  avoid = [],
   onPick,
   onLab,
 }: {
   overlay: BoxOverlay;
   shownLab: LabId;
+  /** Boxes on the page the text keeps off (the rings key in the slot's corner), CSS px. */
+  avoid?: readonly Rect[];
   onPick(n: number): void;
   onLab(id: LabId): void;
 }) {
@@ -71,10 +74,11 @@ export function WorldOverlay({
       segments: trails,
       conduits: links.flatMap((l) => l.paths.map((points) => ({ link: l.index, points }))),
       k,
+      avoid,
       sparse,
     });
     return { text, markers: shownMarkers, links: shownLinks };
-  }, [frame, labs, links, markers, outside, trails, k, sparse]);
+  }, [frame, labs, links, markers, outside, trails, k, avoid, sparse]);
 
   if (!overlay.map) return null;
   return (

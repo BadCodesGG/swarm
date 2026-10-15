@@ -13,6 +13,7 @@ import {
   setCast,
   setupLabel,
   spreadLine,
+  stepAfter,
   spreadPoints,
   shareQuery,
   unlinkLabs,
@@ -110,6 +111,15 @@ describe("spreadLine", () => {
     expect(out[0]).toBeGreaterThanOrEqual(12);
     expect(out[3]).toBeLessThanOrEqual(290);
   });
+
+  it("never leaves the bounds, even when the line is too short to keep every position apart", () => {
+    const out = spreadLine([5, 5, 5, 5, 5, 5], 26, 12, 80);
+    for (const x of out) {
+      expect(x).toBeGreaterThanOrEqual(12);
+      expect(x).toBeLessThanOrEqual(80);
+    }
+    expect(spreadLine([150, 150, 150], 26, 12, 12)).toEqual([12, 12, 12]);
+  });
 });
 
 describe("nextInterceptLine", () => {
@@ -144,5 +154,45 @@ describe("presetOf", () => {
     const s = presetScenario("air-gapped");
     expect(presetOf(s)).toBe("air-gapped");
     expect(presetOf({ ...s, labs: s.labs.map((l, i) => (i ? l : { ...l, config: { ...l.config, layers: { ...l.config.layers, audit: false } } })) })).toBeNull();
+  });
+});
+
+describe("stepAfter", () => {
+  it("moves to the next or previous step number shown", () => {
+    expect(stepAfter([1, 2, 4], 2, 1)).toBe(4);
+    expect(stepAfter([1, 2, 4], 4, -1)).toBe(2);
+  });
+
+  it("opens the first step going forward and the last going back when none is open", () => {
+    expect(stepAfter([3, 1, 2], null, 1)).toBe(1);
+    expect(stepAfter([3, 1, 2], null, -1)).toBe(3);
+  });
+
+  it("stays put at either end, and has nothing to open with no steps", () => {
+    expect(stepAfter([1, 2], 2, 1)).toBe(2);
+    expect(stepAfter([1, 2], 1, -1)).toBe(1);
+    expect(stepAfter([], null, 1)).toBeNull();
+  });
+});
+
+describe("best score per budget", () => {
+  const store = (): Storage => {
+    const m = new Map<string, string>();
+    return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) } as Storage;
+  };
+  it("keeps one best for each budget", () => {
+    const s = store();
+    recordBest(s, 70, 0.25);
+    recordBest(s, 40, 0.1);
+    expect(bestScore(s, 0.25)).toBe(70);
+    expect(bestScore(s)).toBe(70);
+    expect(bestScore(s, 0.1)).toBe(40);
+    expect(bestScore(s, 0.4)).toBe(0);
+    expect(recordBest(s, 30, 0.1)).toBe(40);
+  });
+  it("puts the budget in the share query only when it is not the default", () => {
+    const sc = presetScenario("breakout", 3);
+    expect(shareQuery(sc)).not.toContain("d=");
+    expect(shareQuery(sc, 0.35)).toContain("d=35");
   });
 });

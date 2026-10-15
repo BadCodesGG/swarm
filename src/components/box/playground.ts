@@ -5,6 +5,7 @@
  */
 
 import { DEFAULT_CAST, validCast } from "@/lib/box/cast";
+import { DEFENDER_BUDGET } from "@/lib/box/budget";
 import { PRESET_LABEL, presetScenario } from "@/lib/box/presets";
 import { scenarioToParams } from "@/lib/box/share";
 import type { BoxConfig } from "@/lib/box/types";
@@ -72,8 +73,8 @@ export function setCast(s: Scenario, id: LabId, cast: Cast): Scenario | null {
 export const defaultCast = (): Cast => ({ ...DEFAULT_CAST, hidden: { ...DEFAULT_CAST.hidden } });
 
 /** The scenario as a query string for `/box`: the share format's own parameters at the top level. */
-export function shareQuery(s: Scenario): string {
-  return scenarioToParams(s).toString();
+export function shareQuery(s: Scenario, budget?: number): string {
+  return scenarioToParams(s, budget).toString();
 }
 
 /** A scenario without its seed: two runs of one setup share it, so their trials pool into one point. */
@@ -176,7 +177,17 @@ export function spreadLine(xs: readonly number[], min: number, lo: number, hi: n
     const cap = i === out.length - 1 ? hi : out[i + 1] - min;
     out[i] = Math.min(out[i], cap);
   }
-  return out;
+  // A line too short for them all: they overlap inside it rather than run out of it.
+  return out.map((x) => Math.min(hi, Math.max(lo, x)));
+}
+
+/** The step the previous (-1) or next (1) control opens among the numbers shown: from none, the first or the last; at an end, the same one. */
+export function stepAfter(ns: readonly number[], selected: number | null, dir: 1 | -1): number | null {
+  const sorted = [...ns].sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  if (selected === null || !sorted.includes(selected)) return dir === 1 ? sorted[0] : sorted[sorted.length - 1];
+  const i = sorted.indexOf(selected) + dir;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, i))];
 }
 
 /** The newest line not yet spoken, once `gap` ms have passed since the last one; null otherwise. */
@@ -187,9 +198,12 @@ export function nextInterceptLine(lines: readonly InterceptLine[], spoken: numbe
 
 const BEST_KEY = "swarm.box.best";
 
-export function bestScore(store: Storage | null): number {
+/** The best is kept per budget; the default budget keeps the key it always had. */
+const bestKey = (budget: number) => (budget === DEFENDER_BUDGET ? BEST_KEY : `${BEST_KEY}.${Math.round(budget * 100)}`);
+
+export function bestScore(store: Storage | null, budget: number = DEFENDER_BUDGET): number {
   try {
-    const n = Number(store?.getItem(BEST_KEY));
+    const n = Number(store?.getItem(bestKey(budget)));
     return Number.isFinite(n) ? n : 0;
   } catch {
     return 0;
@@ -197,10 +211,10 @@ export function bestScore(store: Storage | null): number {
 }
 
 /** Keeps the higher of the stored best and `score`; the page works without storage. */
-export function recordBest(store: Storage | null, score: number): number {
-  const best = Math.max(bestScore(store), score);
+export function recordBest(store: Storage | null, score: number, budget: number = DEFENDER_BUDGET): number {
+  const best = Math.max(bestScore(store, budget), score);
   try {
-    store?.setItem(BEST_KEY, String(best));
+    store?.setItem(bestKey(budget), String(best));
   } catch {
     // Private mode or a full store: the score still shows for this visit.
   }

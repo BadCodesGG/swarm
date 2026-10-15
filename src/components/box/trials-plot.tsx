@@ -94,8 +94,8 @@ export function TrialsPlot({
           ]
         : []),
     ],
-    // The large plot's names: 0.6 em a glyph in sans, a line 1.2 em tall, both growing with fk.
-    large ? { charWidth: 2.7 * fk, height: 1.2 * z.tag } : undefined,
+    // The large plot's names: 0.6 em a glyph in sans, a line 1.2 em tall, both growing with fk, with leaders back to their dots.
+    large ? { charWidth: 2.7 * fk, height: 1.2 * z.tag, leaders: true } : undefined,
   );
   const xTicks = large ? [0, 1, 2, 3, 4, 5].map((i) => ({ x: 34 + i * 38.4, text: `${50 + i * 10}%` })) : [{ x: 34, text: "50" }];
   const yTicks = large

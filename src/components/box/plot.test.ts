@@ -146,7 +146,7 @@ describe("placeTags", () => {
   it("passes over a spot whose leader would run through a name already placed", () => {
     // Up and to the left is the first free spot, but a text box sits on the way there; up and to the right is next.
     const onTheWay = { x: 93, y: 88, width: 3, height: 4 };
-    const [t] = placeTags([{ key: "a", text: "A", at: at(100, 100) }], [], [at(100, 100), ...ring], [onTheWay]);
+    const [t] = placeTags([{ key: "a", text: "A", at: at(100, 100) }], [], [at(100, 100), ...ring], [onTheWay], { leaders: true });
     expect(t).toMatchObject({ anchor: "start", y: 79 });
     // The leader starts 4 units off the dot, toward the name, and ends just short of it.
     const [from, to] = t.leader!;
@@ -164,6 +164,8 @@ describe("placeTags", () => {
       ],
       [],
       [at(100, 100), at(90, 78), ...ring, at(110, 76), at(88, 76)],
+      [],
+      { leaders: true },
     );
     expect(tags[0]).toMatchObject({ anchor: "middle", y: 70, leader: [at(100, 96), at(100, 71)] });
     expect(tags[1]).toMatchObject({ anchor: "end", leader: null });
@@ -193,15 +195,21 @@ describe("placeTags", () => {
       frontier,
       dots,
       bands,
-      { charWidth: 2.7 * fk, height: 5.52 * fk },
+      { charWidth: 2.7 * fk, height: 5.52 * fk, leaders: true },
     );
     expect(tags.map((t) => t.key)).toEqual(["default", "rushed", "air", "off"]);
     expect(tags.find((t) => t.key === "off")?.leader).not.toBeNull();
     for (const t of tags) for (const other of tags) if (t !== other && t.leader) expect(boxHits(other.box, [t.leader], []), `${t.text} over ${other.text}`).toBe(false);
   });
 
+  it("gives the small plot's numbers no leaders, and keeps none of their spots off one", () => {
+    // The same crowd as above: without leaders the name takes the first spot clear of the text and the dots.
+    const [t] = placeTags([{ key: "a", text: "A", at: at(100, 100) }], [], [at(100, 100), ...ring]);
+    expect(t.leader).toBeNull();
+  });
+
   it("draws no leader for a name beside its dot", () => {
-    const [t] = placeTags([{ key: "a", text: "Breakout", at: at(100, 80) }], [], [at(100, 80)]);
+    const [t] = placeTags([{ key: "a", text: "Breakout", at: at(100, 80) }], [], [at(100, 80)], [], { leaders: true });
     expect(t.leader).toBeNull();
   });
 });

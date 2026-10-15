@@ -68,7 +68,7 @@ function fitsOneRow(el: HTMLElement): boolean {
 /**
  * Whether the top bar's content fits one row, measured (`fitsOneRow`) so the switch follows the content and the
  * window (a scrollbar, a longer scenario name, a status pill) rather than a breakpoint: whenever the bar or one of its
- * items changes size, a frame later, so the bar's own reflow never re-enters the observer. The phone layout is never one row.
+ * items (or an item of the controls-and-counters row) changes size, a frame later, so the bar's own reflow never re-enters the observer. The phone layout is never one row.
  */
 function useOneRow(header: HTMLElement | null): boolean {
   const [oneRow, setOneRow] = useState(false);
@@ -82,8 +82,13 @@ function useOneRow(header: HTMLElement | null): boolean {
         setOneRow(fitsOneRow(header));
       });
     });
+    // The bar and its items, and the items inside the controls-and-counters row: on two rows that row is the bar's
+    // full width whatever it holds, so a counter or scenario name that shrinks shows only in its own box.
     ro.observe(header);
-    for (const c of header.children) ro.observe(c);
+    for (const c of header.children) {
+      ro.observe(c);
+      if (c.hasAttribute("data-row")) for (const i of c.children) ro.observe(i);
+    }
     return () => {
       ro.disconnect();
       cancelAnimationFrame(raf);
@@ -98,8 +103,8 @@ function useOneRow(header: HTMLElement | null): boolean {
  * switch) with the live counters, and `tools` (the help and copy-link buttons, the sound switch) last. On a
  * narrower desktop it is two rows, never a row of icons alone: the tools ride at the right of the wordmark and
  * caveat, and the controls and counters take the second row. On a phone it is four: the wordmark with the icons,
- * the caveat, the controls, and the counters at the left edge (under 360 px the scenario and the modes take a row
- * each). In every layout the items come in reading order, so Tab moves as the eye does: `useOneRow` measures the
+ * the caveat, the controls, and the counters at the left edge (where the scenario's whole name and the modes do not fit one
+ * row, a narrow phone or an edited preset's name, the modes take the next). In every layout the items come in reading order, so Tab moves as the eye does: `useOneRow` measures the
  * fit, and the tools move after the controls only when they sit there.
  */
 export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<Tally>; status?: ReactNode; controls?: ReactNode; tools?: ReactNode }) {
@@ -146,7 +151,7 @@ export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<
   // wrappers may shrink under their content, so a long scenario name ("Breakout, edited") truncates rather than widening the bar.
   const row = (
     <div key="row" className={`flex items-center gap-x-5 gap-y-2 max-[915px]:order-4 max-[915px]:ml-0 max-[915px]:min-w-0 max-[915px]:basis-full max-[915px]:flex-wrap ${oneRow ? "ml-auto" : "min-[915px]:basis-full min-[915px]:justify-end"}`} data-row>
-      <div className="flex flex-wrap items-center gap-2.5 max-[915px]:min-w-0 max-[915px]:basis-full max-[915px]:flex-nowrap max-[915px]:gap-2 max-[360px]:flex-wrap max-[360px]:[&>[role=group]]:basis-full">{controls}</div>
+      <div className="flex flex-wrap items-center gap-2.5 max-[915px]:min-w-0 max-[915px]:basis-full max-[915px]:gap-2">{controls}</div>
       <dl className="m-0 flex gap-5 max-[915px]:grid max-[915px]:basis-full max-[915px]:grid-cols-4 max-[915px]:gap-2">
         <Counter label="Time" value={clock(tally.tick)} hook="tick" title={`Tick ${tally.tick.toLocaleString("en-US")}`} />
         <Counter label="Caught" value={tally.caughtTotal.toLocaleString("en-US")} hook="caught" />

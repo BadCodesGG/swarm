@@ -22,7 +22,8 @@
  *      compact timeline's two rows carry the attribute)
  *   3. the top bar: on a desktop (>= 915) at most two rows, no row holds only icon buttons, and no control over
  *      another; on a phone (<= 914) the four rows the PhoneWatch board approved, in order (wordmark with the icon
- *      buttons; the caveat; scenario and modes; the counters), and no row runs past the bar's edge; and Tab through
+ *      buttons; the caveat; scenario and modes, the modes on a row of their own where both do not fit; the counters),
+ *      and no row runs past the bar's edge; and Tab through
  *      it never moves focus to an earlier row, or leftwards within a row
  *   4. every lab ring, lab label and step marker wholly inside the scene, no label over another
  *      (`measureScene`; the rings check is skipped on a desktop close-up beat)
@@ -32,7 +33,8 @@
  *      where a button's label is split across child elements the words still read with a gap on screen
  *      (a flex button drops the space between its text and a child span: "Branchfrom here")
  *   7. no console errors, THREE warnings or page errors
- *   8. one line each: the toolbar's buttons and labels, the top bar's counters, the Defend card's big readouts
+ *   8. one line each: the toolbar's buttons and labels, the top bar's counters, the Defend card's big readouts (the
+ *      toolbar and the counters missing from a map page is a FAIL)
  *
  * A probe whose element is missing is a FAIL naming it, never a silent skip. Prints `PASS ...` or
  * `FAIL <width> <route> <state>: <invariant> (<detail>)` per invariant (the dense scan prints its passes as one
@@ -245,11 +247,12 @@ async function checkTopBar(page, width) {
     record("3 the top bar's two rows read one gap apart, not two", gaps.every((g) => g <= 16), `${gaps.map((g) => g.toFixed(1)).join(", ") || "one row"} px between rows`);
     return;
   }
-  // The phone's four rows, as the PhoneWatch board approved them; under 360 px the scenario and the modes may take a row each.
+  // The phone's four rows, as the PhoneWatch board approved them; where the scenario's whole name and the modes do not
+  // fit one row (a narrow phone, an edited preset's longer name), the modes take the next row, so five.
   const has = (row, re) => row && row.names.some((n) => re.test(n));
   const head = rows.length >= 4 && has(rows[0], /THE BOX/) && rows[0].icons >= 1 && has(rows[1], /Abstract agents/) && has(rows[2], /SCENARIO/) && !has(rows[2], /caught/i);
-  const order = head && (rows.length === 4 ? has(rows[2], /^Watch$/) && has(rows[3], /caught/i) : width < 360 && rows.length === 5 && has(rows[3], /^Watch$/) && !has(rows[3], /caught/i) && has(rows[4], /caught/i));
-  record("3 phone top bar is four rows: wordmark and icons, caveat, scenario and modes, counters", order, `${rows.length} rows; ${desc}`);
+  const order = head && (rows.length === 4 ? has(rows[2], /^Watch$/) && has(rows[3], /caught/i) : rows.length === 5 && has(rows[3], /^Watch$/) && !has(rows[3], /caught/i) && has(rows[4], /caught/i));
+  record("3 phone top bar is four rows: wordmark and icons, caveat, scenario and modes (or the modes on a row of their own), counters", order, `${rows.length} rows; ${desc}`);
   const over = rows.filter((r) => r.over > 0.5);
   record("3 no phone top bar row runs past the bar's edge", over.length === 0, over.map((r) => `${r.names.join(" | ")} by ${r.over.toFixed(1)} px`).join(" ; ") || desc);
 }
@@ -485,17 +488,21 @@ async function checkOneLine(page) {
       ["counter", "[data-counter], dt:has(+ [data-counter])"],
     ];
     const wrapped = [];
+    const missing = [];
     let n = 0;
     for (const [kind, sel] of probes) {
-      for (const el of [...document.querySelectorAll(sel)].filter(visible)) {
-        if (!(el.textContent ?? "").trim()) continue;
+      const found = [...document.querySelectorAll(sel)].filter(visible).filter((el) => (el.textContent ?? "").trim());
+      // The toolbar and the counters are on every map page; the Defend readouts only in Defend mode (checked there).
+      if (!found.length && kind !== "Defend readout") missing.push(`no visible ${kind} (${sel})`);
+      for (const el of found) {
         n++;
         const count = lines(el);
         if (count > 1) wrapped.push(`${kind} "${(el.innerText ?? el.textContent).replace(/\s+/g, " ").trim().slice(0, 24)}" on ${count} lines`);
       }
     }
-    return { n, wrapped };
+    return { n, wrapped, missing };
   });
+  record("8 the toolbar controls and counters are on the page", res.missing.length === 0, res.missing.join("; ") || `${res.n} texts`);
   record("8 the Defend readouts, toolbar controls and counters each sit on one line", res.wrapped.length === 0, res.wrapped.join("; ") || `${res.n} texts`);
 }
 

@@ -177,6 +177,8 @@ export interface TagPlace {
 export interface TagSize {
   charWidth?: number;
   height?: number;
+  /** Whether a name well clear of its dot gets a leader line (the large plot draws them; the small plot's numbers do not). */
+  leaders?: boolean;
 }
 const TAG_CHAR = 5.1;
 const TAG_HEIGHT = 10;
@@ -249,7 +251,7 @@ function spotsFor(t: { text: string; at: Pt }, size: TagSize): Spot[] {
     const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
     const box = { x: left, y: y - 0.8 * h, width: w, height: h };
     if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
-    spots.push({ x, y, anchor, box, leader: leaderTo(t.at, { x, y, anchor }, h) });
+    spots.push({ x, y, anchor, box, leader: size.leaders ? leaderTo(t.at, { x, y, anchor }, h) : null });
   }
   return spots;
 }

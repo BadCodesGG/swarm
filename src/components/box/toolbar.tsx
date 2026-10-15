@@ -21,10 +21,10 @@ export const segment = "flex gap-0.5 rounded-xl border border-panel-border bg-ch
 export const segmentItem =
   "min-h-[38px] rounded-[9px] border-0 bg-transparent px-3.5 text-sm text-muted hover:text-ink focus-visible:ring-2 focus-visible:ring-layer-1 focus-visible:outline-none aria-pressed:bg-control aria-pressed:font-semibold aria-pressed:text-ink-strong aria-selected:bg-control aria-selected:font-semibold aria-selected:text-ink-strong";
 
-/** Watch, defend, or play the agent, as one segmented control. */
+/** Watch, defend, or play the agent, as one segmented control. On a phone it takes the row's spare width but never less than its buttons: a long scenario name beside it truncates instead. */
 export function ModeSwitch({ mode, onMode }: { mode: Mode; onMode(m: Mode): void }) {
   return (
-    <div role="group" aria-label="Mode" className={`${segment} max-[915px]:min-w-0 max-[915px]:flex-1`}>
+    <div role="group" aria-label="Mode" className={`${segment} max-[915px]:flex-1`}>
       {(Object.keys(MODE_LABEL) as Mode[]).map((m) => (
         <button key={m} type="button" aria-pressed={mode === m} data-mode={m} onClick={() => onMode(m)} className={`${segmentItem} min-h-[38px] max-[915px]:min-h-11 max-[915px]:flex-1 max-[915px]:px-2`}>
           {MODE_SHORT[m][0]}

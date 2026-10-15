@@ -196,47 +196,90 @@ function leaderTo(at: Pt, spot: { x: number; y: number; anchor: TagPlace["anchor
  * width per character and line height in viewBox units; the spots tried scale with the height. A name that sits
  * well clear of its dot gets a leader line back to it: a spot whose leader would cross a box already used is passed
  * over (a box the dot itself sits in, such as the band under the axis, cannot be avoided and does not count), and a
- * later name keeps off the leaders drawn before it. A tag with no clear spot keeps the first candidate off the text
+ * later name keeps off the leaders drawn before it, and an earlier name off the spot a stuck later one falls back to
+ * (see the retry below). A tag with no clear spot keeps the first candidate off the text
  * already placed (a line through a name reads; a name over a name does not), else its first candidate that fits the view.
  */
 export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = [], size: TagSize = {}): TagPlace[] {
-  const charWidth = size.charWidth ?? TAG_CHAR;
+  // A name placed early can sit on the leader of the only spot left for a later one. When a name is stuck, the spot it
+  // fell back to is reserved for it (every other name keeps off that box and its leader) and the names are placed
+  // again, while that leaves fewer stuck.
+  const reserved = new Map<string, Spot>();
+  let best = placeInOrder(tags, segments, dots, taken, size, reserved);
+  for (let i = 0; best.stuck && i < tags.length; i++) {
+    const { tag, spot } = best.stuck;
+    if (reserved.has(tag.key)) break;
+    reserved.set(tag.key, spot);
+    const next = placeInOrder(tags, segments, dots, taken, size, reserved);
+    if (next.count >= best.count) break;
+    best = next;
+  }
+  return best.placed;
+}
+
+type Spot = Omit<TagPlace, "key" | "text">;
+
+/** The spots a name may take round its dot, in order of preference, each inside the view. */
+function spotsFor(t: { text: string; at: Pt }, size: TagSize): Spot[] {
+  const w = t.text.length * (size.charWidth ?? TAG_CHAR);
   const h = size.height ?? TAG_HEIGHT;
   // Offsets in tenths of the line height: the small plot's 10-unit line put the first spot 3 below the dot's level, the next 9 above.
   const u = h / 10;
+  const spots: Spot[] = [];
+  for (const [dx, dy, anchor] of [
+    [8, 3, "start"],
+    [-8, 3, "end"],
+    [8, -9, "start"],
+    [-8, -9, "end"],
+    [8, 14, "start"],
+    [-8, 14, "end"],
+    [0, -9, "middle"],
+    [0, 17, "middle"],
+    [-8, -21, "end"],
+    [8, -21, "start"],
+    [0, -30, "middle"],
+  ] as const) {
+    const x = t.at.x + dx;
+    const y = t.at.y + dy * u;
+    const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
+    const box = { x: left, y: y - 0.8 * h, width: w, height: h };
+    if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
+    spots.push({ x, y, anchor, box, leader: leaderTo(t.at, { x, y, anchor }, h) });
+  }
+  return spots;
+}
+
+/** One pass of `placeTags`, other names keeping off the spots in `reserved`: the places, how many names found no clear spot, and the first of them with the spot it fell back to. */
+function placeInOrder(
+  tags: readonly { key: string; text: string; at: Pt }[],
+  segments: readonly Segment[],
+  dots: readonly Pt[],
+  taken: readonly Box[],
+  size: TagSize,
+  reserved: ReadonlyMap<string, Spot>,
+): { placed: TagPlace[]; count: number; stuck: { tag: (typeof tags)[number]; spot: Spot } | null } {
   const placed: TagPlace[] = [];
   const used: Box[] = [...taken];
   const leaders: Segment[] = [];
+  let count = 0;
+  let stuck: { tag: (typeof tags)[number]; spot: Spot } | null = null;
   for (const t of tags) {
-    const w = t.text.length * charWidth;
-    const spots: Omit<TagPlace, "key" | "text">[] = [];
-    for (const [dx, dy, anchor] of [
-      [8, 3, "start"],
-      [-8, 3, "end"],
-      [8, -9, "start"],
-      [-8, -9, "end"],
-      [8, 14, "start"],
-      [-8, 14, "end"],
-      [0, -9, "middle"],
-      [0, 17, "middle"],
-      [-8, -21, "end"],
-      [8, -21, "start"],
-      [0, -30, "middle"],
-    ] as const) {
-      const x = t.at.x + dx;
-      const y = t.at.y + dy * u;
-      const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
-      const box = { x: left, y: y - 0.8 * h, width: w, height: h };
-      if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
-      spots.push({ x, y, anchor, box, leader: leaderTo(t.at, { x, y, anchor }, h) });
-    }
-    const offText = spots.filter((s) => !used.some((u) => boxesTouch(u, s.box)) && !leaders.some((l) => segmentHits(s.box, l)));
-    const leaderClear = (s: (typeof spots)[number]) => !s.leader || !used.some((u) => !boxHolds(u, t.at) && segmentHits(u, s.leader!));
-    const pick = offText.find((s) => leaderClear(s) && !boxHits(s.box, segments, dots)) ?? offText.find(leaderClear) ?? offText[0] ?? spots[0];
+    const spots = spotsFor(t, size);
+    const held = [...reserved].filter(([key]) => key !== t.key).map(([, s]) => s);
+    const offText = spots.filter(
+      (s) => !used.some((u) => boxesTouch(u, s.box)) && !leaders.some((l) => segmentHits(s.box, l)) && !held.some((r) => boxesTouch(r.box, s.box) || (r.leader && segmentHits(s.box, r.leader))),
+    );
+    const leaderClear = (s: Spot) => !s.leader || ![...used, ...held.map((r) => r.box)].some((u) => !boxHolds(u, t.at) && segmentHits(u, s.leader!));
+    const clear = offText.find((s) => leaderClear(s) && !boxHits(s.box, segments, dots)) ?? offText.find(leaderClear);
+    const pick = clear ?? offText[0] ?? spots[0];
     if (!pick) continue;
+    if (!clear) {
+      count++;
+      stuck ??= { tag: t, spot: pick };
+    }
     used.push(pick.box);
     if (pick.leader) leaders.push(pick.leader);
     placed.push({ key: t.key, text: t.text, ...pick });
   }
-  return placed;
+  return { placed, count, stuck };
 }

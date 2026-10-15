@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, type BoxConfig } from "@/lib/box/types";
-import { addRun, boxHits, frontierPath, placeLabel, placeTags, settingsKey, toPlot } from "./plot";
+import { addRun, boxHits, frontierPath, placeLabel, placeTags, settingsKey, toPlot, type Segment } from "./plot";
 
 const networkOff: BoxConfig = { ...DEFAULT_CONFIG, layers: { ...DEFAULT_CONFIG.layers, network: false } };
 
@@ -163,6 +163,37 @@ describe("placeTags", () => {
     );
     expect(tags[0]).toMatchObject({ anchor: "middle", y: 70, leader: [at(100, 100), at(100, 71)] });
     expect(tags[1]).toMatchObject({ anchor: "end", leader: null });
+  });
+
+  it("keeps an earlier name off the leader of a later name that has nowhere else to go", () => {
+    // The Results plot 309 px wide (a 390 phone): "Rushed launch" first took the spot right of its dot, and the only
+    // spot left for "Everything off" then needed a leader through it (scripts/sweep-box.mjs, invariant 5).
+    const fk = 580 / 309;
+    const top = at(131.65, 21.67);
+    const rushed = at(157.15, 170);
+    const off = at(206.34, 170);
+    const frontier: Segment[] = [
+      [top, rushed],
+      [rushed, off],
+    ];
+    const dots = [top, rushed, top, off];
+    const label = placeLabel(at(140.48, 117.5), frontier, dots, { width: 32 * fk, ascent: 5.67 * fk, height: 13.04 * fk });
+    const bands = [label.box, { x: 0, y: 178 - 4.62 * fk, width: 232, height: 200 }, { x: 0, y: 0, width: 30.05, height: 200 }];
+    const tags = placeTags(
+      [
+        { key: "default", text: "Default lab", at: top },
+        { key: "rushed", text: "Rushed launch", at: rushed },
+        { key: "air", text: "Air gapped", at: top },
+        { key: "off", text: "Everything off", at: off },
+      ],
+      frontier,
+      dots,
+      bands,
+      { charWidth: 2.7 * fk, height: 5.52 * fk },
+    );
+    expect(tags.map((t) => t.key)).toEqual(["default", "rushed", "air", "off"]);
+    expect(tags.find((t) => t.key === "off")?.leader).not.toBeNull();
+    for (const t of tags) for (const other of tags) if (t !== other && t.leader) expect(boxHits(other.box, [t.leader], []), `${t.text} over ${other.text}`).toBe(false);
   });
 
   it("draws no leader for a name beside its dot", () => {

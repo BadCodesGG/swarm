@@ -374,10 +374,15 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     if (sc.labs.length > 1) app.camera.overview();
     setBranched(null);
     // The pill (and the focused button in it) goes: focus lands on the Scenario button, not the page. On a phone the page is
-    // back at its top too, since the fork scrolled it to the pill; a desktop never scrolled, so it stays where it is.
+    // back at its top too, since the fork scrolled it to the pill; a desktop scrolls only as far as brings the button into
+    // view (the page may have been scrolled, from the Results view's Watch the branch say), so the map stays where it was.
     requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>("[data-scenario-menu]")?.focus({ preventScroll: true });
-      if (!phone) return;
+      const menu = document.querySelector<HTMLElement>("[data-scenario-menu]");
+      menu?.focus({ preventScroll: true });
+      if (!phone) {
+        menu?.scrollIntoView({ block: "nearest", behavior: "instant" });
+        return;
+      }
       root.current?.scrollTo({ top: 0, behavior: "instant" });
       window.scrollTo({ top: 0, behavior: "instant" });
     });

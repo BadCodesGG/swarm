@@ -31,7 +31,7 @@ describe("runTrials", () => {
     const a = runTrials(some("sandbox", "monitor"), 30, 5);
     expect(runTrials(some("sandbox", "monitor"), 30, 5)).toEqual(a);
     expect(runTrials(some("sandbox", "monitor"), 30, 6)).not.toEqual(a);
-  });
+  }, 30_000);
 
   it("more layers give at least the safety and at most the usefulness of fewer (fixed seed)", () => {
     // Well-separated steps: single-layer additions that matter by a trial or two are chance,

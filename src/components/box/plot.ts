@@ -184,10 +184,15 @@ const TAG_HEIGHT = 10;
 const boxesTouch = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 const boxHolds = (b: Box, p: Pt) => p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
 
-/** The line from a dot to the name at `spot`, when the name sits more than a line and a bit from it; it ends just short of the text. */
+/** Where a leader starts, out from its dot's centre: clear of the large plot's dot (r 2.6), and of a tick label that dot sits on. */
+const LEADER_GAP = 4;
+
+/** The line from a dot to the name at `spot`, when the name sits more than a line and a bit from it; it starts just off the dot and ends just short of the text. */
 function leaderTo(at: Pt, spot: { x: number; y: number; anchor: TagPlace["anchor"] }, height: number): Segment | null {
   if (Math.abs(spot.y - at.y) <= 1.2 * height) return null;
-  return [at, { x: spot.anchor === "middle" ? spot.x : spot.x + (spot.anchor === "end" ? -3 : 3), y: spot.y + 1 }];
+  const end = { x: spot.anchor === "middle" ? spot.x : spot.x + (spot.anchor === "end" ? -3 : 3), y: spot.y + 1 };
+  const len = Math.hypot(end.x - at.x, end.y - at.y);
+  return [{ x: at.x + ((end.x - at.x) * LEADER_GAP) / len, y: at.y + ((end.y - at.y) * LEADER_GAP) / len }, end];
 }
 
 /**

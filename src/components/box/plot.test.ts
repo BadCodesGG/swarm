@@ -148,7 +148,11 @@ describe("placeTags", () => {
     const onTheWay = { x: 93, y: 88, width: 3, height: 4 };
     const [t] = placeTags([{ key: "a", text: "A", at: at(100, 100) }], [], [at(100, 100), ...ring], [onTheWay]);
     expect(t).toMatchObject({ anchor: "start", y: 79 });
-    expect(t.leader).toEqual([at(100, 100), { x: 111, y: 80 }]);
+    // The leader starts 4 units off the dot, toward the name, and ends just short of it.
+    const [from, to] = t.leader!;
+    expect(to).toEqual({ x: 111, y: 80 });
+    expect(Math.hypot(from.x - 100, from.y - 100)).toBeCloseTo(4);
+    expect((from.x - 100) / (from.y - 100)).toBeCloseTo((111 - 100) / (80 - 100));
   });
 
   it("keeps a later name off an earlier name's leader", () => {
@@ -161,7 +165,7 @@ describe("placeTags", () => {
       [],
       [at(100, 100), at(90, 78), ...ring, at(110, 76), at(88, 76)],
     );
-    expect(tags[0]).toMatchObject({ anchor: "middle", y: 70, leader: [at(100, 100), at(100, 71)] });
+    expect(tags[0]).toMatchObject({ anchor: "middle", y: 70, leader: [at(100, 96), at(100, 71)] });
     expect(tags[1]).toMatchObject({ anchor: "end", leader: null });
   });
 

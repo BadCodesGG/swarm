@@ -142,10 +142,11 @@ export function BoxHeader({ tally, status, controls, tools }: { tally: Readonly<
       <AudioToggle className="rounded-[10px]" />
     </div>
   );
-  // The controls and the counters: the end of the one row, the whole second row, the phone's third and fourth.
+  // The controls and the counters: the end of the one row, the whole second row, the phone's third and fourth. On a phone both
+  // wrappers may shrink under their content, so a long scenario name ("Breakout, edited") truncates rather than widening the bar.
   const row = (
-    <div key="row" className={`flex items-center gap-x-5 gap-y-2 max-[915px]:order-4 max-[915px]:ml-0 max-[915px]:basis-full max-[915px]:flex-wrap ${oneRow ? "ml-auto" : "min-[915px]:basis-full min-[915px]:justify-end"}`} data-row>
-      <div className="flex flex-wrap items-center gap-2.5 max-[915px]:basis-full max-[915px]:flex-nowrap max-[915px]:gap-2 max-[360px]:flex-wrap max-[360px]:[&>[role=group]]:basis-full">{controls}</div>
+    <div key="row" className={`flex items-center gap-x-5 gap-y-2 max-[915px]:order-4 max-[915px]:ml-0 max-[915px]:min-w-0 max-[915px]:basis-full max-[915px]:flex-wrap ${oneRow ? "ml-auto" : "min-[915px]:basis-full min-[915px]:justify-end"}`} data-row>
+      <div className="flex flex-wrap items-center gap-2.5 max-[915px]:min-w-0 max-[915px]:basis-full max-[915px]:flex-nowrap max-[915px]:gap-2 max-[360px]:flex-wrap max-[360px]:[&>[role=group]]:basis-full">{controls}</div>
       <dl className="m-0 flex gap-5 max-[915px]:grid max-[915px]:basis-full max-[915px]:grid-cols-4 max-[915px]:gap-2">
         <Counter label="Time" value={clock(tally.tick)} hook="tick" title={`Tick ${tally.tick.toLocaleString("en-US")}`} />
         <Counter label="Caught" value={tally.caughtTotal.toLocaleString("en-US")} hook="caught" />

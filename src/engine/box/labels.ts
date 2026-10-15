@@ -410,6 +410,13 @@ function labSpots(l: WorldLabInput, k: number): { x: number; y: number; anchor: 
     { x: l.x - l.r - 10 * k, y: l.y, anchor: "end" },
     { x: l.x, y: below + 22 * k, anchor: "middle" },
     { x: l.x, y: above - 22 * k, anchor: "middle" },
+    // A phone's small slot, the markers crowding the ring: the block beside the ring slid farther out, a step at a time.
+    ...[12, 24, 36].flatMap((d) => [
+      { x: l.x + side, y: below + (4 + d) * k, anchor: "start" as const },
+      { x: l.x - side, y: below + (4 + d) * k, anchor: "end" as const },
+      { x: l.x + side, y: above - d * k, anchor: "start" as const },
+      { x: l.x - side, y: above - d * k, anchor: "end" as const },
+    ]),
   ];
 }
 

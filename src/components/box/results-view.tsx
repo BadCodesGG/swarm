@@ -58,7 +58,8 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
       <div id="results" data-results className="flex flex-wrap items-start gap-4 px-6 py-5 max-[915px]:flex-col max-[915px]:items-stretch max-[915px]:px-4">
         <section aria-label="100 trials per setup" className={`${panel} flex min-w-0 flex-[999_1_640px] flex-col gap-3.5 px-[22px] py-5 max-[915px]:flex-none max-[915px]:px-4`}>
           <div className="flex flex-wrap items-end gap-4">
-            <div className="min-w-[260px] flex-1">
+            {/* 260 px, or the card's whole width where that is less (a 320 phone), so the floor never widens the card. */}
+            <div className="min-w-[min(260px,100%)] flex-1">
               <div className={eyebrow}>100 trials per setup</div>
               <h1 className="m-0 mt-1.5 text-2xl font-bold text-ink-strong" data-headline>
                 {current

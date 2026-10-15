@@ -116,6 +116,23 @@ export function boxSteps({ check, openPage, software = false }) {
             });
           });
       check("the escape explainer appears", shown, shown ? "" : `${why}, round trip ${Date.now() - asked} ms`);
+      if (!shown) {
+        // What holds the main thread: four seconds of samples, the busiest functions by self time (chunk file, line and column).
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send("Profiler.enable");
+        await cdp.send("Profiler.setSamplingInterval", { interval: 1000 });
+        await cdp.send("Profiler.start");
+        await new Promise((r) => setTimeout(r, 4000));
+        const { profile } = await cdp.send("Profiler.stop");
+        const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+        const self = new Map();
+        profile.samples.forEach((id, i) => {
+          const f = nodes.get(id).callFrame;
+          const key = `${f.functionName || "(anon)"} ${f.url.split("/").pop()}:${f.lineNumber}:${f.columnNumber}`;
+          self.set(key, (self.get(key) ?? 0) + (profile.timeDeltas[i] ?? 0));
+        });
+        for (const [key, us] of [...self].sort((x, y) => y[1] - x[1]).slice(0, 20)) console.log(`  profile ${(us / 1000).toFixed(0).padStart(6)} ms ${key}`);
+      }
       if (!shown) throw new Error(`no escape explainer: ${why}`);
       // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
       const rerun = page.locator("[data-rerun]");

@@ -85,8 +85,38 @@ export function boxSteps({ check, openPage, software = false }) {
       await page.waitForFunction(() => (window.__swarm?.box?.stats?.escaped ?? 0) > 0, null, { timeout: ESCAPE_TIMEOUT_MS });
       const escaped = await box(page);
       check("all layers off lets an agent escape", escaped.stats.escaped > 0, `${escaped.stats.escaped} out by tick ${escaped.stats.tick}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-      await page.locator('section[aria-label="What just happened"]').waitFor({ timeout: 5_000 });
-      check("the escape explainer appears", true);
+      const shown = await page
+        .locator('section[aria-label="What just happened"]')
+        .waitFor({ timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      // A runner-only miss has to be readable from the log: where the explainer is (or why not), and how busy the page is.
+      const asked = Date.now();
+      const why = shown
+        ? ""
+        : await page.evaluate(() => {
+            const t0 = performance.now();
+            const s = document.querySelector('section[aria-label="What just happened"]');
+            const hiddenBy = s ? s.closest("[hidden], .hidden") : null;
+            const rect = s?.getBoundingClientRect();
+            const tab = document.querySelector('[data-rail-tab][aria-selected="true"]')?.getAttribute("data-rail-tab") ?? "none";
+            const rail = document.querySelector("[data-story-rail]");
+            const b = window.__swarm?.box;
+            return JSON.stringify({
+              inDom: !!s,
+              rect: rect ? [Math.round(rect.width), Math.round(rect.height)] : null,
+              hiddenBy: hiddenBy ? `${hiddenBy.tagName}.${String(hiddenBy.className).slice(0, 60)}#${hiddenBy.id}` : null,
+              tab,
+              rail: rail ? [Math.round(rail.getBoundingClientRect().width), Math.round(rail.getBoundingClientRect().height)] : null,
+              labs: b?.labs?.length ?? null,
+              escaped: b?.stats?.escaped ?? null,
+              tick: b?.stats?.tick ?? null,
+              viewport: [innerWidth, innerHeight],
+              evalMs: Math.round(performance.now() - t0),
+            });
+          });
+      check("the escape explainer appears", shown, shown ? "" : `${why}, round trip ${Date.now() - asked} ms`);
+      if (!shown) throw new Error(`no escape explainer: ${why}`);
       // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
       const rerun = page.locator("[data-rerun]");
       await rerun.waitFor({ timeout: RERUN_TIMEOUT_MS });

@@ -499,7 +499,34 @@ async function checkOneLine(page) {
   record("8 the Defend readouts, toolbar controls and counters each sit on one line", res.wrapped.length === 0, res.wrapped.join("; ") || `${res.n} texts`);
 }
 
+/**
+ * Waits until nothing scrolls: the HUD root and the window hold still for six frames running (a phone's step card
+ * scrolls itself into view smoothly, and the map's text follows the scene a frame behind). Up to five seconds.
+ */
+const scrollStill = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const root = document.querySelector("[data-plot-ready]");
+        const at = () => `${root?.scrollTop ?? 0},${window.scrollY}`;
+        let last = at();
+        let still = 0;
+        const end = performance.now() + 5000;
+        const tick = () => {
+          const now = at();
+          still = now === last ? still + 1 : 0;
+          last = now;
+          if (still >= 6 || performance.now() > end) resolve(still >= 6);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+
 async function runInvariants(page, width, { map = true, results = false, topBar = true } = {}) {
+  record("setup: the page stops scrolling before it is measured", await scrollStill(page), "still scrolling after 5 s");
+  // One more frame, so the map's text has followed the last scroll.
+  await settle(page);
   await checkOverflow(page);
   if (topBar) {
     await checkTopBar(page, width);

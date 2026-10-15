@@ -2,8 +2,12 @@
 
 import { useSyncExternalStore } from "react";
 
-/** The widest window the phone layout covers (a phone, and a tablet held upright); the desktop layout starts one pixel past it. */
-const QUERY = "(max-width: 914px)";
+/**
+ * The phone layout's windows (a phone, and a tablet held upright): under 915 px, the same range as the components'
+ * `max-[915px]` classes (Tailwind's `width < 915px`), so the page and its styles never disagree at the edge. The
+ * desktop layout starts at 915.
+ */
+const QUERY = "(width < 915px)";
 
 const subscribe = (onChange: () => void) => {
   const mq = window.matchMedia(QUERY);

@@ -94,8 +94,15 @@ export interface LabelPlace {
   clear: boolean;
 }
 
-/** The label's size in the 232x200 viewBox: "this setup" at 9.5 px mono is the wider line. */
-const LABEL = { width: 60, ascent: 9, height: 24, gap: 12 } as const;
+/** The two-line label's size in the 232x200 viewBox: the box round both lines, and the first line's ascent above its baseline. */
+export interface LabelSize {
+  width: number;
+  ascent: number;
+  height: number;
+}
+
+/** The small plot's label: "this setup" at 9.5 px mono is the wider line, the second sits 12 below. */
+const LABEL: LabelSize = { width: 60, ascent: 9, height: 24 };
 /** Other setups' dots are r 4; keep a hair of air round them. */
 const DOT_CLEAR = 5;
 const VIEW = { width: 232, height: 200 } as const;
@@ -136,14 +143,17 @@ export function boxHits(b: Box, segments: readonly Segment[], dots: readonly Pt[
  * through it: right then left (left first near the right edge), level with the point, then above,
  * then below. If none is clear it keeps the first that fits the view and reports `clear: false`.
  */
-export function placeLabel(here: Pt, segments: readonly Segment[], dots: readonly Pt[]): LabelPlace {
+export function placeLabel(here: Pt, segments: readonly Segment[], dots: readonly Pt[], size: LabelSize = LABEL): LabelPlace {
   const sides: ("start" | "end")[] = here.x > 168 ? ["end", "start"] : ["start", "end"];
   const candidates: LabelPlace[] = [];
-  for (const dy of [0, -16, 16]) {
+  // Level with the point: the first baseline a little above it, so the two lines straddle it; then two thirds of a label up or down.
+  const lift = -Math.floor((size.height - size.ascent) / 2);
+  const hop = Math.round((size.height * 2) / 3);
+  for (const dy of [0, -hop, hop]) {
     for (const anchor of sides) {
       const x = here.x + (anchor === "start" ? 12 : -12);
-      const y = here.y - 7 + dy;
-      const box = { x: anchor === "start" ? x : x - LABEL.width, y: y - LABEL.ascent, width: LABEL.width, height: LABEL.height };
+      const y = here.y + lift + dy;
+      const box = { x: anchor === "start" ? x : x - size.width, y: y - size.ascent, width: size.width, height: size.height };
       if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
       candidates.push({ anchor, x, y, box, clear: !boxHits(box, segments, dots) });
     }
@@ -159,23 +169,44 @@ export interface TagPlace {
   y: number;
   anchor: "start" | "middle" | "end";
   box: Box;
+  /** A thin line from the dot to the name, drawn when the name had to sit well clear of its dot; null when it sits beside it. */
+  leader: Segment | null;
 }
 
-/** A tag's size in the 232x200 viewBox: 8.5 px mono is about 5.1 wide a character. */
+/** A tag's text in viewBox units: its width per character and its line height (the small plot's 8.5 px mono is about 5.1 wide and 10 tall). */
+export interface TagSize {
+  charWidth?: number;
+  height?: number;
+}
 const TAG_CHAR = 5.1;
 const TAG_HEIGHT = 10;
 
 const boxesTouch = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const boxHolds = (b: Box, p: Pt) => p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
+
+/** The line from a dot to the name at `spot`, when the name sits more than a line and a bit from it; it ends just short of the text. */
+function leaderTo(at: Pt, spot: { x: number; y: number; anchor: TagPlace["anchor"] }, height: number): Segment | null {
+  if (Math.abs(spot.y - at.y) <= 1.2 * height) return null;
+  return [at, { x: spot.anchor === "middle" ? spot.x : spot.x + (spot.anchor === "end" ? -3 : 3), y: spot.y + 1 }];
+}
 
 /**
  * Names for the plotted setups, each beside its dot where neither the frontier, another dot nor a
- * tag already placed (or a box in `taken`, such as the current setup's label) runs through it. `charWidth` is the text's width per character in viewBox units. A tag
- * with no clear spot keeps the first candidate off the text already placed (a line through a name reads; a name
- * over a name does not), else its first candidate that fits the view.
+ * tag already placed (or a box in `taken`, such as the current setup's label) runs through it. `size` is the text's
+ * width per character and line height in viewBox units; the spots tried scale with the height. A name that sits
+ * well clear of its dot gets a leader line back to it: a spot whose leader would cross a box already used is passed
+ * over (a box the dot itself sits in, such as the band under the axis, cannot be avoided and does not count), and a
+ * later name keeps off the leaders drawn before it. A tag with no clear spot keeps the first candidate off the text
+ * already placed (a line through a name reads; a name over a name does not), else its first candidate that fits the view.
  */
-export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = [], charWidth = TAG_CHAR): TagPlace[] {
+export function placeTags(tags: readonly { key: string; text: string; at: Pt }[], segments: readonly Segment[], dots: readonly Pt[], taken: readonly Box[] = [], size: TagSize = {}): TagPlace[] {
+  const charWidth = size.charWidth ?? TAG_CHAR;
+  const h = size.height ?? TAG_HEIGHT;
+  // Offsets in tenths of the line height: the small plot's 10-unit line put the first spot 3 below the dot's level, the next 9 above.
+  const u = h / 10;
   const placed: TagPlace[] = [];
   const used: Box[] = [...taken];
+  const leaders: Segment[] = [];
   for (const t of tags) {
     const w = t.text.length * charWidth;
     const spots: Omit<TagPlace, "key" | "text">[] = [];
@@ -193,16 +224,18 @@ export function placeTags(tags: readonly { key: string; text: string; at: Pt }[]
       [0, -30, "middle"],
     ] as const) {
       const x = t.at.x + dx;
-      const y = t.at.y + dy;
+      const y = t.at.y + dy * u;
       const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
-      const box = { x: left, y: y - 8, width: w, height: TAG_HEIGHT };
+      const box = { x: left, y: y - 0.8 * h, width: w, height: h };
       if (box.x < 0 || box.x + box.width > VIEW.width || box.y < 0 || box.y + box.height > VIEW.height) continue;
-      spots.push({ x, y, anchor, box });
+      spots.push({ x, y, anchor, box, leader: leaderTo(t.at, { x, y, anchor }, h) });
     }
-    const offText = spots.filter((s) => !used.some((u) => boxesTouch(u, s.box)));
-    const pick = offText.find((s) => !boxHits(s.box, segments, dots)) ?? offText[0] ?? spots[0];
+    const offText = spots.filter((s) => !used.some((u) => boxesTouch(u, s.box)) && !leaders.some((l) => segmentHits(s.box, l)));
+    const leaderClear = (s: (typeof spots)[number]) => !s.leader || !used.some((u) => !boxHolds(u, t.at) && segmentHits(u, s.leader!));
+    const pick = offText.find((s) => leaderClear(s) && !boxHits(s.box, segments, dots)) ?? offText.find(leaderClear) ?? offText[0] ?? spots[0];
     if (!pick) continue;
     used.push(pick.box);
+    if (pick.leader) leaders.push(pick.leader);
     placed.push({ key: t.key, text: t.text, ...pick });
   }
   return placed;

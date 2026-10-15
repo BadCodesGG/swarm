@@ -37,13 +37,15 @@ const TICK_CLASS: Record<LaneKind, string> = {
  * Where the desktop toolbar sheds as its section narrows. The section is the container, and a container query reads
  * its content box, which is the bar's own width (the centre column less 34 px of padding and border; 426 px at the
  * column's floor of 460). Live and rewound differ (REWOUND and "Back to live" take 117 px more), so each state has its
- * own thresholds: the controls' measured natural width plus 12 px. The time goes first, then "from here", then
+ * own thresholds: the controls' measured natural width plus 12 px (with the tick count showing, 587 live and 712
+ * rewound at three digits, 14 px more at five). The tick count goes first, then the time, then "from here", then
  * (rewound only) the buttons and gaps tighten and the state tag shrinks, so one row holds at the floor. The phone's
  * compact timeline has no container and keeps the full labels.
  */
 const SHED = {
-  live: { time: "@max-[495px]:hidden", branch: "@max-[439px]:sr-only", bar: "", tag: "", glyph: "" },
+  live: { tick: "@max-[613px]:hidden", time: "@max-[495px]:hidden", branch: "@max-[439px]:sr-only", bar: "", tag: "", glyph: "" },
   rewound: {
+    tick: "@max-[739px]:hidden",
     time: "@max-[612px]:hidden",
     branch: "@max-[556px]:sr-only",
     bar: "@max-[496px]:gap-1 @max-[496px]:[&_button]:px-2 @max-[496px]:[&_button]:text-xs",
@@ -210,7 +212,8 @@ export function Timeline({
   if (compact) {
     return (
       <section aria-label="Timeline" className="flex shrink-0 flex-col gap-2 rounded-[14px] border border-panel-border bg-panel px-3 py-2.5" data-timeline>
-        <div className="flex items-center gap-2">
+        {/* Both rows carry the toolbar hook: scripts/sweep-box.mjs checks no control sits over another. */}
+        <div className="flex items-center gap-2" data-timeline-bar="scrub">
           {playButton}
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             {pins}
@@ -218,7 +221,7 @@ export function Timeline({
           </div>
           {liveTag}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 [&_button]:px-2.5 [&_button]:text-[13px]">
+        <div className="flex flex-wrap items-center gap-1.5 [&_button]:px-2.5 [&_button]:text-[13px]" data-timeline-bar="actions">
           {backToLive}
           <button type="button" onClick={onReset} className={button}>
             Reset
@@ -241,7 +244,10 @@ export function Timeline({
           Reset
         </button>
         {liveTag}
-        <span className={`font-mono text-xs text-label ${shed.time}`}>T+{clock(at)}</span>
+        <span className={`font-mono text-xs whitespace-nowrap text-label ${shed.time}`}>
+          T+{clock(at)}
+          <span className={shed.tick}>, tick {at}</span>
+        </span>
         {backToLive}
         <span className="grow" />
         {branchButton}

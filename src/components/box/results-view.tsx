@@ -43,7 +43,7 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
   const diff = useMemo(() => setupDiff(scenario), [scenario]);
   return (
     <div hidden={!open} className="min-h-full bg-ground text-ink" data-results-view>
-      <header className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-[rgba(150,172,214,0.12)] bg-chrome px-6 py-3 max-[914px]:px-4">
+      <header className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-[rgba(150,172,214,0.12)] bg-chrome px-6 py-3 max-[915px]:px-4">
         <button type="button" onClick={onBack} className={`${button} gap-2`} data-back-to-map>
           <span aria-hidden="true">{"←"}</span> Back to the map
         </button>
@@ -51,12 +51,12 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
           SWARM <span className="text-rule">/</span> <b className="font-semibold text-ink-strong">THE BOX</b> <span className="text-rule">/</span> RESULTS
         </span>
         <span className="rounded-full border border-escape/45 px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] text-escape-text">SIMULATION</span>
-        <span className="ml-auto max-w-[360px] text-xs leading-[1.35] text-faint max-[914px]:ml-0 max-[914px]:max-w-none">
+        <span className="ml-auto max-w-[360px] text-xs leading-[1.35] text-faint max-[915px]:ml-0 max-[915px]:max-w-none">
           The numbers are tuned for a readable picture, not measured. Use them to compare setups, not to rate a real system.
         </span>
       </header>
-      <div id="results" data-results className="flex flex-wrap items-start gap-4 px-6 py-5 max-[914px]:flex-col max-[914px]:items-stretch max-[914px]:px-4">
-        <section aria-label="100 trials per setup" className={`${panel} flex min-w-0 flex-[999_1_640px] flex-col gap-3.5 px-[22px] py-5 max-[914px]:flex-none max-[914px]:px-4`}>
+      <div id="results" data-results className="flex flex-wrap items-start gap-4 px-6 py-5 max-[915px]:flex-col max-[915px]:items-stretch max-[915px]:px-4">
+        <section aria-label="100 trials per setup" className={`${panel} flex min-w-0 flex-[999_1_640px] flex-col gap-3.5 px-[22px] py-5 max-[915px]:flex-none max-[915px]:px-4`}>
           <div className="flex flex-wrap items-end gap-4">
             <div className="min-w-[260px] flex-1">
               <div className={eyebrow}>100 trials per setup</div>
@@ -76,11 +76,11 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
               {running ? "Running 100 trials..." : "Run 100 more"}
             </button>
           </div>
-          <div className="flex flex-wrap items-start gap-5 max-[914px]:flex-col max-[914px]:items-stretch">
-            <div className="min-w-0 flex-[999_1_460px] max-[914px]:flex-none">
+          <div className="flex flex-wrap items-start gap-5 max-[915px]:flex-col max-[915px]:items-stretch">
+            <div className="min-w-0 flex-[999_1_460px] max-[915px]:flex-none">
               <TrialsPlot points={points} currentKey={currentKey} running={running} labels={labels} large />
             </div>
-            <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2.5 max-[914px]:flex-none">
+            <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2.5 max-[915px]:flex-none">
               <h2 className={`${eyebrow} m-0 font-normal`}>How your setup differs from Breakout</h2>
               {diff.length ? (
                 <ul className="m-0 flex list-none flex-col gap-2 p-0 text-[13px] text-body" data-setup-diff>
@@ -102,7 +102,7 @@ export function ResultsView({ open, points, currentKey, running, labels, scenari
             </div>
           </div>
         </section>
-        <div className="flex min-w-0 max-w-[460px] flex-[1_1_380px] flex-col gap-3 max-[914px]:max-w-none max-[914px]:flex-none">
+        <div className="flex min-w-0 max-w-[460px] flex-[1_1_380px] flex-col gap-3 max-[915px]:max-w-none max-[915px]:flex-none">
           {rewound ? (
             <p className="m-0 rounded-[14px] border border-panel-border bg-panel px-[18px] py-3 font-mono text-xs text-muted" data-rewound>
               At T+{clock(rewound.at)}: {rewound.outcome.escapes} escaped, {rewound.outcome.crossings} breaches of another lab, {rewound.outcome.caught} caught.

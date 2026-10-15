@@ -72,11 +72,11 @@ export function ScenarioMenu({
         aria-expanded={open}
         aria-controls={id}
         data-scenario-menu
-        className={`${button} gap-2.5 max-[914px]:shrink-0 max-[914px]:gap-1.5`}
+        className={`${button} gap-2.5 max-[915px]:min-w-0 max-[915px]:gap-1.5`}
       >
-        {/* An edited preset's longer name takes the eyebrow's room; the eyebrow is still read out. */}
-        <span className={`font-mono text-[10px] tracking-[0.14em] text-faint uppercase max-[914px]:sr-only ${!current && name ? "sr-only" : ""}`}>Scenario</span>
-        <span className="font-semibold text-ink-strong">{name ?? (current ? PRESET_LABEL[current] : "Your own")}</span>
+        {/* An edited preset's longer name takes the eyebrow's room; the eyebrow is still read out. On a phone the name gives way to the mode switch beside it. */}
+        <span className={`font-mono text-[10px] tracking-[0.14em] text-faint uppercase max-[915px]:sr-only ${!current && name ? "sr-only" : ""}`}>Scenario</span>
+        <span className="font-semibold text-ink-strong max-[915px]:truncate">{name ?? (current ? PRESET_LABEL[current] : "Your own")}</span>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`}>
           <path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>

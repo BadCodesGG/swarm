@@ -373,9 +373,11 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
     app.play();
     if (sc.labs.length > 1) app.camera.overview();
     setBranched(null);
-    // The pill (and the focused button in it) goes: focus lands on the Scenario button, not the page, and the page is back at its top (the fork scrolled to the pill).
+    // The pill (and the focused button in it) goes: focus lands on the Scenario button, not the page. On a phone the page is
+    // back at its top too, since the fork scrolled it to the pill; a desktop never scrolled, so it stays where it is.
     requestAnimationFrame(() => {
       document.querySelector<HTMLElement>("[data-scenario-menu]")?.focus({ preventScroll: true });
+      if (!phone) return;
       root.current?.scrollTo({ top: 0, behavior: "instant" });
       window.scrollTo({ top: 0, behavior: "instant" });
     });
@@ -512,12 +514,12 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   const centre = (
     // The scene fills the column less the timeline, and never drops under 400 px (scripts/smoke-box.mjs checks it).
-    <div className="flex min-h-0 min-w-0 flex-col gap-3 min-[915px]:max-[1099px]:min-h-[max(600px,calc(100vh-120px))]">
+    <div className="flex min-h-0 min-w-0 flex-col gap-3 min-[915px]:max-[1120px]:min-h-[max(600px,calc(100vh-120px))]">
       {branched && phone ? <BranchedPill inline at={branched.at} onBack={backToOriginal} /> : null}
       {/* On a phone or a tablet the scene is capped so the timeline and the step card's heading and first lines fit above the tab bar (about 610 px of the window holds the rest at 390 wide). */}
       <div
         ref={slot}
-        className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[914px]:aspect-[760/560] max-[914px]:max-h-[min(max(200px,calc(100svh_-_610px)),45vh)] max-[914px]:min-h-[200px] min-[915px]:min-h-[400px] min-[915px]:flex-1"
+        className="relative min-h-[260px] rounded-[14px] border border-panel-border max-[915px]:aspect-[760/560] max-[915px]:max-h-[min(max(200px,calc(100svh_-_610px)),45vh)] max-[915px]:min-h-[200px] min-[915px]:min-h-[400px] min-[915px]:flex-1"
         data-scene-slot
       >
         {multi ? (
@@ -554,13 +556,13 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   return (
     <div
-      className={`absolute inset-0 overflow-x-hidden overflow-y-auto max-[914px]:scroll-pb-[calc(4.5rem+env(safe-area-inset-bottom))] max-[914px]:pb-[calc(4.5rem+env(safe-area-inset-bottom))] ${sheet ? "max-[914px]:overflow-y-hidden" : ""} bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink`}
+      className={`absolute inset-0 overflow-x-hidden overflow-y-auto max-[915px]:scroll-pb-[calc(4.5rem+env(safe-area-inset-bottom))] max-[915px]:pb-[calc(4.5rem+env(safe-area-inset-bottom))] ${sheet ? "max-[915px]:overflow-y-hidden" : ""} bg-[radial-gradient(circle,rgba(150,172,214,0.13)_1px,transparent_1.5px)] bg-[length:26px_26px] text-ink`}
       data-plot-ready={trials.plotReady ? "true" : "false"}
       ref={root}
     >
       {/* The first screen: on a wide desktop exactly the window's height (never under 700 px), the results below it. */}
       <div className={view === "results" ? "hidden" : "contents"}>
-        <div className="flex flex-col min-[1100px]:h-full min-[1100px]:min-h-[700px]">
+        <div className="flex flex-col min-[1120px]:h-full min-[1120px]:min-h-[700px]">
           <BoxHeader
             tally={tally}
             status={
@@ -591,7 +593,8 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
               </>
             }
           />
-          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[914px]:gap-3 max-[914px]:px-4 max-[914px]:pt-3 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1100px]:min-h-0 min-[1100px]:grid-cols-[minmax(260px,320px)_minmax(460px,1fr)_minmax(300px,360px)] min-[1100px]:grid-rows-[minmax(0,1fr)]">
+          {/* Three columns from 1120: their floors (260 + 460 + 300, two 16 px gaps, 48 px of padding) fit the root's client width beside a 17 px classic scrollbar. */}
+          <div className="grid flex-1 grid-cols-1 gap-4 px-6 pt-4 pb-5 max-[915px]:gap-3 max-[915px]:px-4 max-[915px]:pt-3 min-[915px]:grid-cols-[minmax(250px,300px)_minmax(0,1fr)] min-[1120px]:min-h-0 min-[1120px]:grid-cols-[minmax(260px,320px)_minmax(460px,1fr)_minmax(300px,360px)] min-[1120px]:grid-rows-[minmax(0,1fr)]">
             {phone ? null : story}
             {centre}
             {phone ? (
@@ -601,7 +604,7 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
                 <StepCard steps={steps} current={currentPin} open={world.selected !== null} multi={multi} lead={lead} onStep={walk} onReplayWith={rerunWith} />
               )
             ) : (
-              <div className="flex min-h-0 flex-col min-[915px]:max-[1099px]:col-span-2">{defences}</div>
+              <div className="flex min-h-0 flex-col min-[915px]:max-[1120px]:col-span-2">{defences}</div>
             )}
           </div>
         </div>

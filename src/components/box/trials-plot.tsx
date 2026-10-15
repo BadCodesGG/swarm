@@ -58,14 +58,11 @@ export function TrialsPlot({
   const here = current ? toPlot(current.usefulness, current.safety) : null;
   const vertices = frontierVertices(points);
   const segments = vertices.slice(1).map((v, i): Segment => [vertices[i], v]);
-  const label = here
-    ? placeLabel(
-        here,
-        segments,
-        others.map((p) => toPlot(p.usefulness, p.safety)),
-      )
-    : null;
   const dots = others.map((p) => toPlot(p.usefulness, p.safety));
+  // The large plot's text grows as the plot narrows (fk), and so do the boxes the placer keeps clear: "Your setup" in
+  // bold sans runs about 0.6 em a glyph over ten glyphs, its line sits 1.05 em above the baseline, the figures 6 fk under it.
+  const labelSize = large ? { width: 32 * fk, ascent: 1.05 * z.name, height: 1.05 * z.name + 6 * fk + 0.3 * z.sub } : undefined;
+  const label = here ? placeLabel(here, segments, dots, labelSize) : null;
   // The large plot's text grows as the plot narrows (fk), so its margins come from the text, not constants: JetBrains
   // Mono advances 0.6 em a glyph, and a line of text sits about 1.05 em above its baseline and 0.3 em below. The rotated
   // y title keeps its ascent inside the view, the y tick labels end clear of it, the first and last x tick labels stay
@@ -97,7 +94,8 @@ export function TrialsPlot({
           ]
         : []),
     ],
-    large ? 2.7 * fk : undefined,
+    // The large plot's names: 0.6 em a glyph in sans, a line 1.2 em tall, both growing with fk.
+    large ? { charWidth: 2.7 * fk, height: 1.2 * z.tag } : undefined,
   );
   const xTicks = large ? [0, 1, 2, 3, 4, 5].map((i) => ({ x: 34 + i * 38.4, text: `${50 + i * 10}%` })) : [{ x: 34, text: "50" }];
   const yTicks = large
@@ -169,13 +167,9 @@ export function TrialsPlot({
           })}
         </g>
         {large ? (
-          // A name that had to sit well clear of its dot gets a thin line back to it.
+          // A name that had to sit well clear of its dot gets a thin line back to it, the one the placer kept off the other names.
           <g stroke="#5a6680" strokeWidth="0.3">
-            {tags.map((t) => {
-              const p = others.find((o) => o.key === t.key);
-              const d = p ? toPlot(p.usefulness, p.safety) : null;
-              return d && Math.abs(t.y - d.y) > 12 ? <line key={t.key} x1={d.x} y1={d.y} x2={t.anchor === "middle" ? t.x : t.x + (t.anchor === "end" ? -3 : 3)} y2={t.y + 1} /> : null;
-            })}
+            {tags.map((t) => (t.leader ? <line key={t.key} x1={t.leader[0].x} y1={t.leader[0].y} x2={t.leader[1].x} y2={t.leader[1].y} data-plot-leader /> : null))}
           </g>
         ) : null}
         <g className={large ? "font-sans" : "font-mono"} fontSize={z.tag} fill={large ? "#c3cad6" : "#a7b1c2"} style={{ paintOrder: "stroke", stroke: "#0c101c", strokeWidth: large ? 1.2 : 3 }}>

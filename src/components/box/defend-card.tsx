@@ -125,17 +125,20 @@ export function DefendCard({ world, flips, budget, onBudget, sheet = false }: { 
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      {/* Two tiles side by side where each gets 100 px ("2 of 3" at 20 px mono needs 72), else stacked: the card's width decides, not a breakpoint. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] gap-2">
         <div className="rounded-[10px] border border-[rgba(150,172,214,0.12)] p-2.5" data-labs-kept>
           <div className={eyebrow}>Labs kept in</div>
-          <div className={`mt-1 font-mono text-xl ${result && result.kept.kept === result.kept.total ? "text-haiku" : "text-escape-text"}`}>
+          <div className={`mt-1 font-mono text-xl whitespace-nowrap ${result && result.kept.kept === result.kept.total ? "text-haiku" : "text-escape-text"}`} data-readout>
             {result ? `${result.kept.kept} of ${result.kept.total}` : "-"}
           </div>
           <div className="mt-1 font-mono text-[11px] text-label">{s ? `${s.stopped} of ${s.rogues} hidden-goal agents` : ""}</div>
         </div>
         <div className="rounded-[10px] border border-[rgba(150,172,214,0.12)] p-2.5" data-work-kept>
           <div className={eyebrow}>Work kept</div>
-          <div className="mt-1 font-mono text-xl text-ink-strong">{s ? pct(s.workKept) : "-"}</div>
+          <div className="mt-1 font-mono text-xl whitespace-nowrap text-ink-strong" data-readout>
+            {s ? pct(s.workKept) : "-"}
+          </div>
         </div>
       </div>
 

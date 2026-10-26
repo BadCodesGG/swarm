@@ -22,7 +22,7 @@
     "test:sweep": "node scripts/sweep-box.mjs"
   },
   "dependencies": {
-    "next": "16.3.8",
+    "next": "16.4.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "three": "^0.186.1"

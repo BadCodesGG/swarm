@@ -22,7 +22,7 @@
     "test:sweep": "node scripts/sweep-box.mjs"
   },
   "dependencies": {
-    "next": "16.3.8",
+    "next": "16.4.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "three": "^0.186.1"
@@ -34,11 +34,11 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.186.0",
     "eslint": "^9",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.3",
     "playwright": "1.62",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

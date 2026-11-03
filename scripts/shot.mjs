@@ -14,8 +14,7 @@
 
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
-import { chromeMissing } from "./lib/capture.mjs";
+import { chromeUnusable, launchChrome } from "./lib/chrome.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -59,7 +58,7 @@ async function nextShotPath() {
 }
 
 async function attempt(strategy) {
-  const browser = await chromium.launch(strategy.launch);
+  const browser = await launchChrome(strategy.launch);
   const errors = [];
   const threeWarnings = [];
   try {
@@ -122,9 +121,9 @@ try {
     try {
       result = await attempt(strategy);
     } catch (err) {
-      // A missing Chrome ends the run with Playwright's own error instead of falling through to "no launch
+      // A missing or unpatched Chrome ends the run with its own error instead of falling through to "no launch
       // strategy produced a frame"; any other failure (a headed launch with no display, say) moves on.
-      if (chromeMissing(err)) throw err;
+      if (chromeUnusable(err)) throw err;
       console.log(`  failed: ${err.message.split("\n")[0]}`);
       continue;
     }

@@ -5,7 +5,7 @@
  * Any console error, page error or `THREE.` warning fails the capture.
  */
 
-import { chromium } from "playwright";
+import { chromeUnusable, launchChrome } from "./chrome.mjs";
 
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 
@@ -14,13 +14,6 @@ export const STRATEGIES = [
   { label: "headed + GPU flags", launch: { headless: false, channel: "chrome", args: GPU_ARGS } },
   { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, channel: "chrome", args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
-
-/**
- * True when the launch failed because Chrome is not installed (Playwright's "Chromium distribution
- * 'chrome' is not found"). Every strategy launches the same Chrome, so that ends a strategy loop at
- * once; any other launch failure (a headed launch with no display, say) moves on to the next strategy.
- */
-export const chromeMissing = (err) => /Chromium distribution '[^']+' is not found/.test(err?.message ?? "");
 
 /**
  * Opens `url` with `context` options, waits for `ready(page)`, then runs `shoot(page)`. Returns the
@@ -32,7 +25,7 @@ export async function capture({ url, context: contextOptions, act, ready, shoot 
     console.log(`Trying: ${strategy.label}`);
     let browser;
     try {
-      browser = await chromium.launch(strategy.launch);
+      browser = await launchChrome(strategy.launch);
       const context = await browser.newContext(contextOptions);
       const page = await context.newPage();
       const problems = [];
@@ -54,7 +47,7 @@ export async function capture({ url, context: contextOptions, act, ready, shoot 
       console.log(`  worked: ${strategy.label}`);
       return result;
     } catch (err) {
-      if (err.message.startsWith("console errors") || chromeMissing(err)) throw err;
+      if (err.message.startsWith("console errors") || chromeUnusable(err)) throw err;
       console.log(`  failed: ${err.message.split("\n")[0]}`);
     } finally {
       await browser?.close();

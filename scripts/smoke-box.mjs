@@ -720,7 +720,7 @@ export function boxSteps({ check, openPage, software = false }) {
 
 // --- `node scripts/smoke-box.mjs [--port=3134] [--only=layout]`: only Act 2's steps (or the steps whose name has `--only`'s text), against the production build ---
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  const { chromium } = await import("playwright");
+  const { launchChrome } = await import("./lib/chrome.mjs");
   const { ROOT, startDevServer, stopDevServer, waitForServer } = await import("./lib/dev-server.mjs");
   const port = Number((process.argv.find((a) => a.startsWith("--port=")) ?? "--port=3134").slice(7));
   const base = `http://localhost:${port}`;
@@ -750,7 +750,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const server = startDevServer(port, "start");
   try {
     await waitForServer(base);
-    const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
+    const browser = await launchChrome({ headless: true, args: GPU_ARGS });
     try {
       for (const step of boxSteps({ check, openPage })) if (step.name.toLowerCase().includes(only)) await step(browser);
     } finally {

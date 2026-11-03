@@ -12,7 +12,7 @@
 
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchChrome } from "./lib/chrome.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -85,7 +85,7 @@ let exitCode = 1;
 try {
   await waitForServer(BASE);
   await mkdir(SHOTS, { recursive: true });
-  const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
+  const browser = await launchChrome({ headless: true, args: GPU_ARGS });
   try {
     for (const [name, route, prepare] of SHOTS_LIST) {
       if (ONLY.length && !ONLY.includes(name)) continue;

@@ -22,7 +22,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchChrome } from "./lib/chrome.mjs";
 import { boxSteps } from "./smoke-box.mjs";
 import { stepHud } from "./smoke-hud.mjs";
 import { stepImport } from "./smoke-import.mjs";
@@ -487,7 +487,7 @@ const server = startDevServer(PORT, "start");
 try {
   await waitForServer(BASE);
   console.log(`serving the production build on ${BASE}`);
-  const browser = await chromium.launch({ headless: true, channel: "chrome", args: BROWSER_ARGS });
+  const browser = await launchChrome({ headless: true, args: BROWSER_ARGS });
   try {
     for (const [name, step] of STEPS) if (ONLY.length === 0 || ONLY.includes(name)) await step(browser);
   } finally {

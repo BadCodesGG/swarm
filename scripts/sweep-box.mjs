@@ -41,7 +41,7 @@
  * line per pass), collects every failure, then a summary; exits 1 if any failed.
  */
 
-import { chromium } from "playwright";
+import { launchChrome } from "./lib/chrome.mjs";
 import { measureScene } from "./lib/scene-labels.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -750,7 +750,7 @@ async function denseScan(browser, stateName) {
 
 const started = Date.now();
 // Playwright hides scrollbars by default; the layout has to fit beside a classic one.
-const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS, ignoreDefaultArgs: ["--hide-scrollbars"] });
+const browser = await launchChrome({ headless: true, args: GPU_ARGS, ignoreDefaultArgs: ["--hide-scrollbars"] });
 try {
   if (ONLY !== "states") {
     for (const stateName of Object.keys(DENSE_STATES)) {

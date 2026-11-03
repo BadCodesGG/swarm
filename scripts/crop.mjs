@@ -7,7 +7,7 @@
 
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchChrome } from "./lib/chrome.mjs";
 import { ROOT } from "./lib/dev-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -27,7 +27,7 @@ if (!input.endsWith(".png")) {
   process.exit(1);
 }
 
-const browser = await chromium.launch({ headless: true, channel: "chrome" });
+const browser = await launchChrome({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: size * zoom, height: size * zoom }, deviceScaleFactor: 1 });
   const left = Math.round(x - size / 2);

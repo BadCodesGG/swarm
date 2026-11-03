@@ -10,9 +10,9 @@ import { chromeUnusable, launchChrome } from "./chrome.mjs";
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 
 export const STRATEGIES = [
-  { label: "headless + GPU flags", launch: { headless: true, channel: "chrome", args: GPU_ARGS } },
-  { label: "headed + GPU flags", launch: { headless: false, channel: "chrome", args: GPU_ARGS } },
-  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, channel: "chrome", args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
+  { label: "headless + GPU flags", launch: { headless: true, args: GPU_ARGS } },
+  { label: "headed + GPU flags", launch: { headless: false, args: GPU_ARGS } },
+  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
 
 /**

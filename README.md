@@ -95,10 +95,10 @@ npm run lint           # ESLint
 npm run typecheck      # generates the Next route types, then tsc --noEmit
 npm run test           # Vitest: trace contract and parser, generator, box rules, layout, playback, audio, quality
 npm run build          # production build
-npm run test:smoke     # boots the build and drives the landing page, both acts, the import, /about, the tours, ? sheets and hand-off in Chromium
+npm run test:smoke     # boots the build and drives the landing page, both acts, the import, /about, the tours, ? sheets and hand-off in Google Chrome
 ```
 
-The smoke test needs a build first and Playwright's Chromium (`npx playwright install chromium`).
+The smoke test needs a build first and Google Chrome 156.0.8078.73 or later: the scripts launch the installed Chrome, not Playwright's bundled Chromium, so an older `npx playwright install chromium` setup is not enough. Without Chrome, `npx playwright install chrome` installs it (it needs an administrator shell on Windows and sudo on Linux). Each launch prints the Chrome version and refuses one older than that, the first build patched for CVE-2026-118306 et al.
 On a machine without a GPU, `npm run test:smoke -- --allow-software`.
 
 Images, all from the production build (`npm run build` first):

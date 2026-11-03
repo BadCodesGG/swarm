@@ -1,17 +1,16 @@
 /**
  * Shared capture loop for the scripts that save a frame of a live act into `public/` (og.mjs,
  * stills.mjs). Launch strategies are tried in order, as in shot.mjs, since WebGPU in automated
- * Chromium depends on headless mode and GPU flags; a strategy that falls back to WebGL2 is rejected.
+ * Google Chrome (Playwright, channel "chrome") depends on headless mode and GPU flags; a strategy that falls back to WebGL2 is rejected.
  * Any console error, page error or `THREE.` warning fails the capture.
  */
 
-import { chromium } from "playwright";
+import { chromeUnusable, launchChrome } from "./chrome.mjs";
 
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 
 export const STRATEGIES = [
-  { label: "headless shell + GPU flags", launch: { headless: true, args: GPU_ARGS } },
-  { label: "new headless (channel chromium) + GPU flags", launch: { headless: true, channel: "chromium", args: GPU_ARGS } },
+  { label: "headless + GPU flags", launch: { headless: true, args: GPU_ARGS } },
   { label: "headed + GPU flags", launch: { headless: false, args: GPU_ARGS } },
   { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
@@ -26,7 +25,7 @@ export async function capture({ url, context: contextOptions, act, ready, shoot 
     console.log(`Trying: ${strategy.label}`);
     let browser;
     try {
-      browser = await chromium.launch(strategy.launch);
+      browser = await launchChrome(strategy.launch);
       const context = await browser.newContext(contextOptions);
       const page = await context.newPage();
       const problems = [];
@@ -48,7 +47,7 @@ export async function capture({ url, context: contextOptions, act, ready, shoot 
       console.log(`  worked: ${strategy.label}`);
       return result;
     } catch (err) {
-      if (err.message.startsWith("console errors")) throw err;
+      if (err.message.startsWith("console errors") || chromeUnusable(err)) throw err;
       console.log(`  failed: ${err.message.split("\n")[0]}`);
     } finally {
       await browser?.close();

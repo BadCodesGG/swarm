@@ -4,7 +4,7 @@
  *   npm run build && node scripts/og.mjs [--act=inside|box] [--port=3129]
  *
  * Starts `next start`, opens the Act 1 hero frame (`/inside?shot=hero&source=medium&hud=0`, the
- * default) or the Act 2 escape (`/box?shot=escape`) in Playwright Chromium at 1200x630, DPR 1, waits
+ * default) or the Act 2 escape (`/box?shot=escape`) in Google Chrome at 1200x630, DPR 1, waits
  * for the fixed-clock frame to settle and the loader to fade, lays the title over it, and writes
  * the JPEG at the highest quality that fits the budget. Fails on any console error or `THREE.`
  * warning, or when no launch strategy draws with WebGPU (see scripts/lib/capture.mjs).

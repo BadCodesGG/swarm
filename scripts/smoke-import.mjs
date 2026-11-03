@@ -5,7 +5,7 @@
  *   const STEPS = [stepLanding, stepInside, (b) => stepImport(b, { BASE, openPage, check, inside, waitInside }), ...];
  *
  * Folder import relies on Playwright's `setInputFiles` with a directory path on a `webkitdirectory`
- * input, which keeps `subagents/` in `webkitRelativePath` (probed in headless Chromium: the fixture's
+ * input, which keeps `subagents/` in `webkitRelativePath` (probed in headless Chromium, and true in headless Chrome: the fixture's
  * 26 subagent files arrive as `<dir>/session/subagents/agent-*.jsonl`).
  *
  * Asserts: the fixture folder plays as source `upload` with 16 agents (the orchestrator included), the

@@ -26,7 +26,7 @@ npm run build          # Production build (the real gate; dev mode hides prerend
 npm run lint           # ESLint (Next core-web-vitals + TypeScript)
 npm run typecheck      # next typegen, then tsc --noEmit (bare tsc fails on a fresh checkout)
 npm run test           # Vitest
-npm run test:smoke     # Boots the built site and drives both acts in Chromium
+npm run test:smoke     # Boots the built site and drives both acts in the installed Google Chrome
 ```
 
 ## Things that bite

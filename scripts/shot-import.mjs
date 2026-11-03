@@ -8,7 +8,7 @@
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchChrome } from "./lib/chrome.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 
 const arg = process.argv.slice(2).find((a) => a.startsWith("--port="));
@@ -29,7 +29,7 @@ writeFileSync(notes, "not a session\n");
 const server = startDevServer(PORT, "start");
 try {
   await waitForServer(BASE);
-  const browser = await chromium.launch({ headless: true, channel: "chromium" });
+  const browser = await launchChrome({ headless: true });
   const open = async (viewport, dsf = 1) => {
     const context = await browser.newContext({ viewport, deviceScaleFactor: dsf });
     const page = await context.newPage();

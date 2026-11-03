@@ -3,7 +3,7 @@
  *
  *   node scripts/sweep-box.mjs [--base=http://localhost:3140] [--only=dense|states]
  *
- * It starts and stops nothing but its own Chromium, launched with classic scrollbars (Playwright hides them by
+ * It starts and stops nothing but its own Chrome, launched with classic scrollbars (Playwright hides them by
  * default, and a scrollbar is 15 to 17 px the layout has to fit in). Two kinds of pass:
  *
  * - The states, at each width in WIDTHS: `/box?shot=breakout` live (every step marker out), rewound (the scrubber
@@ -41,7 +41,7 @@
  * line per pass), collects every failure, then a summary; exits 1 if any failed.
  */
 
-import { chromium } from "playwright";
+import { launchChrome } from "./lib/chrome.mjs";
 import { measureScene } from "./lib/scene-labels.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -750,7 +750,7 @@ async function denseScan(browser, stateName) {
 
 const started = Date.now();
 // Playwright hides scrollbars by default; the layout has to fit beside a classic one.
-const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS, ignoreDefaultArgs: ["--hide-scrollbars"] });
+const browser = await launchChrome({ headless: true, args: GPU_ARGS, ignoreDefaultArgs: ["--hide-scrollbars"] });
 try {
   if (ONLY !== "states") {
     for (const stateName of Object.keys(DENSE_STATES)) {

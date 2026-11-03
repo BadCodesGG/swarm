@@ -5,7 +5,7 @@
  *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,unfork,lab,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
- * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
+ * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Google Chrome (Playwright, channel "chrome") at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
  * (unless --webgl), zero console errors or `THREE.` warnings, no two scene labels or marker buttons
  * overlapping and none cut by the scene's edge (as drawn, after the `--do` actions), and writes `.shots/<name>-<n>.png`
@@ -15,7 +15,7 @@
 
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
+import { chromeUnusable, launchChrome } from "./lib/chrome.mjs";
 import { ROOT, startDevServer, stopDevServer, waitForServer } from "./lib/dev-server.mjs";
 import { measureScene } from "./lib/scene-labels.mjs";
 
@@ -48,8 +48,7 @@ const url = `${BASE}/box?${query}`;
 
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 const STRATEGIES = [
-  { label: "headless shell + GPU flags", launch: { headless: true, args: GPU_ARGS } },
-  { label: "new headless (channel chromium) + GPU flags", launch: { headless: true, channel: "chromium", args: GPU_ARGS } },
+  { label: "headless + GPU flags", launch: { headless: true, args: GPU_ARGS } },
   { label: "headed + GPU flags", launch: { headless: false, args: GPU_ARGS } },
   { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
@@ -65,7 +64,7 @@ async function nextShotBase() {
 }
 
 async function attempt(strategy) {
-  const browser = await chromium.launch(strategy.launch);
+  const browser = await launchChrome(strategy.launch);
   const errors = [];
   const threeWarnings = [];
   try {
@@ -205,6 +204,9 @@ try {
     try {
       result = await attempt(strategy);
     } catch (err) {
+      // A missing or unpatched Chrome ends the run with its own error instead of falling through to "no launch
+      // strategy produced a frame"; any other failure (a headed launch with no display, say) moves on.
+      if (chromeUnusable(err)) throw err;
       console.log(`  failed: ${err.message.split("\n")[0]}`);
       continue;
     }

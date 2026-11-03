@@ -98,7 +98,7 @@ npm run build          # production build
 npm run test:smoke     # boots the build and drives the landing page, both acts, the import, /about, the tours, ? sheets and hand-off in Chromium
 ```
 
-The smoke test needs a build first and Playwright's Chromium (`npx playwright install chromium`).
+The smoke test needs a build first and Google Chrome (`npx playwright install chrome`): the scripts launch the installed Chrome, not Playwright's bundled Chromium.
 On a machine without a GPU, `npm run test:smoke -- --allow-software`.
 
 Images, all from the production build (`npm run build` first):

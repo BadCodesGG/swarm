@@ -29,7 +29,7 @@ writeFileSync(notes, "not a session\n");
 const server = startDevServer(PORT, "start");
 try {
   await waitForServer(BASE);
-  const browser = await chromium.launch({ headless: true, channel: "chromium" });
+  const browser = await chromium.launch({ headless: true, channel: "chrome" });
   const open = async (viewport, dsf = 1) => {
     const context = await browser.newContext({ viewport, deviceScaleFactor: dsf });
     const page = await context.newPage();

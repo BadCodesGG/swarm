@@ -750,7 +750,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const server = startDevServer(port, "start");
   try {
     await waitForServer(base);
-    const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS });
+    const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
     try {
       for (const step of boxSteps({ check, openPage })) if (step.name.toLowerCase().includes(only)) await step(browser);
     } finally {

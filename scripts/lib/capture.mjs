@@ -1,7 +1,7 @@
 /**
  * Shared capture loop for the scripts that save a frame of a live act into `public/` (og.mjs,
  * stills.mjs). Launch strategies are tried in order, as in shot.mjs, since WebGPU in automated
- * Chromium depends on headless mode and GPU flags; a strategy that falls back to WebGL2 is rejected.
+ * Google Chrome (Playwright, channel "chrome") depends on headless mode and GPU flags; a strategy that falls back to WebGL2 is rejected.
  * Any console error, page error or `THREE.` warning fails the capture.
  */
 
@@ -10,10 +10,9 @@ import { chromium } from "playwright";
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 
 export const STRATEGIES = [
-  { label: "headless shell + GPU flags", launch: { headless: true, args: GPU_ARGS } },
-  { label: "new headless (channel chromium) + GPU flags", launch: { headless: true, channel: "chromium", args: GPU_ARGS } },
-  { label: "headed + GPU flags", launch: { headless: false, args: GPU_ARGS } },
-  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
+  { label: "headless + GPU flags", launch: { headless: true, channel: "chrome", args: GPU_ARGS } },
+  { label: "headed + GPU flags", launch: { headless: false, channel: "chrome", args: GPU_ARGS } },
+  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, channel: "chrome", args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
 
 /**

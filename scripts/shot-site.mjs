@@ -85,7 +85,7 @@ let exitCode = 1;
 try {
   await waitForServer(BASE);
   await mkdir(SHOTS, { recursive: true });
-  const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS });
+  const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS });
   try {
     for (const [name, route, prepare] of SHOTS_LIST) {
       if (ONLY.length && !ONLY.includes(name)) continue;

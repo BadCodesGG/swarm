@@ -4,11 +4,11 @@
  *   npm run build && node scripts/shot.mjs [--seed=50] [--t=944] [--source=medium] [--rate=4]
  *     [--webgl] [--mobile] [--name=hero] [--port=3127] [--query=select=5] [--click=[data-roster-toggle]]
  *
- * Starts `next start`, opens `/inside?shot=hero&source=..&seed=..&t=..` in Playwright Chromium at
- * 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch), waits for the shot clock to settle and the
+ * Starts `next start`, opens `/inside?shot=hero&source=..&seed=..&t=..` in Google Chrome (Playwright,
+ * channel "chrome") at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch), waits for the shot clock to settle and the
  * loader to fade, asserts WebGPU (unless --webgl) and zero console errors or `THREE.` warnings, and
  * writes `.shots/<name>-<n>.png` with the next free n. Launch strategies are tried in order, since
- * WebGPU in automated Chromium depends on headless mode and GPU flags; the one that worked is printed.
+ * WebGPU in automated Chrome depends on headless mode and GPU flags; the one that worked is printed.
  * Omitted --seed, --t and --rate use the page's own hero defaults.
  */
 
@@ -42,10 +42,9 @@ const url = `${BASE}/inside?${query}`;
 
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 const STRATEGIES = [
-  { label: "headless shell + GPU flags", launch: { headless: true, args: GPU_ARGS } },
-  { label: "new headless (channel chromium) + GPU flags", launch: { headless: true, channel: "chromium", args: GPU_ARGS } },
-  { label: "headed + GPU flags", launch: { headless: false, args: GPU_ARGS } },
-  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
+  { label: "headless + GPU flags", launch: { headless: true, channel: "chrome", args: GPU_ARGS } },
+  { label: "headed + GPU flags", launch: { headless: false, channel: "chrome", args: GPU_ARGS } },
+  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, channel: "chrome", args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
 
 async function nextShotPath() {

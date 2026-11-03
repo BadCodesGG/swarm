@@ -750,7 +750,7 @@ async function denseScan(browser, stateName) {
 
 const started = Date.now();
 // Playwright hides scrollbars by default; the layout has to fit beside a classic one.
-const browser = await chromium.launch({ headless: true, channel: "chromium", args: GPU_ARGS, ignoreDefaultArgs: ["--hide-scrollbars"] });
+const browser = await chromium.launch({ headless: true, channel: "chrome", args: GPU_ARGS, ignoreDefaultArgs: ["--hide-scrollbars"] });
 try {
   if (ONLY !== "states") {
     for (const stateName of Object.keys(DENSE_STATES)) {

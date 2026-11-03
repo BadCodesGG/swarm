@@ -5,7 +5,7 @@
  *     [--port=3128] [--query=sim=cpu] [--shot=escape|breakout] [--do=marker,step3,agent,defend,sheet,feed,branch,results,fork,unfork,lab,lower]
  *
  * Starts `next start`, opens `/box?shot=escape` (the network layer off, the run stopped on the tick
- * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Playwright Chromium at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
+ * of its first escape; `--shot=breakout` is the three-lab breakout preset stopped on its second breach) in Google Chrome (Playwright, channel "chrome") at 1440x900, DPR 1 (--mobile: 390x844, DPR 3, touch; --viewport: another window size at DPR 1, a tablet's say),
  * waits for the engine to settle, the trials plot to fill and the loader to fade, asserts WebGPU
  * (unless --webgl), zero console errors or `THREE.` warnings, no two scene labels or marker buttons
  * overlapping and none cut by the scene's edge (as drawn, after the `--do` actions), and writes `.shots/<name>-<n>.png`
@@ -48,10 +48,9 @@ const url = `${BASE}/box?${query}`;
 
 const GPU_ARGS = ["--enable-unsafe-webgpu", "--enable-features=Vulkan,UseSkiaRenderer", "--use-angle=d3d11", "--ignore-gpu-blocklist"];
 const STRATEGIES = [
-  { label: "headless shell + GPU flags", launch: { headless: true, args: GPU_ARGS } },
-  { label: "new headless (channel chromium) + GPU flags", launch: { headless: true, channel: "chromium", args: GPU_ARGS } },
-  { label: "headed + GPU flags", launch: { headless: false, args: GPU_ARGS } },
-  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
+  { label: "headless + GPU flags", launch: { headless: true, channel: "chrome", args: GPU_ARGS } },
+  { label: "headed + GPU flags", launch: { headless: false, channel: "chrome", args: GPU_ARGS } },
+  { label: "headless + SwiftShader WebGPU adapter", launch: { headless: true, channel: "chrome", args: [...GPU_ARGS, "--use-webgpu-adapter=swiftshader"] } },
 ];
 
 async function nextShotBase() {

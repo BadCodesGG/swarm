@@ -4,7 +4,7 @@
  *   npm run build && npm run test:smoke [-- --port=3132] [--allow-software] [--only=site]
  *
  * Boots `next start` (it refuses to run without a build: dev mode hides prerender problems) and
- * drives it in Playwright Chromium. Prints a line per assertion, exits 1 on the first failure.
+ * drives it in Google Chrome (Playwright, channel "chrome"). Prints a line per assertion, exits 1 on the first failure.
  * Every step fails on any console error, page error or `THREE.` warning.
  *
  * --allow-software is for CI runners, which have no GPU: WebGPU may fall back to SwiftShader or be
@@ -487,7 +487,7 @@ const server = startDevServer(PORT, "start");
 try {
   await waitForServer(BASE);
   console.log(`serving the production build on ${BASE}`);
-  const browser = await chromium.launch({ headless: true, channel: "chromium", args: BROWSER_ARGS });
+  const browser = await chromium.launch({ headless: true, channel: "chrome", args: BROWSER_ARGS });
   try {
     for (const [name, step] of STEPS) if (ONLY.length === 0 || ONLY.includes(name)) await step(browser);
   } finally {

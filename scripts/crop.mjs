@@ -27,7 +27,7 @@ if (!input.endsWith(".png")) {
   process.exit(1);
 }
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, channel: "chrome" });
 try {
   const page = await browser.newPage({ viewport: { width: size * zoom, height: size * zoom }, deviceScaleFactor: 1 });
   const left = Math.round(x - size / 2);

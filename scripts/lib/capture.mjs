@@ -16,6 +16,13 @@ export const STRATEGIES = [
 ];
 
 /**
+ * True when the launch failed because Chrome is not installed (Playwright's "Chromium distribution
+ * 'chrome' is not found"). Every strategy launches the same Chrome, so that ends a strategy loop at
+ * once; any other launch failure (a headed launch with no display, say) moves on to the next strategy.
+ */
+export const chromeMissing = (err) => /Chromium distribution '[^']+' is not found/.test(err?.message ?? "");
+
+/**
  * Opens `url` with `context` options, waits for `ready(page)`, then runs `shoot(page)`. Returns the
  * first strategy's result whose page drew with WebGPU and logged nothing it should not have.
  * `act` is the `window.__swarm` entry that reports `isWebGPU`.
@@ -23,10 +30,9 @@ export const STRATEGIES = [
 export async function capture({ url, context: contextOptions, act, ready, shoot }) {
   for (const strategy of STRATEGIES) {
     console.log(`Trying: ${strategy.label}`);
-    // Every strategy launches the same installed Chrome, so a failed launch (no Chrome here) ends the
-    // capture with Playwright's own error instead of trying the next strategy and blaming WebGPU.
-    const browser = await chromium.launch(strategy.launch);
+    let browser;
     try {
+      browser = await chromium.launch(strategy.launch);
       const context = await browser.newContext(contextOptions);
       const page = await context.newPage();
       const problems = [];
@@ -48,7 +54,7 @@ export async function capture({ url, context: contextOptions, act, ready, shoot 
       console.log(`  worked: ${strategy.label}`);
       return result;
     } catch (err) {
-      if (err.message.startsWith("console errors")) throw err;
+      if (err.message.startsWith("console errors") || chromeMissing(err)) throw err;
       console.log(`  failed: ${err.message.split("\n")[0]}`);
     } finally {
       await browser?.close();

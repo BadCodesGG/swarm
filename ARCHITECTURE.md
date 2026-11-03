@@ -442,7 +442,7 @@ with its tests green.
 - Stations, in ring order: `web`, `plan`, `advisor`, `agents`, `edit`, `mcp`, `files`, `shell`.
   `mcp` is its own station; `files` (read, search) and `edit` (write, edit) stay apart.
 - A folder with several top-level sessions shows a chooser (first prompt line, size, agent count).
-- Headless Chromium's `setInputFiles` with a directory path on a `webkitdirectory` input keeps the
+- Headless Chrome's (as first probed in headless Chromium) `setInputFiles` with a directory path on a `webkitdirectory` input keeps the
   `subagents/` prefix in `webkitRelativePath` (`<dir>/session/subagents/agent-*.jsonl`), so smoke 3 uses
   the real folder input.
 - Verbatim human prompts are capped at 2,000 characters for display.

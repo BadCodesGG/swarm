@@ -3,7 +3,7 @@
  *
  *   node scripts/sweep-box.mjs [--base=http://localhost:3140] [--only=dense|states]
  *
- * It starts and stops nothing but its own Chromium, launched with classic scrollbars (Playwright hides them by
+ * It starts and stops nothing but its own Chrome, launched with classic scrollbars (Playwright hides them by
  * default, and a scrollbar is 15 to 17 px the layout has to fit in). Two kinds of pass:
  *
  * - The states, at each width in WIDTHS: `/box?shot=breakout` live (every step marker out), rewound (the scrubber

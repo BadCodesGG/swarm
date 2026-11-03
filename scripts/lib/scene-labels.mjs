@@ -1,5 +1,5 @@
 /**
- * Measures the Box's scene as Chromium drew it, for `shot-box.mjs` and `smoke-box.mjs`: the scene
+ * Measures the Box's scene as Chrome drew it, for `shot-box.mjs` and `smoke-box.mjs`: the scene
  * slot, every visible scene label and marker button with its drawn box, the pairs that touch, the
  * boxes the slot's edge cuts, the labs (centre and outer ring, from `__swarm.box.labs`) that are
  * not wholly inside the slot, and the lab names drawn over a lab's outer ring (`onRing`: the placer

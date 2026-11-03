@@ -23,9 +23,10 @@ export const STRATEGIES = [
 export async function capture({ url, context: contextOptions, act, ready, shoot }) {
   for (const strategy of STRATEGIES) {
     console.log(`Trying: ${strategy.label}`);
-    let browser;
+    // Every strategy launches the same installed Chrome, so a failed launch (no Chrome here) ends the
+    // capture with Playwright's own error instead of trying the next strategy and blaming WebGPU.
+    const browser = await chromium.launch(strategy.launch);
     try {
-      browser = await chromium.launch(strategy.launch);
       const context = await browser.newContext(contextOptions);
       const page = await context.newPage();
       const problems = [];

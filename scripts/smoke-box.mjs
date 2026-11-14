@@ -78,6 +78,19 @@ export function boxSteps({ check, openPage, software = false }) {
         await page.waitForFunction(([l, b]) => window.__swarm.box.config.layers[l] === b, [layer, before], { timeout: 5_000 });
       }
 
+      // Long frames from here on, so a miss below can name what held the main thread round the escape.
+      await page.evaluate(() => {
+        window.__smokeLong = [];
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) {
+            window.__smokeLong.push({
+              ms: Math.round(e.duration),
+              tick: window.__swarm?.box?.stats?.tick ?? null,
+              scripts: e.scripts.slice(0, 3).map((s) => `${s.invoker} ${s.sourceURL.split("/").pop()}:${s.sourceCharPosition} ${Math.round(s.duration)} ms`),
+            });
+          }
+        }).observe({ type: "long-animation-frame" });
+      });
       for (const layer of LAYERS) await page.locator(`input[data-layer="${layer}"]`).setChecked(false, { force: true });
       const off = await box(page);
       check("every layer can be switched off", LAYERS.every((l) => off.config.layers[l] === false));
@@ -113,27 +126,10 @@ export function boxSteps({ check, openPage, software = false }) {
               tick: b?.stats?.tick ?? null,
               viewport: [innerWidth, innerHeight],
               evalMs: Math.round(performance.now() - t0),
+              longFrames: (window.__smokeLong ?? []).filter((e) => e.ms >= 200).slice(-8),
             });
           });
       check("the escape explainer appears", shown, shown ? "" : `${why}, round trip ${Date.now() - asked} ms`);
-      if (!shown) {
-        // What holds the main thread: four seconds of samples, the busiest functions by self time (chunk file, line and column).
-        const cdp = await page.context().newCDPSession(page);
-        await cdp.send("Profiler.enable");
-        await cdp.send("Profiler.setSamplingInterval", { interval: 1000 });
-        await cdp.send("Profiler.start");
-        await new Promise((r) => setTimeout(r, 4000));
-        const { profile } = await cdp.send("Profiler.stop");
-        const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
-        const self = new Map();
-        profile.samples.forEach((id, i) => {
-          const f = nodes.get(id).callFrame;
-          const key = `${f.functionName || "(anon)"} ${f.url.split("/").pop()}:${f.lineNumber}:${f.columnNumber}`;
-          self.set(key, (self.get(key) ?? 0) + (profile.timeDeltas[i] ?? 0));
-        });
-        for (const [key, us] of [...self].sort((x, y) => y[1] - x[1]).slice(0, 20)) console.log(`  profile ${(us / 1000).toFixed(0).padStart(6)} ms ${key}`);
-      }
-      if (!shown) throw new Error(`no escape explainer: ${why}`);
       // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
       const rerun = page.locator("[data-rerun]");
       await rerun.waitFor({ timeout: RERUN_TIMEOUT_MS });

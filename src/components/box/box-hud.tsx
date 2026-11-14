@@ -519,7 +519,9 @@ export function BoxHud({ app, still = false }: { app: BoxApp; still?: boolean })
 
   const centre = (
     // The scene fills the column less the timeline, and never drops under 400 px (scripts/smoke-box.mjs checks it).
-    <div className="flex min-h-0 min-w-0 flex-col gap-3 min-[915px]:max-[1120px]:min-h-[max(600px,calc(100vh-120px))]">
+    // On a tablet the column keeps its own height instead of stretching to a taller story column, so the
+    // scene does not jump in size (and reallocate its buffers) when the escape explainer opens.
+    <div className="flex min-h-0 min-w-0 flex-col gap-3 min-[915px]:max-[1120px]:min-h-[max(600px,calc(100vh-120px))] min-[915px]:max-[1120px]:self-start">
       {branched && phone ? <BranchedPill inline at={branched.at} onBack={backToOriginal} /> : null}
       {/* On a phone or a tablet the scene is capped so the timeline and the step card's heading and first lines fit above the tab bar (about 610 px of the window holds the rest at 390 wide). */}
       <div

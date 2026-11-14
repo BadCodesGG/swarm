@@ -35,6 +35,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { measureScene } from "./lib/scene-labels.mjs";
@@ -51,12 +52,52 @@ const SCENE_MIN_PX = 400;
 
 const box = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm?.box ?? null)));
 
+/**
+ * A CDP CPU profile in brief: its span, the longest unbroken run of native samples (`(program)` and
+ * `(garbage collector)`, where no JS runs: CI's escape stall was one 9 s run of them), and the JS call
+ * stacks (leaf first, ten frames, chunk file:line:column) that held the main thread longest.
+ */
+function profileSummary(profile, top = 8) {
+  const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+  const parent = new Map();
+  for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
+  const frame = ({ callFrame: f }) => `${f.functionName || "(anon)"} ${f.url.split("/").pop()}:${f.lineNumber}:${f.columnNumber}`;
+  const stacks = new Map();
+  let native = 0;
+  let run = 0;
+  profile.samples.forEach((id, i) => {
+    // A sample stands for the time up to the next one.
+    const us = Math.max(0, profile.timeDeltas[i + 1] ?? 0);
+    const leaf = nodes.get(id).callFrame.functionName;
+    run = leaf === "(program)" || leaf === "(garbage collector)" ? run + us : 0;
+    native = Math.max(native, run);
+    if (leaf.startsWith("(")) return;
+    const parts = [];
+    for (let cur = id; cur !== undefined && parts.length < 10; cur = parent.get(cur)) {
+      const node = nodes.get(cur);
+      if (node.callFrame.functionName === "(root)") break;
+      parts.push(frame(node));
+    }
+    const key = parts.join(" < ") || "(root)";
+    stacks.set(key, (stacks.get(key) ?? 0) + us);
+  });
+  const ms = (us) => Math.round(us / 1000);
+  return {
+    spanMs: ms(profile.endTime - profile.startTime),
+    longestNativeMs: ms(native),
+    stacks: [...stacks].sort((a, b) => b[1] - a[1]).slice(0, top).map(([key, us]) => `${String(ms(us)).padStart(6)} ms ${key}`),
+  };
+}
+
 async function waitForFrames(page, act, min = 10) {
   await page.waitForFunction(([a, n]) => (window.__swarm?.[a]?.frame ?? 0) > n, [act, min], { timeout: READY_TIMEOUT_MS });
 }
 
-/** Steps 4 and 5. `check(label, ok, detail)` and `openPage(browser, route)` are smoke.mjs's own. */
-export function boxSteps({ check, openPage, software = false }) {
+/**
+ * Steps 4 and 5. `check(label, ok, detail)` and `openPage(browser, route)` are smoke.mjs's own;
+ * `shots` is its evidence folder (SMOKE_SHOTS), where the escape step adds its CPU profile on a miss.
+ */
+export function boxSteps({ check, openPage, software = false, shots = "" }) {
   async function stepBox(browser) {
     console.log("-- 4. box");
     const { context, page, problems, response } = await openPage(browser, "/box?seed=1");
@@ -65,6 +106,15 @@ export function boxSteps({ check, openPage, software = false }) {
       await waitForFrames(page, "box");
       const start = await box(page);
       check("/box runs the simulation", start.stats.tick > 0, `tick ${start.stats.tick}, ${start.crowd.count} agents, crowd ${start.crowd.mode}`);
+
+      // CI's two-core software GL has stalled the page for seconds round the first escape, and only there.
+      // A CPU profile from before the layer switches (so its own start-up hitch falls outside) to after
+      // the explainer wait names what held the main thread.
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Profiler.enable");
+      // 10 ms samples: enough to name a stall of seconds, light on a two-core runner.
+      await cdp.send("Profiler.setSamplingInterval", { interval: 10_000 });
+      await cdp.send("Profiler.start");
 
       for (const layer of LAYERS) {
         const before = (await box(page)).config.layers[layer];
@@ -81,62 +131,76 @@ export function boxSteps({ check, openPage, software = false }) {
       for (const layer of LAYERS) await page.locator(`input[data-layer="${layer}"]`).setChecked(false, { force: true });
       const off = await box(page);
       check("every layer can be switched off", LAYERS.every((l) => off.config.layers[l] === false));
+      const slotRect = () =>
+        page.evaluate(() => {
+          const r = document.querySelector("[data-scene-slot]")?.getBoundingClientRect();
+          return r ? [r.width, r.height] : null;
+        });
+      const slotBefore = await slotRect();
       const t0 = Date.now();
-      await page.waitForFunction(() => (window.__swarm?.box?.stats?.escaped ?? 0) > 0, null, { timeout: ESCAPE_TIMEOUT_MS });
-      const escaped = await box(page);
-      check("all layers off lets an agent escape", escaped.stats.escaped > 0, `${escaped.stats.escaped} out by tick ${escaped.stats.tick}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-      const shown = await page
-        .locator('section[aria-label="What just happened"]')
-        .waitFor({ timeout: 5_000 })
+      const didEscape = await page
+        .waitForFunction(() => (window.__swarm?.box?.stats?.escaped ?? 0) > 0, null, { timeout: ESCAPE_TIMEOUT_MS })
         .then(() => true)
         .catch(() => false);
+      const tEscape = Date.now();
+      const shown =
+        didEscape &&
+        (await page
+          .locator('section[aria-label="What just happened"]')
+          .waitFor({ timeout: 5_000 })
+          .then(() => true)
+          .catch(() => false));
+      const explainerMs = Date.now() - tEscape;
       // A runner-only miss has to be readable from the log: where the explainer is (or why not), and how busy the page is.
       const asked = Date.now();
-      const why = shown
-        ? ""
-        : await page.evaluate(() => {
-            const t0 = performance.now();
-            const s = document.querySelector('section[aria-label="What just happened"]');
-            const hiddenBy = s ? s.closest("[hidden], .hidden") : null;
-            const rect = s?.getBoundingClientRect();
-            const tab = document.querySelector('[data-rail-tab][aria-selected="true"]')?.getAttribute("data-rail-tab") ?? "none";
-            const rail = document.querySelector("[data-story-rail]");
-            const b = window.__swarm?.box;
-            return JSON.stringify({
-              inDom: !!s,
-              rect: rect ? [Math.round(rect.width), Math.round(rect.height)] : null,
-              hiddenBy: hiddenBy ? `${hiddenBy.tagName}.${String(hiddenBy.className).slice(0, 60)}#${hiddenBy.id}` : null,
-              tab,
-              rail: rail ? [Math.round(rail.getBoundingClientRect().width), Math.round(rail.getBoundingClientRect().height)] : null,
-              labs: b?.labs?.length ?? null,
-              escaped: b?.stats?.escaped ?? null,
-              tick: b?.stats?.tick ?? null,
-              viewport: [innerWidth, innerHeight],
-              evalMs: Math.round(performance.now() - t0),
-            });
-          });
-      check("the escape explainer appears", shown, shown ? "" : `${why}, round trip ${Date.now() - asked} ms`);
-      if (!shown) {
-        // What holds the main thread: four seconds of samples, the busiest functions by self time (chunk file, line and column).
-        const cdp = await page.context().newCDPSession(page);
-        await cdp.send("Profiler.enable");
-        await cdp.send("Profiler.setSamplingInterval", { interval: 1000 });
-        await cdp.send("Profiler.start");
-        await new Promise((r) => setTimeout(r, 4000));
-        const { profile } = await cdp.send("Profiler.stop");
-        const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
-        const self = new Map();
-        profile.samples.forEach((id, i) => {
-          const f = nodes.get(id).callFrame;
-          const key = `${f.functionName || "(anon)"} ${f.url.split("/").pop()}:${f.lineNumber}:${f.columnNumber}`;
-          self.set(key, (self.get(key) ?? 0) + (profile.timeDeltas[i] ?? 0));
-        });
-        for (const [key, us] of [...self].sort((x, y) => y[1] - x[1]).slice(0, 20)) console.log(`  profile ${(us / 1000).toFixed(0).padStart(6)} ms ${key}`);
-      }
-      if (!shown) throw new Error(`no escape explainer: ${why}`);
+      const diag = await page.evaluate(() => {
+        const t0 = performance.now();
+        const s = document.querySelector('section[aria-label="What just happened"]');
+        const hiddenBy = s ? s.closest("[hidden], .hidden") : null;
+        const rect = s?.getBoundingClientRect();
+        const tab = document.querySelector('[data-rail-tab][aria-selected="true"]')?.getAttribute("data-rail-tab") ?? "none";
+        const rail = document.querySelector("[data-story-rail]");
+        const b = window.__swarm?.box;
+        return {
+          inDom: !!s,
+          rect: rect ? [Math.round(rect.width), Math.round(rect.height)] : null,
+          hiddenBy: hiddenBy ? `${hiddenBy.tagName}.${String(hiddenBy.className).slice(0, 60)}#${hiddenBy.id}` : null,
+          tab,
+          rail: rail ? [Math.round(rail.getBoundingClientRect().width), Math.round(rail.getBoundingClientRect().height)] : null,
+          labs: b?.labs?.length ?? null,
+          escaped: b?.stats?.escaped ?? null,
+          tick: b?.stats?.tick ?? null,
+          viewport: [innerWidth, innerHeight],
+          evalMs: Math.round(performance.now() - t0),
+        };
+      });
+      const roundTripMs = Date.now() - asked;
+      const { profile } = await cdp.send("Profiler.stop");
+      await cdp.detach().catch(() => {});
+      const cpu = profileSummary(profile);
+      console.log(`  escape diagnostics: explainer after ${explainerMs} ms, eval round trip ${roundTripMs} ms, profile ${cpu.spanMs} ms with a longest native run of ${cpu.longestNativeMs} ms`);
+      // On any miss below, the stacks and the whole profile go to the log and the evidence folder first.
+      const keepProfile = async () => {
+        for (const line of cpu.stacks) console.log(`  stack ${line}`);
+        if (shots) {
+          await mkdir(shots, { recursive: true });
+          await writeFile(path.join(shots, "box-escape.cpuprofile"), JSON.stringify(profile));
+        }
+      };
+      if (!shown) await keepProfile();
+      const escaped = await box(page);
+      check("all layers off lets an agent escape", didEscape && escaped.stats.escaped > 0, `${escaped.stats.escaped} out by tick ${escaped.stats.tick}, ${((tEscape - t0) / 1000).toFixed(1)} s`);
+      check("the escape explainer appears", shown, shown ? "" : `${JSON.stringify(diag)}, round trip ${roundTripMs} ms`);
       // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
       const rerun = page.locator("[data-rerun]");
       await rerun.waitFor({ timeout: RERUN_TIMEOUT_MS });
+      // A scene slot that grows with the story column (CI's 960 px tablet layout) reallocates the canvas mid-escape,
+      // which stalled software GL for seconds. Measured once the explainer's replay cards are in; 1 px of slack for sub-pixel tracks.
+      const slotAfter = await slotRect();
+      const fmt = (r) => (r ? r.map(Math.round).join("x") : "none");
+      const sameSlot = slotBefore && slotAfter && Math.abs(slotAfter[0] - slotBefore[0]) <= 1 && Math.abs(slotAfter[1] - slotBefore[1]) <= 1;
+      if (!sameSlot && shown) await keepProfile();
+      check("the scene slot keeps its size when the explainer opens", sameSlot, `${fmt(slotBefore)} -> ${fmt(slotAfter)}`);
       const named = await rerun.getAttribute("data-rerun");
       check("the explainer names a layer to turn on and rerun", LAYERS.includes(named), named);
       const card = await page.locator('section[aria-label="What just happened"] li', { hasText: named.toUpperCase() }).innerText();

@@ -75,26 +75,18 @@ export function createInternet(scene: Scene, u: BoxUniforms, unit = 1): Internet
   material.colorNode = col.mul(shown);
   premultiplied(material);
   const mesh = new Mesh(geometry, material);
-  // Drawn once at `shown` 0 (fully transparent) before it is hidden, so its render pipeline and
-  // shader program are built on the first frame. Built on first use instead, the program link
-  // blocked the main thread for seconds at the first escape on software GL (CI's SwiftShader).
-  let warm = false;
-  let current: { x: number; y: number } | null = null;
-  mesh.onAfterRender = () => {
-    warm = true;
-    mesh.onAfterRender = () => {};
-    if (!current) mesh.visible = false;
-  };
-  mesh.visible = true;
+  mesh.visible = false;
   mesh.frustumCulled = false;
   mesh.renderOrder = 40;
   scene.add(mesh);
+
+  let current: { x: number; y: number } | null = null;
 
   return {
     set(path, progress) {
       if (!path) {
         shown.value = 0;
-        mesh.visible = !warm;
+        mesh.visible = false;
         current = null;
         return;
       }

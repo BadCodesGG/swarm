@@ -55,8 +55,9 @@ const SHOTS = process.env.SMOKE_SHOTS ?? "";
 const box = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm?.box ?? null)));
 
 /**
- * A CDP CPU profile in brief: its span, the longest stretch between two samples, and the call stacks
- * (leaf first, ten frames, chunk file:line:column) that held the main thread longest.
+ * A CDP CPU profile in brief: its span, the longest unbroken run of native (non-JS) samples, where the
+ * page waits on the browser or the GPU process, and the call stacks (leaf first, ten frames, chunk
+ * file:line:column) that held the main thread longest.
  */
 function profileSummary(profile, top = 8) {
   const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
@@ -64,11 +65,13 @@ function profileSummary(profile, top = 8) {
   for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
   const frame = ({ callFrame: f }) => `${f.functionName || "(anon)"} ${f.url.split("/").pop()}:${f.lineNumber}:${f.columnNumber}`;
   const stacks = new Map();
-  let gap = 0;
+  let native = 0;
+  let run = 0;
   profile.samples.forEach((id, i) => {
     // A sample stands for the time up to the next one.
     const us = profile.timeDeltas[i + 1] ?? 0;
-    gap = Math.max(gap, us);
+    run = nodes.get(id).callFrame.functionName === "(program)" ? run + us : 0;
+    native = Math.max(native, run);
     const parts = [];
     for (let cur = id; cur !== undefined && parts.length < 10; cur = parent.get(cur)) {
       const node = nodes.get(cur);
@@ -81,7 +84,7 @@ function profileSummary(profile, top = 8) {
   const ms = (us) => Math.round(us / 1000);
   return {
     spanMs: ms(profile.endTime - profile.startTime),
-    longestGapMs: ms(gap),
+    longestNativeMs: ms(native),
     stacks: [...stacks].sort((a, b) => b[1] - a[1]).slice(0, top).map(([key, us]) => `${String(ms(us)).padStart(6)} ms ${key}`),
   };
 }
@@ -103,31 +106,11 @@ export function boxSteps({ check, openPage, software = false }) {
 
       // CI's two-core software GL has stalled the page for seconds round the first escape, and only there.
       // A CPU profile from before the layer switches (so its own start-up hitch falls outside) to after
-      // the explainer wait, and the page's long animation frames, name what held the main thread.
+      // the explainer wait names what held the main thread.
       const cdp = await context.newCDPSession(page);
       await cdp.send("Profiler.enable");
       await cdp.send("Profiler.setSamplingInterval", { interval: 1000 });
       await cdp.send("Profiler.start");
-      await page.evaluate(() => {
-        window.__smokeLong = [];
-        const keep = (entries) => {
-          for (const e of entries) {
-            const end = e.startTime + e.duration;
-            window.__smokeLong.push({
-              at: Math.round(e.startTime),
-              ms: Math.round(e.duration),
-              layoutMs: e.styleAndLayoutStart ? Math.round(end - e.styleAndLayoutStart) : 0,
-              renderMs: e.renderStart ? Math.round(end - e.renderStart) : 0,
-              tick: window.__swarm?.box?.stats?.tick ?? null,
-              scripts: e.scripts.slice(0, 3).map((s) => `${s.invoker} ${s.sourceURL.split("/").pop()}:${s.sourceCharPosition} ${Math.round(s.duration)} ms`),
-            });
-          }
-        };
-        const observer = new PerformanceObserver((list) => keep(list.getEntries()));
-        observer.observe({ type: "long-animation-frame" });
-        // Entries still queued for the observer's callback, read now.
-        window.__smokeLongFlush = () => keep(observer.takeRecords());
-      });
 
       for (const layer of LAYERS) {
         const before = (await box(page)).config.layers[layer];
@@ -143,6 +126,11 @@ export function boxSteps({ check, openPage, software = false }) {
 
       for (const layer of LAYERS) await page.locator(`input[data-layer="${layer}"]`).setChecked(false, { force: true });
       const off = await box(page);
+      const slotRect = () => page.evaluate(() => {
+        const r = document.querySelector("[data-scene-slot]")?.getBoundingClientRect();
+        return r ? `${Math.round(r.width)}x${Math.round(r.height)}` : "none";
+      });
+      const slotBefore = await slotRect();
       check("every layer can be switched off", LAYERS.every((l) => off.config.layers[l] === false));
       const t0 = Date.now();
       await page.waitForFunction(() => (window.__swarm?.box?.stats?.escaped ?? 0) > 0, null, { timeout: ESCAPE_TIMEOUT_MS });
@@ -160,9 +148,6 @@ export function boxSteps({ check, openPage, software = false }) {
       const diag = JSON.parse(
         await page.evaluate(async () => {
           const t0 = performance.now();
-          // Long frames that ended just before this evaluate ran are still queued for the observer.
-          await new Promise((r) => setTimeout(r, 300));
-          window.__smokeLongFlush?.();
           const s = document.querySelector('section[aria-label="What just happened"]');
           const hiddenBy = s ? s.closest("[hidden], .hidden") : null;
           const rect = s?.getBoundingClientRect();
@@ -179,29 +164,26 @@ export function boxSteps({ check, openPage, software = false }) {
             escaped: b?.stats?.escaped ?? null,
             tick: b?.stats?.tick ?? null,
             viewport: [innerWidth, innerHeight],
-            evalMs: Math.round(performance.now() - t0 - 300),
-            longFrames: (window.__smokeLong ?? []).filter((e) => e.ms >= 200).slice(-8),
+            evalMs: Math.round(performance.now() - t0),
           });
         }),
       );
-      const roundTripMs = Date.now() - asked - 300;
+      const roundTripMs = Date.now() - asked;
       const { profile } = await cdp.send("Profiler.stop");
       await cdp.detach().catch(() => {});
       const cpu = profileSummary(profile);
-      const longest = diag.longFrames.reduce((a, e) => (e.ms > (a?.ms ?? 0) ? e : a), null);
-      console.log(
-        `  escape diagnostics: explainer after ${explainerMs} ms, eval round trip ${roundTripMs} ms, longest frame ${longest ? `${longest.ms} ms at tick ${longest.tick}` : "under 200 ms"}, profile ${cpu.spanMs} ms with a longest sample gap of ${cpu.longestGapMs} ms`,
-      );
+      console.log(`  escape diagnostics: explainer after ${explainerMs} ms, eval round trip ${roundTripMs} ms, profile ${cpu.spanMs} ms with a longest native run of ${cpu.longestNativeMs} ms`);
       if (!shown) {
-        console.log(`  long frames: ${JSON.stringify(diag.longFrames)}`);
         for (const line of cpu.stacks) console.log(`  stack ${line}`);
         if (SHOTS) {
           await mkdir(SHOTS, { recursive: true });
           await writeFile(path.join(SHOTS, "box-escape.cpuprofile"), JSON.stringify(profile));
         }
       }
-      delete diag.longFrames;
       check("the escape explainer appears", shown, shown ? "" : `${JSON.stringify(diag)}, round trip ${roundTripMs} ms`);
+      // A scene slot that grows with the story column reallocates the canvas mid-escape, which stalled software GL for seconds.
+      const slotAfter = await slotRect();
+      check("the scene slot keeps its size when the explainer opens", slotAfter === slotBefore, `${slotBefore} -> ${slotAfter}`);
       // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
       const rerun = page.locator("[data-rerun]");
       await rerun.waitFor({ timeout: RERUN_TIMEOUT_MS });

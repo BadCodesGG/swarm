@@ -49,15 +49,13 @@ const TRIALS_TIMEOUT_MS = 90_000;
 const RERUN_TIMEOUT_MS = 30_000;
 /** The scene's least height beside the lab column (`box-hud.tsx` sets it), whatever is docked under it. */
 const SCENE_MIN_PX = 400;
-/** CI's evidence folder (smoke.mjs saves each page's last look there); the escape step adds its CPU profile on a miss. */
-const SHOTS = process.env.SMOKE_SHOTS ?? "";
 
 const box = (page) => page.evaluate(() => JSON.parse(JSON.stringify(window.__swarm?.box ?? null)));
 
 /**
- * A CDP CPU profile in brief: its span, the longest unbroken run of native (non-JS) samples, where the
- * page waits on the browser or the GPU process, and the call stacks (leaf first, ten frames, chunk
- * file:line:column) that held the main thread longest.
+ * A CDP CPU profile in brief: its span, the longest unbroken run of native samples (`(program)` and
+ * `(garbage collector)`, where no JS runs: CI's escape stall was one 9 s run of them), and the JS call
+ * stacks (leaf first, ten frames, chunk file:line:column) that held the main thread longest.
  */
 function profileSummary(profile, top = 8) {
   const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
@@ -69,9 +67,11 @@ function profileSummary(profile, top = 8) {
   let run = 0;
   profile.samples.forEach((id, i) => {
     // A sample stands for the time up to the next one.
-    const us = profile.timeDeltas[i + 1] ?? 0;
-    run = nodes.get(id).callFrame.functionName === "(program)" ? run + us : 0;
+    const us = Math.max(0, profile.timeDeltas[i + 1] ?? 0);
+    const leaf = nodes.get(id).callFrame.functionName;
+    run = leaf === "(program)" || leaf === "(garbage collector)" ? run + us : 0;
     native = Math.max(native, run);
+    if (leaf.startsWith("(")) return;
     const parts = [];
     for (let cur = id; cur !== undefined && parts.length < 10; cur = parent.get(cur)) {
       const node = nodes.get(cur);
@@ -93,8 +93,11 @@ async function waitForFrames(page, act, min = 10) {
   await page.waitForFunction(([a, n]) => (window.__swarm?.[a]?.frame ?? 0) > n, [act, min], { timeout: READY_TIMEOUT_MS });
 }
 
-/** Steps 4 and 5. `check(label, ok, detail)` and `openPage(browser, route)` are smoke.mjs's own. */
-export function boxSteps({ check, openPage, software = false }) {
+/**
+ * Steps 4 and 5. `check(label, ok, detail)` and `openPage(browser, route)` are smoke.mjs's own;
+ * `shots` is its evidence folder (SMOKE_SHOTS), where the escape step adds its CPU profile on a miss.
+ */
+export function boxSteps({ check, openPage, software = false, shots = "" }) {
   async function stepBox(browser) {
     console.log("-- 4. box");
     const { context, page, problems, response } = await openPage(browser, "/box?seed=1");
@@ -109,7 +112,8 @@ export function boxSteps({ check, openPage, software = false }) {
       // the explainer wait names what held the main thread.
       const cdp = await context.newCDPSession(page);
       await cdp.send("Profiler.enable");
-      await cdp.send("Profiler.setSamplingInterval", { interval: 1000 });
+      // 10 ms samples: enough to name a stall of seconds, light on a two-core runner.
+      await cdp.send("Profiler.setSamplingInterval", { interval: 10_000 });
       await cdp.send("Profiler.start");
 
       for (const layer of LAYERS) {
@@ -126,67 +130,77 @@ export function boxSteps({ check, openPage, software = false }) {
 
       for (const layer of LAYERS) await page.locator(`input[data-layer="${layer}"]`).setChecked(false, { force: true });
       const off = await box(page);
-      const slotRect = () => page.evaluate(() => {
-        const r = document.querySelector("[data-scene-slot]")?.getBoundingClientRect();
-        return r ? `${Math.round(r.width)}x${Math.round(r.height)}` : "none";
-      });
-      const slotBefore = await slotRect();
       check("every layer can be switched off", LAYERS.every((l) => off.config.layers[l] === false));
+      const slotRect = () =>
+        page.evaluate(() => {
+          const r = document.querySelector("[data-scene-slot]")?.getBoundingClientRect();
+          return r ? [r.width, r.height] : null;
+        });
+      const slotBefore = await slotRect();
       const t0 = Date.now();
-      await page.waitForFunction(() => (window.__swarm?.box?.stats?.escaped ?? 0) > 0, null, { timeout: ESCAPE_TIMEOUT_MS });
-      const escaped = await box(page);
-      check("all layers off lets an agent escape", escaped.stats.escaped > 0, `${escaped.stats.escaped} out by tick ${escaped.stats.tick}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-      const tEscape = Date.now();
-      const shown = await page
-        .locator('section[aria-label="What just happened"]')
-        .waitFor({ timeout: 5_000 })
+      const didEscape = await page
+        .waitForFunction(() => (window.__swarm?.box?.stats?.escaped ?? 0) > 0, null, { timeout: ESCAPE_TIMEOUT_MS })
         .then(() => true)
         .catch(() => false);
+      const tEscape = Date.now();
+      const shown =
+        didEscape &&
+        (await page
+          .locator('section[aria-label="What just happened"]')
+          .waitFor({ timeout: 5_000 })
+          .then(() => true)
+          .catch(() => false));
       const explainerMs = Date.now() - tEscape;
       // A runner-only miss has to be readable from the log: where the explainer is (or why not), and how busy the page is.
       const asked = Date.now();
-      const diag = JSON.parse(
-        await page.evaluate(async () => {
-          const t0 = performance.now();
-          const s = document.querySelector('section[aria-label="What just happened"]');
-          const hiddenBy = s ? s.closest("[hidden], .hidden") : null;
-          const rect = s?.getBoundingClientRect();
-          const tab = document.querySelector('[data-rail-tab][aria-selected="true"]')?.getAttribute("data-rail-tab") ?? "none";
-          const rail = document.querySelector("[data-story-rail]");
-          const b = window.__swarm?.box;
-          return JSON.stringify({
-            inDom: !!s,
-            rect: rect ? [Math.round(rect.width), Math.round(rect.height)] : null,
-            hiddenBy: hiddenBy ? `${hiddenBy.tagName}.${String(hiddenBy.className).slice(0, 60)}#${hiddenBy.id}` : null,
-            tab,
-            rail: rail ? [Math.round(rail.getBoundingClientRect().width), Math.round(rail.getBoundingClientRect().height)] : null,
-            labs: b?.labs?.length ?? null,
-            escaped: b?.stats?.escaped ?? null,
-            tick: b?.stats?.tick ?? null,
-            viewport: [innerWidth, innerHeight],
-            evalMs: Math.round(performance.now() - t0),
-          });
-        }),
-      );
+      const diag = await page.evaluate(() => {
+        const t0 = performance.now();
+        const s = document.querySelector('section[aria-label="What just happened"]');
+        const hiddenBy = s ? s.closest("[hidden], .hidden") : null;
+        const rect = s?.getBoundingClientRect();
+        const tab = document.querySelector('[data-rail-tab][aria-selected="true"]')?.getAttribute("data-rail-tab") ?? "none";
+        const rail = document.querySelector("[data-story-rail]");
+        const b = window.__swarm?.box;
+        return {
+          inDom: !!s,
+          rect: rect ? [Math.round(rect.width), Math.round(rect.height)] : null,
+          hiddenBy: hiddenBy ? `${hiddenBy.tagName}.${String(hiddenBy.className).slice(0, 60)}#${hiddenBy.id}` : null,
+          tab,
+          rail: rail ? [Math.round(rail.getBoundingClientRect().width), Math.round(rail.getBoundingClientRect().height)] : null,
+          labs: b?.labs?.length ?? null,
+          escaped: b?.stats?.escaped ?? null,
+          tick: b?.stats?.tick ?? null,
+          viewport: [innerWidth, innerHeight],
+          evalMs: Math.round(performance.now() - t0),
+        };
+      });
       const roundTripMs = Date.now() - asked;
       const { profile } = await cdp.send("Profiler.stop");
       await cdp.detach().catch(() => {});
       const cpu = profileSummary(profile);
       console.log(`  escape diagnostics: explainer after ${explainerMs} ms, eval round trip ${roundTripMs} ms, profile ${cpu.spanMs} ms with a longest native run of ${cpu.longestNativeMs} ms`);
-      if (!shown) {
+      // On any miss below, the stacks and the whole profile go to the log and the evidence folder first.
+      const keepProfile = async () => {
         for (const line of cpu.stacks) console.log(`  stack ${line}`);
-        if (SHOTS) {
-          await mkdir(SHOTS, { recursive: true });
-          await writeFile(path.join(SHOTS, "box-escape.cpuprofile"), JSON.stringify(profile));
+        if (shots) {
+          await mkdir(shots, { recursive: true });
+          await writeFile(path.join(shots, "box-escape.cpuprofile"), JSON.stringify(profile));
         }
-      }
+      };
+      if (!shown) await keepProfile();
+      const escaped = await box(page);
+      check("all layers off lets an agent escape", didEscape && escaped.stats.escaped > 0, `${escaped.stats.escaped} out by tick ${escaped.stats.tick}, ${((tEscape - t0) / 1000).toFixed(1)} s`);
       check("the escape explainer appears", shown, shown ? "" : `${JSON.stringify(diag)}, round trip ${roundTripMs} ms`);
-      // A scene slot that grows with the story column reallocates the canvas mid-escape, which stalled software GL for seconds.
-      const slotAfter = await slotRect();
-      check("the scene slot keeps its size when the explainer opens", slotAfter === slotBefore, `${slotBefore} -> ${slotAfter}`);
       // The rerun button waits for the worker's replay, which proves the layer it names would have stopped that agent.
       const rerun = page.locator("[data-rerun]");
       await rerun.waitFor({ timeout: RERUN_TIMEOUT_MS });
+      // A scene slot that grows with the story column (CI's 960 px tablet layout) reallocates the canvas mid-escape,
+      // which stalled software GL for seconds. Measured once the explainer's replay cards are in; 1 px of slack for sub-pixel tracks.
+      const slotAfter = await slotRect();
+      const fmt = (r) => (r ? r.map(Math.round).join("x") : "none");
+      const sameSlot = slotBefore && slotAfter && Math.abs(slotAfter[0] - slotBefore[0]) <= 1 && Math.abs(slotAfter[1] - slotBefore[1]) <= 1;
+      if (!sameSlot && shown) await keepProfile();
+      check("the scene slot keeps its size when the explainer opens", sameSlot, `${fmt(slotBefore)} -> ${fmt(slotAfter)}`);
       const named = await rerun.getAttribute("data-rerun");
       check("the explainer names a layer to turn on and rerun", LAYERS.includes(named), named);
       const card = await page.locator('section[aria-label="What just happened"] li', { hasText: named.toUpperCase() }).innerText();

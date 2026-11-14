@@ -470,7 +470,7 @@ const STEPS = [
   ["inside", stepInside],
   ["phone", stepInsidePhone],
   ["hud", (browser) => stepHud(browser, { openPage, check, inside, waitInside, blur })],
-  ...boxSteps({ check, openPage, software: SOFTWARE }).map((step, i) => [`box${i + 1}`, step]),
+  ...boxSteps({ check, openPage, software: SOFTWARE, shots: SHOTS }).map((step, i) => [`box${i + 1}`, step]),
   ["import", (browser) => stepImport(browser, { BASE, openPage, check, inside, waitInside })],
   ["about", stepAbout],
   ["site", (browser) => stepSite(browser, { BASE, SOFTWARE, VIEWPORT, openPage, check, inside, waitInside, watch })],
